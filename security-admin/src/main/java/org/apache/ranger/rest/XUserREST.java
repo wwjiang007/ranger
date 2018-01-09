@@ -20,6 +20,8 @@
  package org.apache.ranger.rest;
 
 import java.util.HashMap;
+import java.util.List;
+import java.util.Random;
 
 import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.DELETE;
@@ -31,12 +33,14 @@ import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
 
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.ranger.biz.RangerBizUtil;
 import org.apache.ranger.biz.SessionMgr;
 import org.apache.ranger.biz.XUserMgr;
 import org.apache.ranger.common.MessageEnums;
 import org.apache.ranger.common.RESTErrorUtil;
+import org.apache.ranger.common.RangerConstants;
 import org.apache.ranger.common.SearchCriteria;
 import org.apache.ranger.common.SearchUtil;
 import org.apache.ranger.common.StringUtil;
@@ -239,6 +243,7 @@ public class XUserREST {
 		searchUtil.extractString(request, searchCriteria, "name", "group name", null);
 		searchUtil.extractInt(request, searchCriteria, "isVisible", "Group Visibility");
 		searchUtil.extractString(request, searchCriteria, "groupSource", "group source", null);
+//		searchUtil.extractInt(request, searchCriteria, "groupSource", "group source");
 		return xUserMgr.searchXGroups(searchCriteria);
 	}
 
@@ -345,18 +350,35 @@ public class XUserREST {
 	@Produces({ "application/xml", "application/json" })
 	@PreAuthorize("@rangerPreAuthSecurityHandler.isAPIAccessible(\"" + RangerAPIList.SEARCH_X_USERS + "\")")
 	public VXUserList searchXUsers(@Context HttpServletRequest request) {
+		String UserRoleParamName = RangerConstants.ROLE_USER;
 		SearchCriteria searchCriteria = searchUtil.extractCommonCriterias(
 				request, xUserService.sortFields);
-
+		String userName = null;
+		if (request.getUserPrincipal() != null){
+			userName = request.getUserPrincipal().getName();
+		}
 		searchUtil.extractString(request, searchCriteria, "name", "User name",null);
 		searchUtil.extractString(request, searchCriteria, "emailAddress", "Email Address",
 				null);		
 		searchUtil.extractInt(request, searchCriteria, "userSource", "User Source");
 		searchUtil.extractInt(request, searchCriteria, "isVisible", "User Visibility");
 		searchUtil.extractInt(request, searchCriteria, "status", "User Status");
-		searchUtil.extractStringList(request, searchCriteria, "userRoleList", "User Role List", "userRoleList", null,
+		List<String> userRolesList = searchUtil.extractStringList(request, searchCriteria, "userRoleList", "User Role List", "userRoleList", null,
 				null);
 		searchUtil.extractString(request, searchCriteria, "userRole", "UserRole", null);
+		if (CollectionUtils.isNotEmpty(userRolesList) && CollectionUtils.size(userRolesList) == 1 && userRolesList.get(0).equalsIgnoreCase(UserRoleParamName)) {
+			if (!(searchCriteria.getParamList().containsKey("name"))) {
+				searchCriteria.addParam("name", userName);
+			}
+			else if ((searchCriteria.getParamList().containsKey("name")) && userName!= null && userName.contains((String) searchCriteria.getParamList().get("name"))) {
+				searchCriteria.addParam("name", userName);
+			}
+			else {
+				String randomString = new Random().toString();
+				searchCriteria.addParam("name", randomString);
+			}
+		}
+
 		return xUserMgr.searchXUsers(searchCriteria);
 	}
 
@@ -761,15 +783,15 @@ public class XUserREST {
 		searchUtil.extractLong(request, searchCriteria, "id", "Auth Session Id");
 		searchUtil.extractLong(request, searchCriteria, "userId", "User Id");
 		searchUtil.extractInt(request, searchCriteria, "authStatus", "Auth Status");
-		searchUtil.extractInt(request, searchCriteria, "authType", "Auth Type");
+                searchUtil.extractInt(request, searchCriteria, "authType", "Login Type");
 		searchUtil.extractInt(request, searchCriteria, "deviceType", "Device Type");
 		searchUtil.extractString(request, searchCriteria, "firstName", "User First Name", StringUtil.VALIDATION_NAME);
 		searchUtil.extractString(request, searchCriteria, "lastName", "User Last Name", StringUtil.VALIDATION_NAME);
 		searchUtil.extractString(request, searchCriteria, "requestUserAgent", "User Agent", StringUtil.VALIDATION_TEXT);
 		searchUtil.extractString(request, searchCriteria, "requestIP", "Request IP Address", StringUtil.VALIDATION_IP_ADDRESS);
 		searchUtil.extractString(request, searchCriteria, "loginId", "Login ID", StringUtil.VALIDATION_TEXT);
-		searchUtil.extractDate(request, searchCriteria, "startDate", "Start date for search", null);
-		searchUtil.extractDate(request, searchCriteria, "endDate", "End date for search", null);						
+                searchUtil.extractDate(request, searchCriteria, "startDate", "Start Date", null);
+                searchUtil.extractDate(request, searchCriteria, "endDate", "End Date", null);
 		return sessionMgr.searchAuthSessions(searchCriteria);
 	}
 	
@@ -1025,6 +1047,7 @@ public class XUserREST {
 		return vXStringList;
 	}
 
+
 	@DELETE
 	@Path("/secure/users/delete")
 	@Produces({ "application/xml", "application/json" })
@@ -1044,6 +1067,7 @@ public class XUserREST {
 			}
 		}
 	}
+
 
 	@DELETE
 	@Path("/secure/groups/delete")
@@ -1065,4 +1089,67 @@ public class XUserREST {
 			}
 		}
 	}
+
+        @DELETE
+        @Path("/secure/users/{userName}")
+        @Produces({ "application/xml", "application/json" })
+        @PreAuthorize("hasRole('ROLE_SYS_ADMIN')")
+        public void deleteSingleUserByUserName(@Context HttpServletRequest request, @PathParam("userName") String userName) {
+                String forceDeleteStr = request.getParameter("forceDelete");
+                boolean forceDelete = false;
+                if (StringUtils.isNotEmpty(forceDeleteStr) && "true".equalsIgnoreCase(forceDeleteStr)) {
+                        forceDelete = true;
+                }
+
+                if (StringUtils.isNotEmpty(userName)) {
+                        VXUser vxUser = xUserService.getXUserByUserName(userName);
+                        xUserMgr.deleteXUser(vxUser.getId(), forceDelete);
+                }
+        }
+
+        @DELETE
+        @Path("/secure/groups/{groupName}")
+        @Produces({ "application/xml", "application/json" })
+        @PreAuthorize("hasRole('ROLE_SYS_ADMIN')")
+        public void deleteSingleGroupByGroupName(@Context HttpServletRequest request, @PathParam("groupName") String groupName) {
+                String forceDeleteStr = request.getParameter("forceDelete");
+                boolean forceDelete = false;
+                if (StringUtils.isNotEmpty(forceDeleteStr) && "true".equalsIgnoreCase(forceDeleteStr)) {
+                        forceDelete = true;
+                }
+                if (StringUtils.isNotEmpty(groupName)) {
+                        VXGroup vxGroup = xGroupService.getGroupByGroupName(groupName.trim());
+                        xUserMgr.deleteXGroup(vxGroup.getId(), forceDelete);
+                }
+        }
+
+        @DELETE
+        @Path("/secure/users/id/{userId}")
+        @Produces({ "application/xml", "application/json" })
+        @PreAuthorize("hasRole('ROLE_SYS_ADMIN')")
+        public void deleteSingleUserByUserId(@Context HttpServletRequest request, @PathParam("userId") Long userId) {
+                String forceDeleteStr = request.getParameter("forceDelete");
+                boolean forceDelete = false;
+                if (StringUtils.isNotEmpty(forceDeleteStr) && "true".equalsIgnoreCase(forceDeleteStr)) {
+                        forceDelete = true;
+                }
+                if (userId != null) {
+                        xUserMgr.deleteXUser(userId, forceDelete);
+                }
+        }
+
+        @DELETE
+        @Path("/secure/groups/id/{groupId}")
+        @Produces({ "application/xml", "application/json" })
+        @PreAuthorize("hasRole('ROLE_SYS_ADMIN')")
+        public void deleteSingleGroupByGroupId(@Context HttpServletRequest request, @PathParam("groupId") Long groupId) {
+                String forceDeleteStr = request.getParameter("forceDelete");
+                boolean forceDelete = false;
+                if (StringUtils.isNotEmpty(forceDeleteStr) && "true".equalsIgnoreCase(forceDeleteStr)) {
+                        forceDelete = true;
+                }
+                if (groupId != null) {
+                        xUserMgr.deleteXGroup(groupId, forceDelete);
+                }
+        }
 }

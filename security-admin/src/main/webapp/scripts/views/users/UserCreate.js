@@ -96,7 +96,6 @@ define(function(require){
 			if(!_.isUndefined(this.model.get('userSource')) && this.model.get('userSource') == XAEnums.UserSource.XA_USER.value){
 				this.$('[data-tab="edit-password"]').hide();
 				this.$('[data-tab="edit-basic"]').hide();
-                                this.ui.btnSave.prop( "disabled", true );
 			}
 			this.renderForm();
 			this.rForm.$el.dirtyFields();
@@ -161,7 +160,7 @@ define(function(require){
 					App.appRouter.navigate("#!/users/usertab",{trigger: true});
 					
 					var userList = new VXUserList();
-					   
+					_.extend(userList.queryParams, XAUtil.getUserDataParams())
 					userList.fetch({
 					   cache:false
 					}).done(function(){

@@ -58,7 +58,7 @@ import com.sun.jersey.api.client.UniformInterfaceException;
 public class XKeyREST {
 	private static final Logger logger = Logger.getLogger(XKeyREST.class);
 
-	private static String UNAUTHENTICATED_MSG = "Unauthenticated : Please check the premission in the policy for the user";
+	private static String UNAUTHENTICATED_MSG = "Unauthenticated : Please check the permission in the policy for the user";
 	
 	@Autowired
 	KmsKeyMgr keyMgr;
@@ -203,13 +203,15 @@ public class XKeyREST {
 				message = e1.getMessage();
 			}			
 		}			
-		if(!(message==null) && !(message.isEmpty()) && message.contains("Connection refused")){
+		if (!(message==null) && !(message.isEmpty()) && message.contains("Connection refused")){
 			message = "Connection refused : Please check the KMS provider URL and whether the Ranger KMS is running";			
-		}else if(!(message==null) && !(message.isEmpty()) && (message.contains("response status of 403") || message.contains("HTTP Status 403"))){
+		} else if (!(message==null) && !(message.isEmpty()) && (message.contains("response status of 403") || message.contains("HTTP Status 403"))){
 			message = UNAUTHENTICATED_MSG;
-		}else if(!(message==null) && !(message.isEmpty()) && (message.contains("response status of 401") || message.contains("HTTP Status 401 - Authentication required"))){
+		} else if (!(message==null) && !(message.isEmpty()) && (message.contains("response status of 401") || message.contains("HTTP Status 401 - Authentication required"))){
 			message = UNAUTHENTICATED_MSG;
-		}		
+		} else if (message == null) {
+		    message = UNAUTHENTICATED_MSG;
+		}
 		throw restErrorUtil.createRESTException(message, MessageEnums.ERROR_SYSTEM);
 	}	
 }

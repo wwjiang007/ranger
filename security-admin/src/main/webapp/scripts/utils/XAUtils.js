@@ -175,17 +175,25 @@ define(function(require) {
 	};
    //	Search Info it give popover box
    XAUtils.searchInfoPopover = function(myArray, $infoEle, placement){
-            var msg = "<span> Wildcard searches ( for example using * or ? ) are not currently supported.</span>";
+        var msg = "<span> Wildcard searches ( for example using * or ? ) are not currently supported.</span>";
 		myArray.map(function(m){
                    msg += '<div><span><b>'+m.text+' : </b></span><span>'+m.info+'</span></div>'
                 });
-        $infoEle.popover({
-           content: msg,
-           html: true,
-           trigger: 'hover',
-           placement: placement,
-           container: 'body'
-        });
+        $infoEle.popover({ trigger: "manual" , html: true, animation:false, content: msg, container:'body', placement: placement})
+                           .on("mouseenter", function () {
+                               var _this = this;
+                               $(this).popover("show");
+                               $(".popover").on("mouseleave", function () {
+                                   $(_this).popover('hide');
+                               });
+                           }).on("mouseleave", function () {
+                               var _this = this;
+                               setTimeout(function () {
+                                   if (!$(".popover:hover").length) {
+                                       $(_this).popover("hide");
+                                   }
+                               }, 300);
+               });
    };
 
 
@@ -609,7 +617,9 @@ define(function(require) {
 	XAUtils.defaultErrorHandler = function(model, error) {
 		var App = require('App');
 		var vError = require('views/common/ErrorView');
-		if(!_.isUndefined(model) && !_.isUndefined(model.modelName) &&  model.modelName == XAEnums.ClassTypes.CLASS_TYPE_XA_ACCESS_AUDIT.modelName){
+		if(!_.isUndefined(model) && !_.isUndefined(model.modelName) 
+				&&  model.modelName == XAEnums.ClassTypes.CLASS_TYPE_XA_ACCESS_AUDIT.modelName
+				&& error.status !== 419){
 			return;
 		}
 		if (error.status == 404) {
@@ -621,7 +631,7 @@ define(function(require) {
 				status : error.status
 			}));
 		} else if (error.status == 419) {
-			window.location = 'login.jsp'
+			window.location = 'login.jsp?sessionTimeout=true';
 		}
 	};
 	XAUtils.select2Focus = function(event) {
@@ -777,15 +787,16 @@ define(function(require) {
 				reset : true,
 				cache : false,
 				error : function(coll, response, options) {
-					that.notifyError('Error', localization.tt('msg.errorLoadingAuditLogs'));
+					that.blockUI('unblock');
+                                        if(response && response.responseJSON && response.responseJSON.msgDesc){
+                                                that.notifyError('Error', response.responseJSON.msgDesc);
+                                        }else{
+                                                that.notifyError('Error', localization.tt('msg.errorLoadingAuditLogs'));
+					}
+
 				}
-			// data : params,
 			});
 		};
-		// var searchOpt = ['Event Time','User','Resource Name','Resource
-		// ID','Resource Type','Repository Name','Repository
-		// Type','Result','Client IP','Client Type','Access Type','Access
-		// Enforcer','Audit Type','Session ID'];
 
 		var callbackCommon = {
 			search : function(query, searchCollection) {
@@ -793,6 +804,11 @@ define(function(require) {
 				search(searchCollection, serverAttrName, searchOpt, collection);
 			},
 			clearSearch : function(callback) {
+                                //Remove search history when click on clear search
+                                if(!_.isUndefined(pluginAttr.type)){
+                                        var App = require('App');
+                                        App.vsHistory[pluginAttr.type] = [];
+                                }
 				_.each(serverAttrName, function(attr) {
 					delete collection.queryParams[attr.label];
 				});
@@ -822,10 +838,6 @@ define(function(require) {
 				if (!_.isUndefined(removedFacetSeverName)) {
 					delete collection.queryParams[removedFacetSeverName.label];
 					collection.state.currentPage = collection.state.firstPage;
-					collection.fetch({
-						reset : true,
-						cache : false
-					});
 				}
 				// TODO Added for Demo to remove datapicker popups
 				if (!_.isUndefined(visualSearch.searchBox.$el))
@@ -848,12 +860,15 @@ define(function(require) {
 	};
 
 	XAUtils.displayDatepicker = function($el, facet, $date, callback) {
-		var input = $el
-				.find('.search_facet.is_editing input.search_facet_input');
+                var input = $el.find('.search_facet.is_editing input.search_facet_input');
+                //disabling user enter value in date
+                input.keypress(function(event) {
+                        event.preventDefault();
+                });
 		$el.parents('body').find('.datepicker').hide();
 		input.datepicker({
 			autoclose : true,
-			dateFormat : 'yy-mm-dd'
+                        dateFormat : 'yy-mm-dd',
 		}).on('changeDate', function(ev) {
 			callback(ev.date);
 			input.datepicker("hide");
@@ -1200,7 +1215,9 @@ define(function(require) {
 		_.each(XAEnums.UserRoles,function(val, key){
 			if(SessionMgr.isKeyAdmin() && XAEnums.UserRoles.ROLE_SYS_ADMIN.value != val.value){
 				userRoleList.push(key)
-			}else if(!SessionMgr.isKeyAdmin() && XAEnums.UserRoles.ROLE_KEY_ADMIN.value != val.value){
+			}else if(SessionMgr.isSystemAdmin() && XAEnums.UserRoles.ROLE_KEY_ADMIN.value != val.value){
+				userRoleList.push(key)
+			}else if(SessionMgr.isUser() && XAEnums.UserRoles.ROLE_USER.value == val.value){
 				userRoleList.push(key)
 			}
 		})
@@ -1241,15 +1258,15 @@ define(function(require) {
 		}
 		return window.location.origin
 		+ window.location.pathname.substring(window.location.pathname
-				.indexOf('/', 2) + 1, 0);
+				.lastIndexOf('/') + 1, 0);
 	};
 	
 	XAUtils.isMaskingPolicy = function(type){
 		return type == XAEnums.RangerPolicyType.RANGER_MASKING_POLICY_TYPE.value ? true : false;
 	};
 	XAUtils.isRenderMasking = function(dataMaskDef){
-		return (!_.isUndefined(dataMaskDef) && !_.isUndefined(dataMaskDef.resources) 
-			&& dataMaskDef.resources.length > 0) ? true : false; 
+		return (!_.isUndefined(dataMaskDef) && !_.isUndefined(dataMaskDef.maskTypes) 
+			&& dataMaskDef.maskTypes.length > 0) ? true : false; 
 	};
 	XAUtils.isAccessPolicy = function(type){
 		return type == XAEnums.RangerPolicyType.RANGER_ACCESS_POLICY_TYPE.value ? true : false;
@@ -1276,5 +1293,65 @@ define(function(require) {
 		return !_.isUndefined(obj['resources']) && !_.isEmpty(obj['resources'])
 		 		&& !_.isNull(obj['resources']) ? false : true;
 	};
+    XAUtils.removeEmptySearchValue = function(arr) {
+            return  _.reject(arr,function(m){
+                    return (m.get('value')=="");
+            });
+    };
+        XAUtils.showAuditLogTags = function(rawValue, model) {
+                var showMoreLess = false, id = model.id, tagLabels = '';
+                var tagNames = _.pluck(rawValue, 'type');
+                if (!_.isUndefined(rawValue)) {
+                        var tagArr = _.map(rawValue, function(tag, i) {
+                                if(tag.attributes && !_.isEmpty(tag.attributes)){
+                                        tagLabels = '<a href="javascript:void(0)" data-name="tags" data-id="'+model.id+''+i+'" class="tagsColumn">'+tag.type+'</a>';
+                                }else{
+                                        tagLabels = tag.type;
+                                }
+                                tagLabels += (i+1 < rawValue.length) ? '&nbsp;,&nbsp;' : '';
+                                if (i >= 4){
+                                        return '<span class="float-left-margin-1" audit-log-id="'
+                                        + id + '" style="display:none;">' + tagLabels
+                                        + '</span>';
+                                }
+                                else{
+                                        if (i == 3 && rawValue.length > 4) {
+                                                showMoreLess = true;
+                                                return '<span class="float-left-margin-1" audit-log-id="'
+                                                                + id + '">' + tagLabels + '</span>';
+                                        } else{
+                                                return '<span class="float-left-margin-1" audit-log-id="'
+                                                + id + '">' + tagLabels + '</span>';
+                                        }
+                                }
+                        });
+                        if (showMoreLess) {
+                                tagArr.push('<span class="float-left-margin-1"><a href="javascript:void(0);" data-id="showMore" class="" audit-log-id="'
+                                                                + id
+                                                                + '"><code style=""> + More..</code></a></span><span class="float-left-margin-1"><a href="javascript:void(0);" data-id="showLess" class="" audit-log-id="'
+                                                                + id
+                                                                + '" style="display:none;"><code> - Less..</code></a></span>');
+                        }
+                        tagArr.unshift('<div data-id="tagDiv" class="popovertag">');
+                        tagArr.push('</div>');
+                        return tagArr.length ? tagArr.join(' ') : '--';
+                } else{
+                        return '--';
+                }
+        };
+        XAUtils.isTagBasedDef = function(def){
+        	return def.get('name') == XAEnums.ServiceType.SERVICE_TAG.label ? true : false;
+        };
+    XAUtils.policyTypeResources = function(obj , policyType){
+    	if(XAUtils.isAccessPolicy(policyType)){
+    		return obj.get('resources');
+    	}else{
+    		if(XAUtils.isMaskingPolicy(policyType)){
+    			return obj.get('dataMaskDef').resources;
+    		}else{
+    			return obj.get('rowFilterDef').resources;
+    		}
+    	}
+    }
 	return XAUtils;
 });

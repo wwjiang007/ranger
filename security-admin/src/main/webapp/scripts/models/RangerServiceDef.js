@@ -46,8 +46,7 @@ define(function(require){
 
 		schemaBase : function(){
 			var attrs = _.omit(this.serverSchema, 'id', 'createDate', 'updateDate', "version",
-					"createDate", "updateDate", "displayOption",
-					"permList", "status", "updatedBy");
+					"displayOption", "permList", "status", "updatedBy");
 
 			_.each(attrs, function(o){
 				o.type = 'Hidden';
@@ -107,6 +106,14 @@ define(function(require){
 							return {results : results};
 						}
 						return {results : results};
+					},
+					transport : function (options) {
+						$.ajax(options).error(function(respones) {
+							XAUtils.defaultErrorHandler('error',respones);
+							this.success({
+								resultSize : 0
+							});
+						});
 					}
 				},	
 				formatResult : function(result){

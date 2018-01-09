@@ -15,6 +15,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+function getInstallProperty() {
+    local propertyName=$1
+    local propertyValue=""
+
+    for file in "${INSTALL_ARGS}"
+    do
+        if [ -f "${file}" ]
+        then
+            propertyValue=`grep "^${propertyName}[ \t]*=" ${file} | awk -F= '{  sub("^[ \t]*", "", $2); sub("[ \t]*$", "", $2); print $2 }'`
+            if [ "${propertyValue}" != "" ]
+            then
+                break
+            fi
+        fi
+    done
+
+    echo ${propertyValue}
+}
+
 if [[ -z $1 ]]; then
         echo "Invalid argument [$1];"
         echo "Usage: Only start | stop | restart | version, are supported."
@@ -35,17 +54,29 @@ done
 if [ -z "${USERSYNC_PID_DIR_PATH}" ]; then
         USERSYNC_PID_DIR_PATH=/var/run/ranger
 fi
-
+if [ -z "${USERSYNC_PID_NAME}" ]
+then
+        USERSYNC_PID_NAME=usersync.pid
+fi
 if [ ! -d "${USERSYNC_PID_DIR_PATH}" ]
 then  
 	mkdir -p  $USERSYNC_PID_DIR_PATH
 	chmod 660 $USERSYNC_PID_DIR_PATH
 fi
 
-pidf=${USERSYNC_PID_DIR_PATH}/usersync.pid
+# User can set their own pid path using USERSYNC_PID_DIR_PATH and
+# USERSYNC_PID_NAME variable before calling the script. The user can modify
+# the value of the USERSYNC_PID_DIR_PATH in ranger-usersync-env-piddir.sh to
+# change pid path and set the value of USERSYNC_PID_NAME to change the
+# pid file.
+pidf=${USERSYNC_PID_DIR_PATH}/${USERSYNC_PID_NAME}
+
 if [ -z "${UNIX_USERSYNC_USER}" ]; then
         UNIX_USERSYNC_USER=ranger
 fi
+
+INSTALL_ARGS="${cdir}/install.properties"
+RANGER_BASE_DIR=$(getInstallProperty 'ranger_base_dir')
 
 if [ "${action}" == "START" ]; then
 
@@ -65,6 +96,9 @@ if [ "${action}" == "START" ]; then
 	if [ -z "${logdir}" ]; then 
 	    logdir=${cdir}/logs
 	fi
+	if [ -z "${USERSYNC_CONF_DIR}" ]; then
+	    USERSYNC_CONF_DIR=${cdir}/conf
+	fi
 	if [ -f "$pidf" ] ; then
 		pid=`cat $pidf`
 		if  ps -p $pid > /dev/null
@@ -76,7 +110,7 @@ if [ "${action}" == "START" ]; then
         fi
     fi
 	SLEEP_TIME_AFTER_START=5
-	nohup java -Dproc_rangerusersync -Dlog4j.configuration=file:/etc/ranger/usersync/conf/log4j.properties ${JAVA_OPTS} -Dlogdir="${logdir}" -cp "${cp}" org.apache.ranger.authentication.UnixAuthenticationService -enableUnixAuth > ${logdir}/auth.log 2>&1 &
+	nohup java -Dproc_rangerusersync -Dlog4j.configuration=file:${USERSYNC_CONF_DIR}/log4j.properties ${JAVA_OPTS} -Duser=${USER} -Dhostname=${HOSTNAME} -Dlogdir="${logdir}" -cp "${cp}" org.apache.ranger.authentication.UnixAuthenticationService -enableUnixAuth > ${logdir}/auth.log 2>&1 &
 	VALUE_OF_PID=$!
     echo "Starting Apache Ranger Usersync Service"
     sleep $SLEEP_TIME_AFTER_START

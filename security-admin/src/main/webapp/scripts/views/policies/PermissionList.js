@@ -34,6 +34,7 @@ define(function(require) {
 	var VXUser				= require('models/VXUser');
 	var VXGroupList			= require('collections/VXGroupList');
 	var VXUserList			= require('collections/VXUserList');
+	var Vent			= require('modules/Vent');
 	
 	require('bootstrap-editable');
 	require('esprima');
@@ -77,34 +78,36 @@ define(function(require) {
 		},
 
 		initialize : function(options) {
-                        _.extend(this, _.pick(options,'accessTypes','policyConditions','rangerServiceDefModel','rangerPolicyType'));
+			_.extend(this, _.pick(options,'accessTypes','policyConditions','rangerServiceDefModel','rangerPolicyType','rangerPolicyModel','storeResourceRef'));
 			this.setupPermissionsAndConditions();
-			
+			this.accessPermSetForTagMasking = false;
+			Vent.on('resourceType:change', this.renderPerms, this);
 		},
  
 		onRender : function() {
 			//To setup permissions for edit mode 
 			this.setupFormForEditMode();
 			//create select2 dropdown for groups and users  
-                        this.createDropDown(this.ui.selectGroups, true);
-                        this.createDropDown(this.ui.selectUsers, false);
+			this.createDropDown(this.ui.selectGroups, true);
+			this.createDropDown(this.ui.selectUsers, false);
 			//groups or users select2 dropdown change vent 
-			
 			this.dropDownChange(this.ui.selectGroups);
 			this.dropDownChange(this.ui.selectUsers);
 			//render permissions and policy conditions
-			if(this.rangerServiceDefModel.get('name') == XAEnums.ServiceType.SERVICE_TAG.label){
-				this.renderPermsForTagBasedPolicies()
+			if(XAUtil.isTagBasedDef(this.rangerServiceDefModel)){
+				this.renderPermsForTagBasedPolicies();
+//				if(XAUtil.isMaskingPolicy(this.rangerPolicyType)) this.renderMaskingTypesForTagBasedPolicies();
 			} else {
-				this.renderPerms();
+//				To handle scenario : Access permission doesnt changes if we change resource before adding new policy item.
+				this.renderPerms(this.storeResourceRef.changeType, this.storeResourceRef.value,
+						this.storeResourceRef.resourceName, this.storeResourceRef.e );
+				if(XAUtil.isMaskingPolicy(this.rangerPolicyType)){
+					this.renderMaskingType();
+				}
 			}
 			this.renderPolicyCondtion();
-			if(XAUtil.isMaskingPolicy(this.rangerPolicyType)){
-				this.renderMaskingType();
-			}
-			if(XAUtil.isRowFilterPolicy(this.rangerPolicyType)){
-				this.renderRowLevelFilter();
-			}
+				
+			if(XAUtil.isRowFilterPolicy(this.rangerPolicyType))	this.renderRowLevelFilter();
 			
 		},
 		setupFormForEditMode : function() {
@@ -185,11 +188,11 @@ define(function(require) {
                 createDropDown :function($select, typeGroup){
                         var that = this, tags = [],
 			placeholder = (typeGroup) ? 'Select Group' : 'Select User',
-                        searchUrl   = (typeGroup) ? "service/xusers/groups" : "service/xusers/users";
+					searchUrl   = (typeGroup) ? "service/xusers/groups" : "service/xusers/users";
 			if(this.model.has('editMode') && !_.isEmpty($select.val())){
-                                var temp = this.model.attributes[ (typeGroup) ? 'groupName': 'userName'];
+				var temp = this.model.attributes[ (typeGroup) ? 'groupName': 'userName'];
 				_.each(temp , function(name){
-                                        tags.push( { 'id' : _.escape( name ), 'text' : _.escape( name ) } );
+					tags.push( { 'id' : _.escape( name ), 'text' : _.escape( name ) } );
 				});
 			}
 			$select.select2({
@@ -197,9 +200,9 @@ define(function(require) {
 				placeholder : placeholder,
 				width :'220px',
 				tokenSeparators: [",", " "],
-                                tags : true,
+				tags : true,
 				initSelection : function (element, callback) {
-                                        callback(tags);
+					callback(tags);
 				},
 				ajax: { 
 					url: searchUrl,
@@ -213,9 +216,9 @@ define(function(require) {
 						selectedVals = that.getSelectedValues($select, typeGroup);
 						if(data.resultSize != "0"){
 							if(typeGroup){
-                                                                results = data.vXGroups.map(function(m, i){	return {id : _.escape(m.name), text: _.escape(m.name) };	});
+								results = data.vXGroups.map(function(m, i){	return {id : _.escape(m.name), text: _.escape(m.name) };	});
 							} else {
-                                                                results = data.vXUsers.map(function(m, i){	return {id : _.escape(m.name), text: _.escape(m.name) };	});
+								results = data.vXUsers.map(function(m, i){	return {id : _.escape(m.name), text: _.escape(m.name) };	});
 							}
 							if(!_.isEmpty(selectedVals)){
 								results = XAUtil.filterResultByText(results, selectedVals);
@@ -223,6 +226,14 @@ define(function(require) {
 							return {results : results};
 						}
 						return {results : results};
+					},
+                    transport: function (options) {
+                    	$.ajax(options).error(function(respones) {
+                    		XAUtil.defaultErrorHandler('error',respones);
+                    		this.success({
+                    			resultSize : 0
+                    		});
+                    	});
 					}
 				},	
 				formatResult : function(result){
@@ -236,71 +247,175 @@ define(function(require) {
 				}
 			}).on('select2-focus', XAUtil.select2Focus);
 		},
-		renderPerms :function(){
-			var that = this;
-			this.perms =  _.map(this.accessTypes,function(m){return {text:m.label, value:m.name};});
-			this.perms.push({'value' : -1, 'text' : 'Select/Deselect All'});
-			//set default access type 'select' for add new masking & row filter policies
-			if(!XAUtil.isAccessPolicy(this.rangerPolicyType) && !_.contains(this.permsIds,'select')) {
-				this.permsIds.push('select');
+		renderPerms :function(changeType, value, resourceName, e){
+	        var that = this , accessTypeByResource = this.accessTypes;
+	        this.storeResourceRef.changeType = changeType;
+	        this.storeResourceRef.value = value;
+	        this.storeResourceRef.resourceName = resourceName;
+	        this.storeResourceRef.e = e;
+	        //get permissions by resource only for access policy
+	        accessTypeByResource = this.getAccessPermissionForSelectedResource(changeType, value, resourceName, e);
+	        //reset permissions on resource change
+	        if(this.permsIds.length > 0 && !_.isUndefined(changeType) && !_.isUndefined(resourceName)){
+	                this.permsIds = [];
+	        }
+	        this.perms =  _.map(accessTypeByResource , function(m){return {text : m.label, value : m.name};});
+			if(this.perms.length > 1){
+				this.perms.push({'value' : -1, 'text' : 'Select/Deselect All'});
 			}
-			//create x-editable for permissions
-			this.ui.addPerms.editable({
-			    emptytext : 'Add Permissions',
-				source: this.perms,
-				value : this.permsIds,
-				display: function(values,srcData) {
-					if(_.isNull(values) || _.isEmpty(values) || (_.contains(values,"-1")  &&  values.length == 1)){
-						$(this).empty();
-						that.model.unset('accesses');
-						that.ui.addPermissionsSpan.find('i').attr('class', 'icon-plus');
-						that.ui.addPermissionsSpan.attr('title','add');
-						return;
-					}
-					if(_.contains(values,"-1")){
-						values = _.without(values,"-1")
-
-					}
-//			    	that.checkDirtyFieldForGroup(values);
-					
-					var permTypeArr = [];
-					var valArr = _.map(values, function(id){
-						if(!_.isUndefined(id)){
-							var obj = _.findWhere(srcData,{'value' : id});
-							permTypeArr.push({permType : obj.value});
-							return "<span class='label label-info'>" + obj.text + "</span>";
+			//if policy items not present. its skip that items and move forward
+			if(_.isObject(this.ui.addPerms)){
+				this.ui.addPerms.editable("destroy");
+				//create x-editable for permissions
+				this.ui.addPerms.editable({
+					emptytext : 'Add Permissions',
+					source: this.perms,
+					value : this.permsIds,
+					display: function(values,srcData) {
+                        if(_.isNull(values) || _.isEmpty(values) || (_.contains(values,"-1")  &&  values.length == 1)){
+                            $(this).empty();
+                            that.model.unset('accesses');
+                            that.ui.addPermissionsSpan.find('i').attr('class', 'icon-plus');
+                            that.ui.addPermissionsSpan.attr('title','add');
+                            return;
 						}
-					});
-					var perms = []
-					if(that.model.has('accesses')){
-							perms = that.model.get('accesses');
-					}
-					
-					var items=[];
-					_.each(that.accessItems, function(item){ 
-						if($.inArray( item.type, values) >= 0){
-							item.isAllowed = true;
-							items.push(item) ;
+                        if(_.contains(values,"-1")){
+                        	values = _.without(values,"-1")
 						}
-					},this);
-					// Save form data to model
-					that.model.set('accesses', items);
-					
-					$(this).html(valArr.join(" "));
-					that.ui.addPermissionsSpan.find('i').attr('class', 'icon-pencil');
-					that.ui.addPermissionsSpan.attr('title','edit');
-				},
-			}).on('click', function(e) {
-				e.stopPropagation();
-				e.preventDefault();
-				that.clickOnPermissions(that);
-			});
-			that.ui.addPermissionsSpan.click(function(e) {
-				e.stopPropagation();
+                        //that.checkDirtyFieldForGroup(values);
+                        var permTypeArr = [];
+                        var valArr = _.map(values, function(id){
+                        	if(!_.isUndefined(id)){
+                        		var obj = _.findWhere(that.rangerServiceDefModel.attributes.accessTypes,{'name' : id});
+								permTypeArr.push({permType : obj.value});
+								return "<span class='label label-info'>" + obj.label + "</span>";
+                        	}
+                        });
+                        var perms = []
+                        if(that.model.has('accesses')){
+                        	perms = that.model.get('accesses');
+                        }
+                        var items=[];
+                        _.each(that.accessItems, function(item){
+							if($.inArray( item.type, values) >= 0){
+								item.isAllowed = true;
+								items.push(item) ;
+							}
+                        },this);
+                        // Save form data to model
+                        that.model.set('accesses', items);
+                        $(this).html(valArr.join(" "));
+                        that.ui.addPermissionsSpan.find('i').attr('class', 'icon-pencil');
+                        that.ui.addPermissionsSpan.attr('title','edit');
+					},
+				}).on('click', function(e) {
+					e.stopPropagation();
+                    e.preventDefault();
+                    that.clickOnPermissions(that);
+				});
+				that.ui.addPermissionsSpan.click(function(e) {
+				e.stopImmediatePropagation();
 				that.$('a[data-js="permissions"]').editable('toggle');
 				that.clickOnPermissions(that);
+				});
+			}
+		},
+		getAccessPermissionForSelectedResource : function(changeType, value, resourceName, e){
+			var resourceDef = _.sortBy(XAUtil.policyTypeResources(this.rangerServiceDefModel , this.rangerPolicyType), function(m){ return m.itemId }),
+	        policyResources = this.rangerPolicyModel.get('resources'),
+	        accessTypeByResource = this.accessTypes,
+	        resourceByLevelObj = _.groupBy(resourceDef, function(m){
+	        	return ( _.isUndefined(m.parent) || m.parent == "" ) ? 'parent' : 'child';
+	        });
+	        var parentResources = resourceByLevelObj['parent'];
+	        //find resource child resource edit form opens
+	        if(!_.isUndefined(policyResources) && _.isUndefined(changeType)){
+	        	var parentFound = false, parentName = undefined, resourceNames = _.keys(policyResources);
+			// if one resource is selected that means which is parent one else find
+			if(resourceNames.length == 1){
+				resourceName = resourceNames[0];
+			}else{
+				_.each(resourceNames, function(m){
+					var parentDef = _.findWhere(resourceByLevelObj['parent'], {'name': m});
+					if(parentDef){
+						parentFound = true;
+						parentName = m;
+					}
+				});
+				for(var i=0;i< resourceDef.length ;i++){
+					if($.inArray(resourceDef[i]['name'], resourceNames) >= 0)
+						if(resourceDef[i]['parent'] == parentName && resourceDef[i]['accessTypeRestrictions']){
+							parentName = resourceDef[i]['name'];
+							i = 0;
+						}
+				}
+				resourceName = parentName;
+			}
+			var allowAccessName = _.findWhere(resourceDef, {'name': resourceName}).accessTypeRestrictions;
+			accessTypeByResource = _.filter(accessTypeByResource, function(m){ return _.contains(allowAccessName , m.name)});
+	        }
+	        if(!resourceName){
+	        	resourceName = parentResources[0].name;
+	        }
+	        if(resourceName == 'none'){
+	        	resourceName = $(e.currentTarget).parents('div[data-name="field-none"]').attr('parent');
+	        }
+	        var parentResourceDef = _.findWhere(resourceByLevelObj['parent'], {'name':resourceName });
+	        if(!_.isUndefined(parentResourceDef)){
+			    if(_.isArray(parentResourceDef)){
+				var foundParent = false, parentName = '';
+				for(var i=0;i<resourceDef.length;i++){
+					if(resourceDef[i].parent == "" && !foundParent){
+						accessTypeByResource = _.filter(accessTypeByResource, function(m){ return $.inArray(m.name, resourceDef[i].accessTypeRestrictions)});
+						foundParent = true;
+						parentName = resourceDef[i]['name'];
+					}
+				}
+			}else{
+				//On Parent change
+				if(parentResourceDef.isValidLeaf){
+					accessTypeByResource = _.filter(accessTypeByResource, function(m){ return _.contains(parentResourceDef.accessTypeRestrictions , m.name)});
+				}else{
+					var childResourceDef = this.childRscDef(resourceByLevelObj['child'] , resourceName);
+					accessTypeByResource = _.filter(accessTypeByResource, function(m){ return _.contains(childResourceDef.accessTypeRestrictions , m.name)});
+				}
+			}
+	        }else{
+				if(changeType == 'resourceType'){
+					var def = _.findWhere(resourceDef, {'name': resourceName});
+					if(def.isValidLeaf){
+						accessTypeByResource = _.filter(accessTypeByResource, function(m){ return _.contains(def.accessTypeRestrictions , m.name)});
+					}else{
+						var childResourceDef = this.childRscDef(resourceByLevelObj['child'] , resourceName);
+						accessTypeByResource = _.filter(accessTypeByResource, function(m){ return _.contains(childResourceDef.accessTypeRestrictions , m.name)});
+					}
+				} 
+	        }
+	        if(_.isEmpty(accessTypeByResource)){
+			accessTypeByResource = this.accessTypes;
+	        }
+	        return accessTypeByResource;
+		},
+		//if parent isValidLeaf is false than check child isvalidLeaf
+		childRscDef:function(resChild , rscName){
+			var childResourcs = _.filter(resChild, function(m){ 
+				return m.parent == rscName 
 			});
-			
+			var rscDef , someVal;
+			someVal = _.some(childResourcs,function(obj){
+//				help of this we separate specified(selected) child resource from all childResourcs 
+				var $html = $('[data-name="field-'+obj.name+'"]');
+				if($html.length > 0){
+					rscName = obj.name;
+					rscDef = obj;
+					return true;
+				}
+			});
+			if(!someVal){
+				rscDef = childResourcs[0];
+				rscName = childResourcs[0].name;
+			}
+			return  ((rscDef.isValidLeaf) ? _.findWhere(resChild, {'name':rscName }) : this.childRscDef(resChild , rscName))
 		},
 		renderPermsForTagBasedPolicies :function(){
 			var that = this;
@@ -308,24 +423,33 @@ define(function(require) {
 			this.ui.addPerms.attr('title','Components Permissions')
 			this.ui.delegatedAdmin.parent('td').hide();
 			this.perms =  _.map(this.accessTypes,function(m){return {text:m.label, value:m.name};});
-
+			var select2optn = { width :'600px' };
+			if(XAUtil.isMaskingPolicy(this.rangerPolicyType)){
+				select2optn = {width :'600px' , maximumSelectionSize : 1 };
+			}
 			//create x-editable for permissions
 			this.ui.addPerms.editable({
 			    emptytext : 'Add Permissions',
 				source: this.perms,
 				value : this.permsIds,
+				select2option : select2optn,
 				placement : 'top',
 				showbuttons : 'bottom',
 				display: function(values,srcData) {
+					if(_.contains(values,"on"))	values = _.without(values,"on");
 					if(_.isNull(values) || _.isEmpty(values)){
 						$(this).empty();
 						that.model.unset('accesses');
 						that.ui.addPermissionsSpan.find('i').attr('class', 'icon-plus');
 						that.ui.addPermissionsSpan.attr('title','add');
+						//disable Masking option for tag based
+						if(XAUtil.isMaskingPolicy(that.rangerPolicyType)){
+							that.accessPermSetForTagMasking = false;
+							that.model.unset('dataMaskInfo');
+							that.renderMaskingTypesForTagBasedPolicies();
+							that.$el.find('input[data-id="maskTypeCustom"]').val("");
+						}
 						return;
-					}
-					if(_.contains(values,"on")){
-						values = _.without(values,"on")
 					}
 					//To remove selectall options
 					values = _.uniq(values);
@@ -359,6 +483,14 @@ define(function(require) {
 					$(this).html(_.uniq(valArr).join(" "));
 					that.ui.addPermissionsSpan.find('i').attr('class', 'icon-pencil');
 					that.ui.addPermissionsSpan.attr('title','edit');
+					
+					//enabling add masking option for Tag-based
+					if(XAUtil.isMaskingPolicy(that.rangerPolicyType)){
+						that.accessPermSetForTagMasking = true;
+						var selectedComponent = _.map(items, function(m){ return m.type.substr(0,m.type.indexOf(":")); });
+						selectedComponent = _.uniq(selectedComponent);
+						that.renderMaskingTypesForTagBasedPolicies(selectedComponent)
+					}
 				},
 			}).on('hide',function(e){
 					$(e.currentTarget).parent().find('.tag-fixed-popover-wrapper').remove()
@@ -384,6 +516,91 @@ define(function(require) {
 			});
 			
 		},
+		renderMaskingTypesForTagBasedPolicies :function(accessTypeSelectedComp){
+			var that = this, perms = [];
+			this.ui.addPerms.attr('data-type','radiolist')
+			this.ui.addPerms.attr('title','Components Permissions')
+			this.ui.delegatedAdmin.parent('td').hide();
+			
+			var maskingTypes = this.rangerServiceDefModel.get('dataMaskDef').maskTypes;
+			//get selected components masking types
+			_.each(maskingTypes,function(m){
+				var compName = m.name.substr(0,m.name.indexOf(":"));
+				if($.inArray(compName, accessTypeSelectedComp) >= 0){
+					perms.push({text:m.label, value:m.name});
+				}
+			}, this);
+			var maskTypeVal =  [];
+			if(!_.isUndefined(this.model.get('dataMaskInfo')) && !_.isUndefined(this.model.get('dataMaskInfo').dataMaskType)){
+				maskTypeVal = this.model.get('dataMaskInfo').dataMaskType;
+				if(!_.isUndefined(accessTypeSelectedComp) && !_.isUndefined(maskTypeVal)){
+					maskTypeVal = $.inArray(maskTypeVal.substr(0,maskTypeVal.indexOf(":")), accessTypeSelectedComp) >= 0 ? maskTypeVal : [];
+				}
+			}
+			//Reset Add Masking Options
+			this.ui.maskingType.editable("setValue",null);
+			this.ui.maskingType.editable("destroy");
+			that.ui.addMaskingTypeSpan.unbind( "click" );
+			this.$el.find('input[data-id="maskTypeCustom"]').unbind( "change" );
+			that.ui.addMaskingTypeSpan.find('i').attr('class', 'icon-plus');
+			that.ui.addMaskingTypeSpan.attr('title','add');
+			this.$el.find('input[data-id="maskTypeCustom"]').css("display","none");
+			//create x-editable for permissions
+			this.ui.maskingType.editable({
+			    emptytext : 'Add Mask Type',
+				source: perms,
+				value : maskTypeVal,
+				placement : 'top',
+				showbuttons : 'bottom',
+				disabled : !this.accessPermSetForTagMasking,
+				display: function(value,srcData) {
+					if(_.isNull(value) || _.isUndefined(value) || _.isEmpty(value)){
+						$(this).empty();
+//						that.model.unset('accesses');
+						that.ui.addPermissionsSpan.find('i').attr('class', 'icon-plus');
+						that.ui.addPermissionsSpan.attr('title','add');
+						return;
+					}
+					
+					var obj = _.findWhere(srcData, {'value' : value } );
+					// Save form data to model
+					that.model.set('dataMaskInfo', {'dataMaskType': value });
+					//Custom dataMaskType
+					if(value.indexOf("CUSTOM") >= 0){
+						$(this).siblings('[data-id="maskTypeCustom"]').css("display","");
+					}else{
+						$(this).siblings('[data-id="maskTypeCustom"]').css("display","none");
+						$(this).siblings('[data-id="maskTypeCustom"]').val(" ");
+					}
+					
+					$(this).html("<span class='label label-info'>"+ value.substr(0,value.indexOf(":")).toUpperCase() +" : "
+							+ obj.text +"</span>");
+					that.ui.addMaskingTypeSpan.find('i').attr('class', 'icon-pencil');
+					that.ui.addMaskingTypeSpan.attr('title','edit');
+				},
+			}).on('hide',function(e){
+					$(e.currentTarget).parent().find('.tag-fixed-popover-wrapper').remove()
+			}).on('click', function(e) {
+				e.stopPropagation();
+				e.preventDefault();
+			});
+			that.ui.addMaskingTypeSpan.click(function(e) {
+				e.stopPropagation();
+				if(!that.accessPermSetForTagMasking){
+					XAUtil.alertPopup({ msg :localization.tt('msg.pleaseSelectAccessTypeForTagMasking') });
+					return;
+				}
+				that.$('a[data-js="maskingType"]').editable('toggle');
+			});
+			this.$el.find('input[data-id="maskTypeCustom"]').on('change', function(e){
+				if(!_.isUndefined(that.model.get('dataMaskInfo'))){
+                                        that.model.get('dataMaskInfo').valueExpr = (e.currentTarget.value);
+				}
+			}).trigger('change');
+			if(!this.accessPermSetForTagMasking){
+				that.ui.maskingType.html('Add Mask Type');
+			}
+		},
 		clickOnPermissions : function(that) {
 			var selectAll = true;
 			var checklist = that.$('.editable-checklist').find('input[type="checkbox"]')
@@ -399,6 +616,17 @@ define(function(require) {
 				var checkboxlist =$(this).closest('.editable-checklist').find('input[type="checkbox"][value!=-1]')
 				$(this).is(':checked') ? checkboxlist.prop('checked',true) : checkboxlist.prop('checked',false); 
 				
+			});
+			that.$('.editable-checklist input[type="checkbox"]').click(function(e){
+				if(this.value!="-1"){
+					var selectAll = true;
+					that.$('.editable-checklist input[type="checkbox"]').each(function(index,item){
+						if(item.value!="-1" && !item.checked){
+							selectAll = false;
+						}
+					});
+					that.$('input[type="checkbox"][value="-1"]').prop('checked',selectAll);
+				}
 			});
 		},
 		renderPolicyCondtion : function() {
@@ -457,7 +685,6 @@ define(function(require) {
                                                                 return '<span class="'+label+' white-space-normal" >'+name+' : '+ _.escape(val) + '</span>';
 							});
 							var cond = _.map(value, function(val, name) {
-                                                                val = _.escape(val);
                                                                 return {'type' : name, 'values' : !_.isArray(val) ?  val.split(',') : val};
 							});
 							
@@ -600,6 +827,7 @@ define(function(require) {
 						$(this).siblings('[data-id="maskTypeCustom"]').css("display","");
 					}else{
 						$(this).siblings('[data-id="maskTypeCustom"]').css("display","none");
+                                                $(this).siblings('[data-id="maskTypeCustom"]').val(" ")
 					}
 					
 					$(this).html("<span class='label label-info'>" + obj.text + "</span>");
@@ -616,7 +844,7 @@ define(function(require) {
 			});
 			this.$el.find('input[data-id="maskTypeCustom"]').on('change', function(e){
 				if(!_.isUndefined(that.model.get('dataMaskInfo'))){
-					that.model.get('dataMaskInfo').valueExpr = e.currentTarget.value;
+                                        that.model.get('dataMaskInfo').valueExpr = (e.currentTarget.value);
 				}
 			}).trigger('change');
 		},
@@ -653,8 +881,6 @@ define(function(require) {
 
 	});
 
-
-
 	return Backbone.Marionette.CompositeView.extend({
 		_msvName : 'PermissionItemList',
 		template : require('hbs!tmpl/policies/PermissionList'),
@@ -679,16 +905,20 @@ define(function(require) {
 				'accessTypes'	: this.accessTypes,
 				'policyConditions' : this.rangerServiceDefModel.get('policyConditions'),
 				'rangerServiceDefModel' : this.rangerServiceDefModel,
-				'rangerPolicyType' : this.rangerPolicyType
+                'rangerPolicyType' : this.rangerPolicyType,
+                'storeResourceRef' :  this.storeResourceRef,
+                'rangerPolicyModel' : this.model,
 			};
 		},
 		events : {
 			'click [data-action="addGroup"]' : 'addNew'
 		},
 		initialize : function(options) {
-                        _.extend(this, _.pick(options, 'accessTypes','rangerServiceDefModel', 'headerTitle','rangerPolicyType'));
-			if(this.collection.length == 0)
-				this.collection.add(new Backbone.Model());
+			_.extend(this, _.pick(options, 'accessTypes','rangerServiceDefModel', 'headerTitle','rangerPolicyType'));
+			if(this.collection.length == 0){
+				this.collection.add(new Backbone.Model())
+			}
+			this.storeResourceRef = {};
 		},
 		onRender : function(){
 			this.makePolicyItemSortable();
@@ -700,21 +930,20 @@ define(function(require) {
 		},
 		getPermHeaders : function(){
 			var permList = [];
-			if(this.rangerServiceDefModel.get('name') != XAEnums.ServiceType.SERVICE_TAG.label){
-				if(XAUtil.isAccessPolicy(this.rangerPolicyType)){
+			if(XAUtil.isAccessPolicy(this.rangerPolicyType) ){
+				if(this.rangerServiceDefModel.get('name') != XAEnums.ServiceType.SERVICE_TAG.label){
 					permList.unshift(localization.tt('lbl.delegatedAdmin'));
-				}
-				if(XAUtil.isRowFilterPolicy(this.rangerPolicyType)){
-					permList.unshift(localization.tt('lbl.rowLevelFilter'));
-					permList.unshift(localization.tt('lbl.accessTypes'));
-				}else if(XAUtil.isMaskingPolicy(this.rangerPolicyType)){
-					permList.unshift(localization.tt('lbl.selectMaskingOption'));
-					permList.unshift(localization.tt('lbl.accessTypes'));
-				}else{
 					permList.unshift(localization.tt('lbl.permissions'));
+				}else{
+					permList.unshift(localization.tt('lbl.componentPermissions'));
 				}
-			} else {
-				permList.unshift(localization.tt('lbl.componentPermissions'));
+			}
+			if(XAUtil.isRowFilterPolicy(this.rangerPolicyType)){
+				permList.unshift(localization.tt('lbl.rowLevelFilter'));
+				permList.unshift(localization.tt('lbl.accessTypes'));
+			}else if(XAUtil.isMaskingPolicy(this.rangerPolicyType)){
+				permList.unshift(localization.tt('lbl.selectMaskingOption'));
+				permList.unshift(localization.tt('lbl.accessTypes'));
 			}
 			
 			if(!_.isEmpty(this.rangerServiceDefModel.get('policyConditions'))){
@@ -737,6 +966,7 @@ define(function(require) {
 					this.accessTypes =  _.map(rowFilterDef.accessTypes, function(m){return _.findWhere(this.accessTypes, {'name' : m.name });}, this);
 				}
 			}
+			
 		},
 		makePolicyItemSortable : function(){
 			var that = this, draggedModel;

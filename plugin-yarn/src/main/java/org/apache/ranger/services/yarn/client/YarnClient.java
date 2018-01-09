@@ -69,7 +69,7 @@ public class YarnClient extends BaseClient {
 			LOG.error("No value found for configuration 'yarn.url'. YARN resource lookup will fail");
 		}
 		if (this.userName == null || this.userName.isEmpty()) {
-			LOG.error("No value found for configuration 'usename'. YARN resource lookup will fail");
+			LOG.error("No value found for configuration 'username'. YARN resource lookup will fail");
 		}
 		if (this.password == null || this.password.isEmpty()) {
 			LOG.error("No value found for configuration 'password'. YARN resource lookup will fail");
@@ -249,12 +249,12 @@ public class YarnClient extends BaseClient {
 		return ret;
 	}
 
-	public static HashMap<String, Object> connectionTest(String serviceName,
+	public static Map<String, Object> connectionTest(String serviceName,
 			Map<String, String> configs) {
 
 		String errMsg = errMessage;
 		boolean connectivityStatus = false;
-		HashMap<String, Object> responseData = new HashMap<String, Object>();
+		Map<String, Object> responseData = new HashMap<String, Object>();
 
 		YarnClient yarnClient = getYarnClient(serviceName,
 				configs);

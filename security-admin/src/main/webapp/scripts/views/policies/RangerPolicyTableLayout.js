@@ -36,6 +36,7 @@ define(function(require){
 	var RangerServiceDef	= require('models/RangerServiceDef');
 	var RangerPolicy 		= require('models/RangerPolicy');
 	var RangerPolicyTableLayoutTmpl = require('hbs!tmpl/policies/RangerPolicyTableLayout_tmpl');
+	var RangerPolicyDetail			= require('views/policies/RangerPolicyDetail');
 
 	require('backgrid-filter');
 	require('backgrid-paginator');
@@ -50,8 +51,11 @@ define(function(require){
 
 		templateHelpers : function(){
 			return {
-				rangerService:this.rangerService,
-				rangerPolicyType : this.collection.queryParams['policyType']
+				rangerService : this.rangerService,
+				rangerServiceDef : this.rangerServiceDefModel,
+				rangerPolicyType : this.collection.queryParams['policyType'],
+				isRenderAccessTab : XAUtil.isRenderMasking(this.rangerServiceDefModel.get('dataMaskDef')) ? true 
+						  : XAUtil.isRenderRowFilter(this.rangerServiceDefModel.get('rowFilterDef')) ? true : false
 			};
 		},
         
@@ -60,7 +64,6 @@ define(function(require){
     			return [XALinks.get('TagBasedServiceManager'),XALinks.get('ManagePolicies',{model : this.rangerService})];
     		}
     		return [XALinks.get('ServiceManager'),XALinks.get('ManagePolicies',{model : this.rangerService})];
-//    		return [];
    		},        
 
 		/** Layout sub regions */
@@ -77,6 +80,7 @@ define(function(require){
 			'policyTypeTab' : 'div[data-id="policyTypeTab"]',
                         'addNewPolicy' : '[data-js="addNewPolicy"]',
                         'iconSearchInfo' : '[data-id="searchInfo"]',
+			'btnViewPolicy' : '[data-name ="viewPolicy"]',
 		},
 
 		/** ui events hash */
@@ -86,6 +90,7 @@ define(function(require){
 			events['click ' + this.ui.btnShowMore]  = 'onShowMore';
 			events['click ' + this.ui.btnShowLess]  = 'onShowLess';
 			events['click ' + this.ui.policyTypeTab + ' ul li a']  = 'onTabChange';
+			events['click ' + this.ui.btnViewPolicy]  = 'onView';
 			return events;
 		},
 
@@ -113,7 +118,7 @@ define(function(require){
 			this.rangerServiceDefModel.fetch({
 				cache : false,
 				async : false
-                        });
+            });
 		},
 		
 		initializePolicies : function(policyType){
@@ -131,7 +136,7 @@ define(function(require){
 			this.addVisualSearch();
 			this.renderTable();
 			this.initializePolicies();
-                        XAUtil.searchInfoPopover(this.searchInfoArray , this.ui.iconSearchInfo , 'bottom');
+            XAUtil.searchInfoPopover(this.searchInfoArray , this.ui.iconSearchInfo , 'bottom');
 
 		},
 		/** all post render plugin initialization */
@@ -149,8 +154,8 @@ define(function(require){
 			this.showRequiredTabs()
 		},
 		showRequiredTabs : function(){
-			if(XAUtil.isEmptyObjectResourceVal(this.rangerServiceDefModel.get('dataMaskDef'))){
-				this.$el.find('li[data-tab="masking"]').hide();
+			if(XAUtil.isRenderMasking(this.rangerServiceDefModel.get('dataMaskDef'))){
+				this.$el.find('li[data-tab="masking"]').show();
 			}
 			if(XAUtil.isEmptyObjectResourceVal(this.rangerServiceDefModel.get('rowFilterDef'))){
 				this.$el.find('li[data-tab="rowLevelFilter"]').hide();
@@ -168,6 +173,30 @@ define(function(require){
 					emptyText : 'No Policies found!'
 				},
 			}));
+		},
+
+		onView : function(e){
+			var that = this;
+			var policyId = $(e.currentTarget).data('id');
+			var rangerPolicy = new RangerPolicy({ id : policyId});
+			rangerPolicy.fetch({
+				cache : false,
+			}).done(function(){
+				var view = new RangerPolicyDetail({
+					model : rangerPolicy,
+					rangerService: that.rangerService
+				});
+				var modal = new Backbone.BootstrapModal({
+					animate : true,
+					content	: view,
+					title	: localization.tt("h.policyDetails"),
+					okText 	: localization.tt("lbl.ok"),
+					allowCancel : true,
+					escape 	: true
+				}).open();
+				modal.$el.addClass('modal-diff').attr('tabindex',-1);
+				modal.$el.find('.cancel').hide();
+			});
 		},
 
 		getColumns : function(){
@@ -249,7 +278,8 @@ define(function(require){
 				label : localization.tt("lbl.action"),
 				formatter: _.extend({}, Backgrid.CellFormatter.prototype, {
 					fromRaw: function (rawValue,model) {
-						return '<a href="#!/service/'+that.rangerService.id+'/policies/'+model.id+'/edit" class="btn btn-mini" title="Edit"><i class="icon-edit icon-large" /></a>\
+						return '<a href="javascript:void(0);" data-name ="viewPolicy" data-id="'+model.id+'" class="btn btn-mini" title="View"><i class="icon-eye-open icon-large" /></a>\
+								<a href="#!/service/'+that.rangerService.id+'/policies/'+model.id+'/edit" class="btn btn-mini" title="Edit"><i class="icon-edit icon-large" /></a>\
 								<a href="javascript:void(0);" data-name ="deletePolicy" data-id="'+model.id+'"  class="btn btn-mini btn-danger" title="Delete"><i class="icon-trash icon-large" /></a>';
 						//You can use rawValue to custom your html, you can change this value using the name parameter.
 					}
@@ -322,7 +352,11 @@ define(function(require){
                         var that = this, resources = this.rangerServiceDefModel.get('resources');
                         var policyType = this.collection.queryParams['policyType'];
                         if(XAUtil.isMaskingPolicy(policyType) ){
-                                resources = this.rangerServiceDefModel.get('dataMaskDef')['resources'];
+                        	if(!_.isEmpty(this.rangerServiceDefModel.get('dataMaskDef').resources)){
+                        		resources = this.rangerServiceDefModel.get('dataMaskDef')['resources'];
+                        	}else{
+                        		resources = this.rangerServiceDefModel.get('resources');
+                        	}    
                         }else if(XAUtil.isRowFilterPolicy(policyType) ){
                                 resources = this.rangerServiceDefModel.get('rowFilterDef')['resources'];
                         }
@@ -348,7 +382,7 @@ define(function(require){
                                           table:localization.tt('lbl.tableName')   , tag : localization.tt('h.tagsMsg'),
                                           taxonomy:localization.tt('h.taxonomy')  ,term: localization.tt('h.term') ,
                                           topic:localization.tt('h.topic')    ,topology:localization.tt('lbl.topologyName'),
-                                          type:localization.tt('h.type')    ,udf:localization.tt('h.udf') ,
+                                          type:localization.tt('h.type')    ,udf:localization.tt('h.udf') , url:localization.tt('h.url')
                                                  };
 			var serverRsrcAttrName = _.map(resourceSearchOpt,function(opt){ 
                                         return {

@@ -42,10 +42,13 @@ import org.apache.hadoop.gateway.security.PrimaryPrincipal;
 import org.apache.ranger.audit.provider.MiscUtil;
 import org.apache.ranger.plugin.policyengine.RangerAccessRequest;
 import org.apache.ranger.plugin.policyengine.RangerAccessResult;
+import org.apache.ranger.plugin.util.RangerPerfTracer;
 
 public class RangerPDPKnoxFilter implements Filter {
 
 	private static final Log LOG = LogFactory.getLog(RangerPDPKnoxFilter.class);
+
+	private static final Log PERF_KNOXAUTH_REQUEST_LOG = RangerPerfTracer.getPerfLogger("knoxauth.request");
 
 	private static final String KNOX_GATEWAY_JASS_CONFIG_SECTION = "com.sun.security.jgss.initiate";
 
@@ -93,6 +96,12 @@ public class RangerPDPKnoxFilter implements Filter {
 		String topologyName = getTopologyName(sourceUrl);
 		String serviceName = getServiceName();
 
+		RangerPerfTracer perf = null;
+
+		if(RangerPerfTracer.isPerfTraceEnabled(PERF_KNOXAUTH_REQUEST_LOG)) {
+			perf = RangerPerfTracer.getPerfTracer(PERF_KNOXAUTH_REQUEST_LOG, "RangerPDPKnoxFilter.doFilter(url=" + sourceUrl + ", topologyName=" + topologyName + ")");
+		}
+
 		Subject subject = Subject.getSubject(AccessController.getContext());
 
 		Principal primaryPrincipal = (Principal) subject.getPrincipals(
@@ -121,11 +130,14 @@ public class RangerPDPKnoxFilter implements Filter {
 		}
 
 		String clientIp = request.getRemoteAddr();
+		String clusterName = plugin.getClusterName();
 
 		if (LOG.isDebugEnabled()) {
-			LOG.debug("Checking access primaryUser: " + primaryUser + ", impersonatedUser: "
-					+ impersonatedUser + ", effectiveUser: " + user +
-					", groups: " + groups + ", clientIp: " + clientIp);
+			LOG.debug("Checking access primaryUser: " + primaryUser
+					+ ", impersonatedUser: " + impersonatedUser
+					+ ", effectiveUser: " + user + ", groups: " + groups
+					+ ", clientIp: " + clientIp + ", clusterName: "
+					+ clusterName);
 		}
 		RangerAccessRequest accessRequest = new KnoxRangerPlugin.RequestBuilder()
 			.service(serviceName)
@@ -133,6 +145,7 @@ public class RangerPDPKnoxFilter implements Filter {
 			.user(user)
 			.groups(groups)
 			.clientIp(clientIp)
+			.clusterName(clusterName)
 			.build();
 
 		boolean accessAllowed = false;
@@ -146,6 +159,8 @@ public class RangerPDPKnoxFilter implements Filter {
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("Access allowed: " + accessAllowed);
 		}
+
+		RangerPerfTracer.log(perf);
 
 		if (accessAllowed) {
 			chain.doFilter(request, response);

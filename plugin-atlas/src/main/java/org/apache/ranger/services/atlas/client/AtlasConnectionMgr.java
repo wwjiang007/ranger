@@ -24,7 +24,7 @@ import java.util.Map;
 public class AtlasConnectionMgr {
 
 	public static AtlasClient getAtlasClient(String serviceName, Map<String, String> configs) {
-        return  new AtlasClient(serviceName, configs);
-    }
+		return new AtlasClient(serviceName, configs);
+	}
 
 }

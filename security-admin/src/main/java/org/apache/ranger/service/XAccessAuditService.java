@@ -30,13 +30,11 @@ import org.apache.ranger.common.SearchField.DATA_TYPE;
 import org.apache.ranger.common.SearchField.SEARCH_TYPE;
 import org.apache.ranger.common.SortField;
 import org.apache.ranger.common.SortField.SORT_ORDER;
-import org.apache.ranger.db.RangerDaoManager;
 import org.apache.ranger.entity.XXAccessAudit;
 import org.apache.ranger.entity.XXService;
 import org.apache.ranger.entity.XXServiceDef;
 import org.apache.ranger.view.VXAccessAudit;
 import org.apache.ranger.view.VXAccessAuditList;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
 
@@ -44,8 +42,6 @@ import org.springframework.stereotype.Service;
 @Scope("singleton")
 public class XAccessAuditService extends XAccessAuditServiceBase<XXAccessAudit, VXAccessAudit>{
 	public static final String NAME = "XAccessAudit";
-	@Autowired
-	RangerDaoManager appDaoMgr;
 	protected final String distinctCountQueryStr;
 	protected final String distinctQueryStr;
 
@@ -90,6 +86,8 @@ public class XAccessAuditService extends XAccessAuditServiceBase<XXAccessAudit, 
 		searchFields.add(new SearchField("endDate", "obj.eventTime",
 				DATA_TYPE.DATE, SEARCH_TYPE.LESS_EQUAL_THAN));
 		searchFields.add(new SearchField("tags", "obj.tags", DATA_TYPE.STRING, SEARCH_TYPE.PARTIAL));
+		searchFields.add(new SearchField("cluster", "obj.cluster",
+				SearchField.DATA_TYPE.STRING, SearchField.SEARCH_TYPE.FULL));
 		sortFields.add(new SortField("eventTime", "obj.eventTime", true, SORT_ORDER.DESC));
 }
 

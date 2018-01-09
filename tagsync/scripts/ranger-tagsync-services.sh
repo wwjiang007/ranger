@@ -36,7 +36,14 @@ done
 if [ -z "${TAGSYNC_PID_DIR_PATH}" ]; then
         TAGSYNC_PID_DIR_PATH=/var/run/ranger
 fi
-pidf=${TAGSYNC_PID_DIR_PATH}/tagsync.pid
+
+if [ -z "${TAGSYNC_PID_NAME}" ]
+then
+        TAGSYNC_PID_NAME=tagsync.pid
+fi
+
+pidf=${TAGSYNC_PID_DIR_PATH}/${TAGSYNC_PID_NAME}
+
 if [ -z "${UNIX_TAGSYNC_USER}" ]; then
         UNIX_TAGSYNC_USER=ranger
 fi
@@ -58,11 +65,13 @@ if [ "${action}" == "START" ]; then
         	export PATH=$JAVA_HOME/bin:$PATH
 	fi
 
-    logdir=/var/log/ranger/tagsync
+	if [ -z "${RANGER_TAGSYNC_LOG_DIR}" ]; then
+	    RANGER_TAGSYNC_LOG_DIR=/var/log/ranger/tagsync
+	fi
 
-	if [ ! -d $logdir ]; then
-		mkdir -p $logdir
-		chmod 777 $logdir
+	if [ ! -d $RANGER_TAGSYNC_LOG_DIR ]; then
+		mkdir -p $RANGER_TAGSYNC_LOG_DIR
+		chmod 777 $RANGER_TAGSYNC_LOG_DIR
 	fi
 
 	cp="${cdir}/conf:${cdir}/dist/*:${cdir}/lib/*:${RANGER_TAGSYNC_HADOOP_CONF_DIR}/*"
@@ -81,7 +90,7 @@ if [ "${action}" == "START" ]; then
 	cd ${cdir}
 	umask 0077
 	SLEEP_TIME_AFTER_START=5
-	nohup java -Dproc_rangertagsync ${JAVA_OPTS} -Dlogdir="${logdir}" -Dlog4j.configuration=file:/etc/ranger/tagsync/conf/log4j.properties -cp "${cp}" org.apache.ranger.tagsync.process.TagSynchronizer  > ${logdir}/tagsync.out 2>&1 &
+	nohup java -Dproc_rangertagsync ${JAVA_OPTS} -Dlogdir="${RANGER_TAGSYNC_LOG_DIR}" -Dlog4j.configuration=file:/etc/ranger/tagsync/conf/log4j.properties -cp "${cp}" org.apache.ranger.tagsync.process.TagSynchronizer  > ${RANGER_TAGSYNC_LOG_DIR}/tagsync.out 2>&1 &
 	VALUE_OF_PID=$!
 	echo "Starting Apache Ranger Tagsync Service"
 	sleep $SLEEP_TIME_AFTER_START

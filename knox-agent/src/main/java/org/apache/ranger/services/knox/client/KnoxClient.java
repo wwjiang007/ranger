@@ -50,8 +50,8 @@ public class KnoxClient {
 	
 	/*
    Sample curl calls to Knox to discover topologies
-	 curl -ivk -u admin:admin-password https://localhost:8443/gateway/admin/api/v1/topologies
-	 curl -ivk -u admin:admin-password https://localhost:8443/gateway/admin/api/v1/topologies/admin
+         curl -ivk -u <user-name>:<user-password> https://localhost:8443/gateway/admin/api/v1/topologies
+         curl -ivk -u <user-name>:<user-password> https://localhost:8443/gateway/admin/api/v1/topologies/admin
 	*/
 	
 	public KnoxClient(String knoxUrl, String userName, String password) {
@@ -213,14 +213,14 @@ public class KnoxClient {
 
 						if (response.getStatus() == 200) {
 							String jsonString = response.getEntity(String.class);
-							LOG.debug("Knox service look up response JSON string: " + jsonString);
+							LOG.debug("Knox service lookup response JSON string: " + jsonString);
 
 							ObjectMapper objectMapper = new ObjectMapper();
 
 							JsonNode rootNode = objectMapper.readTree(jsonString);
 							JsonNode topologyNode = rootNode.findValue("topology");
 							if (topologyNode != null) {
-								JsonNode servicesNode = topologyNode.get("services");
+								JsonNode servicesNode = topologyNode.get("service");
 								if (servicesNode != null) {
 									Iterator<JsonNode> services = servicesNode.getElements();
 									while (services.hasNext()) {
@@ -302,14 +302,14 @@ public class KnoxClient {
 		}
 	}
 	
-	public static HashMap<String, Object> connectionTest(String serviceName,
+	public static Map<String, Object> connectionTest(String serviceName,
 										  		Map<String, String> configs) {
 
 		String errMsg = " You can still save the repository and start creating "
 				+ "policies, but you would not be able to use autocomplete for "
 				+ "resource names. Check ranger_admin.log for more info.";
 		boolean connectivityStatus = false;
-		HashMap<String, Object> responseData = new HashMap<String, Object>();
+		Map<String, Object> responseData = new HashMap<String, Object>();
 
 		KnoxClient knoxClient = getKnoxClient(serviceName, configs);
 		List<String> strList = getKnoxResources(knoxClient, "", null,null,null);

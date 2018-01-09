@@ -31,12 +31,12 @@ import org.apache.ranger.biz.RangerBizUtil;
 import org.apache.ranger.common.AppConstants;
 import org.apache.ranger.common.MessageEnums;
 import org.apache.ranger.common.PropertiesUtil;
+import org.apache.ranger.common.RangerCommonEnums;
 import org.apache.ranger.common.RangerConstants;
 import org.apache.ranger.common.SearchField;
 import org.apache.ranger.common.SortField;
 import org.apache.ranger.common.StringUtil;
 import org.apache.ranger.common.view.VTrxLogAttr;
-import org.apache.ranger.db.RangerDaoManager;
 import org.apache.ranger.entity.XXGroupUser;
 import org.apache.ranger.entity.XXPortalUser;
 import org.apache.ranger.entity.XXPortalUserRole;
@@ -53,11 +53,7 @@ import org.springframework.util.CollectionUtils;
 @Service
 @Scope("singleton")
 public class XUserService extends XUserServiceBase<XXUser, VXUser> {
-
 	private final Long createdByUserId;
-
-	@Autowired
-	RangerDaoManager daoManager;
 
 	@Autowired
 	XPermMapService xPermMapService;
@@ -167,7 +163,12 @@ public class XUserService extends XUserServiceBase<XXUser, VXUser> {
 			xxUser = new XXUser();
 			userExists = false;
 		}
-
+        XXPortalUser xxPortalUser = daoManager.getXXPortalUser().findByLoginId(
+                vxUser.getName());
+        if (xxPortalUser != null
+                && xxPortalUser.getUserSource() == RangerCommonEnums.USER_EXTERNAL) {
+            vxUser.setIsVisible(xxUser.getIsVisible());
+        }
 		xxUser = mapViewToEntityBean(vxUser, xxUser, 0);
 		XXPortalUser xXPortalUser = daoManager.getXXPortalUser().getById(createdByUserId);
 		if (xXPortalUser != null) {
@@ -247,7 +248,7 @@ public class XUserService extends XUserServiceBase<XXUser, VXUser> {
 				}
 				vObj.setStatus(xXPortalUser.getStatus());
 				vObj.setUserSource(xXPortalUser.getUserSource());
-				List<XXPortalUserRole> gjUserRoleList = daoMgr.getXXPortalUserRole().findByParentId(
+				List<XXPortalUserRole> gjUserRoleList = daoManager.getXXPortalUserRole().findByParentId(
 						xXPortalUser.getId());
 				
 				for (XXPortalUserRole gjUserRole : gjUserRoleList) {
@@ -268,7 +269,7 @@ public class XUserService extends XUserServiceBase<XXUser, VXUser> {
 	public List<XXTrxLog> getTransactionLog(VXUser vObj, VXPortalUser mObj,
 			String action) {
 
-		if (vObj == null || action == null || (action.equalsIgnoreCase("update") && mObj == null)) {
+		if (vObj == null || action == null || ("update".equalsIgnoreCase(action) && mObj == null)) {
 			return null;
 		}
 
@@ -300,38 +301,38 @@ public class XUserService extends XUserServiceBase<XXUser, VXUser> {
 					value = xaEnumUtil.getLabel(enumName, enumValue);
 				} else {
 					value = "" + field.get(vObj);
-					if ((value == null || value.equalsIgnoreCase("null"))
-							&& !action.equalsIgnoreCase("update")) {
+					if ((value == null || "null".equalsIgnoreCase(value))
+							&& !"update".equalsIgnoreCase(action)) {
 						continue;
 					}
 				}
 
-				if (fieldName.equalsIgnoreCase("password")) {
+				if ("password".equalsIgnoreCase(fieldName)) {
 					if (value.equalsIgnoreCase(hiddenPasswordString)) {
 						continue;
 					}
 				}
 
-				if (action.equalsIgnoreCase("create")) {
+				if ("create".equalsIgnoreCase(action)) {
 					if (stringUtil.isEmpty(value)
-							|| (fieldName.equalsIgnoreCase("emailAddress") && !stringUtil
+							|| ("emailAddress".equalsIgnoreCase(fieldName) && !stringUtil
 									.validateEmail(value))) {
 						continue;
 					}
 					xTrxLog.setNewValue(value);
-				} else if (action.equalsIgnoreCase("delete")) {
-					if (fieldName.equalsIgnoreCase("emailAddress")
+				} else if ("delete".equalsIgnoreCase(action)) {
+					if ("emailAddress".equalsIgnoreCase(fieldName)
 							&& !stringUtil.validateEmail(value)) {
 						continue;
 					}
 					xTrxLog.setPreviousValue(value);
-				} else if (action.equalsIgnoreCase("update")) {
+				} else if ("update".equalsIgnoreCase(action)) {
 					String oldValue = null;
 					Field[] mFields = mObj.getClass().getDeclaredFields();
 					for (Field mField : mFields) {
 						mField.setAccessible(true);
 						String mFieldName = mField.getName();
-						if (mFieldName.equalsIgnoreCase("loginId")) {
+						if ("loginId".equalsIgnoreCase(mFieldName)) {
 							mFieldName = "name";
 						}
 						if (fieldName.equalsIgnoreCase(mFieldName)) {
@@ -342,7 +343,7 @@ public class XUserService extends XUserServiceBase<XXUser, VXUser> {
 					if (oldValue == null || oldValue.equalsIgnoreCase(value)) {
 						continue;
 					}
-					if (fieldName.equalsIgnoreCase("emailAddress")) {
+					if ("emailAddress".equalsIgnoreCase(fieldName)) {
 						if (stringUtil.validateEmail(oldValue)) {
 							xTrxLog.setPreviousValue(oldValue);
 						}
@@ -373,13 +374,13 @@ public class XUserService extends XUserServiceBase<XXUser, VXUser> {
 			}
 
 		} catch (IllegalArgumentException e) {
-			e.printStackTrace();
+			logger.error("Transaction log failure.", e);
 		} catch (IllegalAccessException e) {
-			e.printStackTrace();
+			logger.error("Transaction log failure.", e);
 		} catch (NoSuchFieldException e) {
-			e.printStackTrace();
+			logger.error("Transaction log failure.", e);
 		} catch (SecurityException e) {
-			e.printStackTrace();
+			logger.error("Transaction log failure.", e);
 		}
 
 		return trxLogList;

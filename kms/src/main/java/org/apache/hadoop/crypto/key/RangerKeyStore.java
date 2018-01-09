@@ -26,11 +26,13 @@ import java.io.InputStream;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.OutputStream;
+import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.security.AlgorithmParameters;
 import java.security.DigestInputStream;
 import java.security.DigestOutputStream;
 import java.security.Key;
@@ -39,16 +41,24 @@ import java.security.KeyStoreException;
 import java.security.KeyStoreSpi;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
-import java.util.ArrayList;
 import java.util.Date;
 import java.util.Enumeration;
 import java.util.Hashtable;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.SealedObject;
+import javax.crypto.SecretKey;
+import javax.crypto.SecretKeyFactory;
+import javax.crypto.spec.PBEKeySpec;
+import javax.crypto.spec.PBEParameterSpec;
 import javax.xml.bind.DatatypeConverter;
 
 import org.apache.hadoop.crypto.key.KeyProvider.Metadata;
@@ -64,6 +74,8 @@ import org.apache.ranger.kms.dao.RangerKMSDao;
 public class RangerKeyStore extends KeyStoreSpi {
 	
 	static final Logger logger = Logger.getLogger(RangerKeyStore.class);
+        private static final String KEY_NAME_VALIDATION = "[a-z,A-Z,0-9](?!.*--)(?!.*__)(?!.*-_)(?!.*_-)[\\w\\-\\_]*";
+        private static final Pattern pattern = Pattern.compile(KEY_NAME_VALIDATION);
 		
 	private DaoManager daoManager;
 	
@@ -89,7 +101,7 @@ public class RangerKeyStore extends KeyStoreSpi {
     RangerKeyStore() {
     }
 
-    RangerKeyStore(DaoManager daoManager) {
+    public RangerKeyStore(DaoManager daoManager) {
     	this.daoManager = daoManager;
 	}
 
@@ -108,17 +120,9 @@ public class RangerKeyStore extends KeyStoreSpi {
             return null;
         }
 
-        Class<?> c = null;
-    	Object o = null;
 		try {
-			c = Class.forName("com.sun.crypto.provider.KeyProtector");
-			Constructor<?> constructor = c.getDeclaredConstructor(char[].class);
-	        constructor.setAccessible(true);
-	        o = constructor.newInstance(password);	
-	        Method m = c.getDeclaredMethod("unseal", SealedObject.class);
-            m.setAccessible(true);
-			key = (Key) m.invoke(o, ((SecretKeyEntry)entry).sealedKey);
-		} catch (ClassNotFoundException | NoSuchMethodException | SecurityException | InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
+			key = unsealKey(((SecretKeyEntry)entry).sealedKey, password);
+		} catch (Exception e) {
 			logger.error(e.getMessage());
 		}
         return key;
@@ -144,22 +148,9 @@ public class RangerKeyStore extends KeyStoreSpi {
     	SecretKeyEntry entry = new SecretKeyEntry();
         synchronized(deltaEntries) {
             try {            	
-            	Class<?> c = null;
-            	Object o = null;
-        		try {
-        			c = Class.forName("com.sun.crypto.provider.KeyProtector");
-        			Constructor<?> constructor = c.getDeclaredConstructor(char[].class);
-        	        constructor.setAccessible(true);
-        	        o = constructor.newInstance(password);        	
-        		} catch (ClassNotFoundException | NoSuchMethodException | SecurityException | InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-        			logger.error(e.getMessage());
-        			throw new KeyStoreException(e.getMessage());
-        		}
                 entry.date = new Date();
                 // seal and store the key
-                Method m = c.getDeclaredMethod("seal", Key.class);
-                m.setAccessible(true);
-                entry.sealedKey = (SealedObject) m.invoke(o, key);
+                entry.sealedKey = sealKey(key, password);
 
                 entry.cipher_field = cipher;
                 entry.bit_length = bitLength;
@@ -180,6 +171,47 @@ public class RangerKeyStore extends KeyStoreSpi {
             	throw new KeyStoreException(e.getMessage());
             }
         }
+    }
+
+    private SealedObject sealKey(Key key, char[] password) throws Exception {
+        // Create SecretKey
+        SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance("PBEWithMD5AndTripleDES");
+        PBEKeySpec pbeKeySpec = new PBEKeySpec(password);
+        SecretKey secretKey = secretKeyFactory.generateSecret(pbeKeySpec);
+        pbeKeySpec.clearPassword();
+
+        // Generate random bytes + set up the PBEParameterSpec
+        SecureRandom random = new SecureRandom();
+        byte[] salt = new byte[8];
+        random.nextBytes(salt);
+        PBEParameterSpec pbeSpec = new PBEParameterSpec(salt, 20);
+
+        // Seal the Key
+        Cipher cipher = Cipher.getInstance("PBEWithMD5AndTripleDES");
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey, pbeSpec);
+        return new RangerSealedObject(key, cipher);
+    }
+
+    private Key unsealKey(SealedObject sealedKey, char[] password) throws Exception {
+        // Create SecretKey
+        SecretKeyFactory secretKeyFactory = SecretKeyFactory.getInstance("PBEWithMD5AndTripleDES");
+        PBEKeySpec pbeKeySpec = new PBEKeySpec(password);
+        SecretKey secretKey = secretKeyFactory.generateSecret(pbeKeySpec);
+        pbeKeySpec.clearPassword();
+
+        // Get the AlgorithmParameters from RangerSealedObject
+        AlgorithmParameters algorithmParameters = null;
+        if (sealedKey instanceof RangerSealedObject) {
+            algorithmParameters = ((RangerSealedObject)sealedKey).getParameters();
+        } else {
+            algorithmParameters = new RangerSealedObject(sealedKey).getParameters();
+        }
+
+        // Unseal the Key
+        Cipher cipher = Cipher.getInstance("PBEWithMD5AndTripleDES");
+        cipher.init(Cipher.DECRYPT_MODE, secretKey, algorithmParameters);
+
+        return (Key)sealedKey.getObject(cipher);
     }
 
     @Override
@@ -293,7 +325,7 @@ public class RangerKeyStore extends KeyStoreSpi {
 					  xxRangerKeyStore = new XXRangerKeyStore();
 					  keyStoreExists = false;
 				  }
-				  xxRangerKeyStore = mapToEntityBean(rangerKeyStore, xxRangerKeyStore, 0);		
+				  xxRangerKeyStore = mapToEntityBean(rangerKeyStore, xxRangerKeyStore);
 				  if (keyStoreExists) {
 					  xxRangerKeyStore = rangerKMSDao.update(xxRangerKeyStore);
 				  } else {
@@ -306,7 +338,7 @@ public class RangerKeyStore extends KeyStoreSpi {
   		}
 	}
 
-	private XXRangerKeyStore mapToEntityBean(XXRangerKeyStore rangerKMSKeyStore, XXRangerKeyStore xxRangerKeyStore,int i) {
+	private XXRangerKeyStore mapToEntityBean(XXRangerKeyStore rangerKMSKeyStore, XXRangerKeyStore xxRangerKeyStore) {
 		xxRangerKeyStore.setAlias(rangerKMSKeyStore.getAlias());
 		xxRangerKeyStore.setCreatedDate(rangerKMSKeyStore.getCreatedDate());
 		xxRangerKeyStore.setEncoded(rangerKMSKeyStore.getEncoded());
@@ -493,97 +525,142 @@ public class RangerKeyStore extends KeyStoreSpi {
 	
 	private static final String METADATA_FIELDNAME = "metadata";
 	private static final int NUMBER_OF_BITS_PER_BYTE = 8;
-	
-	public void engineLoadKeyStoreFile(InputStream stream, char[] storePass, char[] keyPass, char[] masterKey, String fileFormat)
-	        throws IOException, NoSuchAlgorithmException, CertificateException
-	{
-			synchronized(deltaEntries) {
-				KeyStore ks;
-				
-				try {
-					ks = KeyStore.getInstance(fileFormat);
-					ks.load(stream, storePass);
-					deltaEntries.clear();
-					for (Enumeration<String> name = ks.aliases(); name.hasMoreElements();){
-						  	  SecretKeyEntry entry = new SecretKeyEntry();
-							  String alias = (String) name.nextElement();
-							  Key k = ks.getKey(alias, keyPass);		
-							
-							  if (k instanceof JavaKeyStoreProvider.KeyMetadata) {
-								  JavaKeyStoreProvider.KeyMetadata keyMetadata = (JavaKeyStoreProvider.KeyMetadata)k;
-								  Field f = JavaKeyStoreProvider.KeyMetadata.class.getDeclaredField(METADATA_FIELDNAME);
-								  f.setAccessible(true);
-								  Metadata metadata = (Metadata)f.get(keyMetadata);
-								  entry.bit_length = metadata.getBitLength();
-								  entry.cipher_field = metadata.getAlgorithm();
-								  Constructor<RangerKeyStoreProvider.KeyMetadata> constructor = RangerKeyStoreProvider.KeyMetadata.class.getDeclaredConstructor(Metadata.class);
-							      constructor.setAccessible(true);
-							      RangerKeyStoreProvider.KeyMetadata  nk = constructor.newInstance(metadata);
-							      k = nk;
-							  }
-							  else {
-			                      entry.bit_length = (k.getEncoded().length * NUMBER_OF_BITS_PER_BYTE);
-			                      entry.cipher_field = k.getAlgorithm();
-							  }
-		                      String keyName = alias.split("@")[0];
-		                      entry.attributes = "{\"key.acl.name\":\"" +  keyName + "\"}";
-		                      Class<?> c = null;
-		                  	  Object o = null;
-		                  	  try {
-		              			c = Class.forName("com.sun.crypto.provider.KeyProtector");
-		              			Constructor<?> constructor = c.getDeclaredConstructor(char[].class);
-		              	        constructor.setAccessible(true);
-		              	        o = constructor.newInstance(masterKey);
-		              	        // seal and store the key
-			                    Method m = c.getDeclaredMethod("seal", Key.class);
-			                    m.setAccessible(true);
-			                    entry.sealedKey = (SealedObject) m.invoke(o, k);
-		                  	  } catch (ClassNotFoundException | NoSuchMethodException | SecurityException | InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException e) {
-		                  		  logger.error(e.getMessage());
-		                  		  throw new IOException(e.getMessage());
-		                  	  }
-		                  	
- 	                          entry.date = ks.getCreationDate(alias);
-		                      entry.version = (alias.split("@").length == 2)?(Integer.parseInt(alias.split("@")[1])):0;
-		    				  entry.description = k.getFormat()+" - "+ks.getType();
-		    	              deltaEntries.put(alias, entry);		
-		                    }
-				} catch (Throwable t) {
-					logger.error("Unable to load keystore file ", t);
-					throw new IOException(t);
+
+        public void engineLoadKeyStoreFile(InputStream stream, char[] storePass,
+                        char[] keyPass, char[] masterKey, String fileFormat)
+                        throws IOException, NoSuchAlgorithmException, CertificateException {
+                synchronized (deltaEntries) {
+                        KeyStore ks;
+
+                        try {
+                                ks = KeyStore.getInstance(fileFormat);
+                                ks.load(stream, storePass);
+                                deltaEntries.clear();
+                                for (Enumeration<String> name = ks.aliases(); name
+                                                .hasMoreElements();) {
+                                        SecretKeyEntry entry = new SecretKeyEntry();
+                                        String alias = (String) name.nextElement();
+                                        Key k = ks.getKey(alias, keyPass);
+
+                                        if (k instanceof JavaKeyStoreProvider.KeyMetadata) {
+                                                JavaKeyStoreProvider.KeyMetadata keyMetadata = (JavaKeyStoreProvider.KeyMetadata) k;
+                                                Field f = JavaKeyStoreProvider.KeyMetadata.class
+                                                                .getDeclaredField(METADATA_FIELDNAME);
+                                                f.setAccessible(true);
+                                                Metadata metadata = (Metadata) f.get(keyMetadata);
+                                                entry.bit_length = metadata.getBitLength();
+                                                entry.cipher_field = metadata.getAlgorithm();
+                                                Constructor<RangerKeyStoreProvider.KeyMetadata> constructor = RangerKeyStoreProvider.KeyMetadata.class
+                                                                .getDeclaredConstructor(Metadata.class);
+                                                constructor.setAccessible(true);
+                                                RangerKeyStoreProvider.KeyMetadata nk = constructor
+                                                                .newInstance(metadata);
+                                                k = nk;
+                                        } else {
+                                                entry.bit_length = (k.getEncoded().length * NUMBER_OF_BITS_PER_BYTE);
+                                                entry.cipher_field = k.getAlgorithm();
+                                        }
+                                        String keyName = alias.split("@")[0];
+                                        validateKeyName(keyName);
+                                        entry.attributes = "{\"key.acl.name\":\"" + keyName + "\"}";
+                                        Class<?> c = null;
+                                        Object o = null;
+                                        try {
+                                                c = Class
+                                                                .forName("com.sun.crypto.provider.KeyProtector");
+                                                Constructor<?> constructor = c
+                                                                .getDeclaredConstructor(char[].class);
+                                                constructor.setAccessible(true);
+                                                o = constructor.newInstance(masterKey);
+                                                // seal and store the key
+                                                Method m = c.getDeclaredMethod("seal", Key.class);
+                                                m.setAccessible(true);
+                                                entry.sealedKey = (SealedObject) m.invoke(o, k);
+                                        } catch (ClassNotFoundException | NoSuchMethodException
+                                                        | SecurityException | InstantiationException
+                                                        | IllegalAccessException | IllegalArgumentException
+                                                        | InvocationTargetException e) {
+                                                logger.error(e.getMessage());
+                                                throw new IOException(e.getMessage());
+                                        }
+
+                                        entry.date = ks.getCreationDate(alias);
+                                        entry.version = (alias.split("@").length == 2) ? (Integer
+                                                        .parseInt(alias.split("@")[1])) : 0;
+                                        entry.description = k.getFormat() + " - " + ks.getType();
+                                        deltaEntries.put(alias, entry);
 				}
+                        } catch (Throwable t) {
+                                logger.error("Unable to load keystore file ", t);
+                                throw new IOException(t);
 			}
+                }
 	}
-	
-	public void engineLoadToKeyStoreFile(OutputStream stream, char[] storePass, char[] keyPass, char[] masterKey, String fileFormat)
-	        throws IOException, NoSuchAlgorithmException, CertificateException
-	{
-			synchronized(keyEntries) {
-				KeyStore ks;
-				try {
-					ks = KeyStore.getInstance(fileFormat);
-					if(ks!=null){
-						ks.load(null, storePass);
-						String alias = null;
-						engineLoad(null, masterKey);
-						Enumeration<String> e = engineAliases();
-						Key key;
-						while (e.hasMoreElements()) {
-							alias = e.nextElement();
-							key = engineGetKey(alias, masterKey);
-							ks.setKeyEntry(alias, key, keyPass, null);
-						}
-						ks.store(stream, storePass);
+
+        public void engineLoadToKeyStoreFile(OutputStream stream, char[] storePass,
+                        char[] keyPass, char[] masterKey, String fileFormat)
+                        throws IOException, NoSuchAlgorithmException, CertificateException {
+                synchronized (keyEntries) {
+                        KeyStore ks;
+                        try {
+                                ks = KeyStore.getInstance(fileFormat);
+                                if (ks != null) {
+                                        ks.load(null, storePass);
+                                        String alias = null;
+                                        engineLoad(null, masterKey);
+                                        Enumeration<String> e = engineAliases();
+                                        Key key;
+                                        while (e.hasMoreElements()) {
+                                                alias = e.nextElement();
+                                                key = engineGetKey(alias, masterKey);
+                                                ks.setKeyEntry(alias, key, keyPass, null);
 					}
-				} catch (Throwable t) {
-					logger.error("Unable to load keystore file ", t);
-					throw new IOException(t);
+                                        ks.store(stream, storePass);
 				}
+                        } catch (Throwable t) {
+                                logger.error("Unable to load keystore file ", t);
+                                throw new IOException(t);
 			}
+                }
 	}
-	
+
+        private void validateKeyName(String name) {
+                Matcher matcher = pattern.matcher(name);
+                if (!matcher.matches()) {
+                        throw new IllegalArgumentException(
+                                        "Key Name : "
+                                                        + name
+                                                        + ", should start with alpha/numeric letters and can have special characters - (hypen) or _ (underscore)");
+                }
+        }
+
 	public void clearDeltaEntires(){
 		deltaEntries.clear();
 	}
-	
+
+	/**
+	 * Encapsulate the encrypted key, so that we can retrieve the AlgorithmParameters object on the decryption side
+	 */
+	private static class RangerSealedObject extends SealedObject {
+
+	    /**
+	     *
+	     */
+	    private static final long serialVersionUID = -7551578543434362070L;
+
+	    protected RangerSealedObject(SealedObject so) {
+	        super(so);
+	    }
+
+	    protected RangerSealedObject(Serializable object, Cipher cipher) throws IllegalBlockSizeException, IOException {
+	        super(object, cipher);
+	    }
+
+	    public AlgorithmParameters getParameters() throws NoSuchAlgorithmException, IOException {
+	        AlgorithmParameters algorithmParameters = AlgorithmParameters.getInstance("PBEWithMD5AndTripleDES");
+	        algorithmParameters.init(super.encodedParams);
+	        return algorithmParameters;
+	    }
+
+	}
 }

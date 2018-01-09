@@ -190,7 +190,7 @@ public class AssetREST {
 
 		RangerService service = serviceUtil.toRangerService(vXAsset);
 
-		RangerService updatedService = serviceREST.updateService(service);
+		RangerService updatedService = serviceREST.updateService(service, null);
 		
 		VXAsset ret = serviceUtil.toVXAsset(updatedService);
 
@@ -535,7 +535,7 @@ public class AssetREST {
 		ServicePolicies servicePolicies = null;
 
 		try {
-			servicePolicies = serviceREST.getServicePoliciesIfUpdated(repository, lastKnowPolicyVersion, 0L, agentId, request);
+			servicePolicies = serviceREST.getServicePoliciesIfUpdated(repository, lastKnowPolicyVersion, 0L, agentId, "",request);
 		} catch(Exception excp) {
 			logger.error("failed to retrieve policies for repository " + repository, excp);
 		}
@@ -579,9 +579,11 @@ public class AssetREST {
 		searchUtil.extractInt(request, searchCriteria, "httpRetCode",
 				"HTTP response code for exported policy.");
 		searchUtil.extractDate(request, searchCriteria, "startDate",
-				"Start date for search", null);
+                                "Start Date", null);
 		searchUtil.extractDate(request, searchCriteria, "endDate",
-				"End date for search", null);
+                                "End Date", null);
+		searchUtil.extractString(request, searchCriteria, "cluster",
+				"Cluster Name", StringUtil.VALIDATION_TEXT);
 		return assetMgr.searchXPolicyExportAudits(searchCriteria);
 	}
 
@@ -593,7 +595,7 @@ public class AssetREST {
 
 		SearchCriteria searchCriteria = searchUtil.extractCommonCriterias(
 				request, xTrxLogService.sortFields);
-		searchUtil.extractInt(request, searchCriteria, "objectClassType", "Class type for report.");
+                searchUtil.extractInt(request, searchCriteria, "objectClassType", "audit type.");
 		searchUtil.extractString(request, searchCriteria, "attributeName",
 				"Attribute Name", StringUtil.VALIDATION_TEXT);
 		searchUtil.extractString(request, searchCriteria, "action",
@@ -645,17 +647,18 @@ public class AssetREST {
 				"Resource Type", StringUtil.VALIDATION_TEXT);
 
 		searchUtil.extractInt(request, searchCriteria, "auditType", "Audit Type");
-		searchUtil.extractInt(request, searchCriteria, "accessResult", "Audit Type");
+                searchUtil.extractInt(request, searchCriteria, "accessResult", "Result");
 		searchUtil.extractInt(request, searchCriteria, "assetId", "Audit Type");
 		searchUtil.extractLong(request, searchCriteria, "policyId", "Audit Type");
-		searchUtil.extractInt(request, searchCriteria, "repoType", "Audit Type");
+                searchUtil.extractInt(request, searchCriteria, "repoType", "Service Type");
 		
 		searchUtil.extractDate(request, searchCriteria, "startDate",
-				"startDate", "MM/dd/yyyy");
-		searchUtil.extractDate(request, searchCriteria, "endDate", "endDate",
+                                "Start Date", "MM/dd/yyyy");
+                searchUtil.extractDate(request, searchCriteria, "endDate", "End Date",
 				"MM/dd/yyyy");
 
 		searchUtil.extractString(request, searchCriteria, "tags", "tags", null);
+		searchUtil.extractString(request, searchCriteria, "cluster", "Cluster Name", StringUtil.VALIDATION_TEXT);
 		
 		boolean isKeyAdmin = msBizUtil.isKeyAdmin();
 		XXServiceDef xxServiceDef = daoManager.getXXServiceDef().findByName(EmbeddedServiceDefsUtil.EMBEDDED_SERVICEDEF_KMS_NAME);

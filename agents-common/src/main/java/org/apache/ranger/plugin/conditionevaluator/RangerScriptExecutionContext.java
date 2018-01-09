@@ -23,21 +23,80 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.ranger.authorization.hadoop.config.RangerConfiguration;
 import org.apache.ranger.authorization.utils.StringUtil;
 import org.apache.ranger.plugin.contextenricher.RangerTagForEval;
 import org.apache.ranger.plugin.policyengine.RangerAccessRequest;
 import org.apache.ranger.plugin.policyengine.RangerAccessResource;
 import org.apache.ranger.plugin.util.RangerAccessRequestUtil;
 
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TimeZone;
 
 public final class RangerScriptExecutionContext {
 	private static final Log LOG = LogFactory.getLog(RangerScriptExecutionContext.class);
-	public static final String DATETIME_FORMAT_PATTERN = "yyyy/MM/dd";
+	private static final String TAG_ATTR_DATE_FORMAT_PROP                   = "ranger.plugin.tag.attr.additional.date.formats";
+	private static final String TAG_ATTR_DATE_FORMAT_SEPARATOR              = "||";
+	private static final String TAG_ATTR_DATE_FORMAT_SEPARATOR_REGEX        = "\\|\\|";
+	private static final String DEFAULT_RANGER_TAG_ATTRIBUTE_DATE_FORMAT    = "yyyy/MM/dd";
+	private static final String DEFAULT_ATLAS_TAG_ATTRIBUTE_DATE_FORMAT_NAME = "ATLAS_DATE_FORMAT";
+	private static final String DEFAULT_ATLAS_TAG_ATTRIBUTE_DATE_FORMAT     = "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
 
 	private final RangerAccessRequest accessRequest;
 	private Boolean result = false;
+
+	private static String[] dateFormatStrings = null;
+
+	static {
+		StringBuilder sb = new StringBuilder(DEFAULT_RANGER_TAG_ATTRIBUTE_DATE_FORMAT);
+		sb.append(TAG_ATTR_DATE_FORMAT_SEPARATOR).append(DEFAULT_ATLAS_TAG_ATTRIBUTE_DATE_FORMAT_NAME);
+
+		String additionalDateFormatsValue = RangerConfiguration.getInstance().get(TAG_ATTR_DATE_FORMAT_PROP);
+		if (StringUtils.isNotBlank(additionalDateFormatsValue)) {
+			sb.append(TAG_ATTR_DATE_FORMAT_SEPARATOR).append(additionalDateFormatsValue);
+		}
+
+		dateFormatStrings = sb.toString().split(TAG_ATTR_DATE_FORMAT_SEPARATOR_REGEX);
+		Arrays.sort(dateFormatStrings, new Comparator<String>() {
+			@Override
+			public int compare(String first, String second) {
+				return Integer.compare(second.length(), first.length());
+			}
+		});
+	}
+
+	private static final ThreadLocal<List<SimpleDateFormat>> THREADLOCAL_DATE_FORMATS =
+			new ThreadLocal<List<SimpleDateFormat>>() {
+				@Override protected List<SimpleDateFormat> initialValue() {
+					List<SimpleDateFormat> ret = new ArrayList<>();
+
+					for (String dateFormatString : dateFormatStrings) {
+						try {
+							if (StringUtils.isNotBlank(dateFormatString)) {
+								if (StringUtils.equalsIgnoreCase(dateFormatString, DEFAULT_ATLAS_TAG_ATTRIBUTE_DATE_FORMAT_NAME)) {
+									dateFormatString = DEFAULT_ATLAS_TAG_ATTRIBUTE_DATE_FORMAT;
+								}
+								SimpleDateFormat df = new SimpleDateFormat(dateFormatString);
+								df.setLenient(false);
+								ret.add(df);
+							}
+						} catch (Exception exception) {
+							// Ignore
+						}
+					}
+
+					return ret;
+				}
+			};
 
 	RangerScriptExecutionContext(final RangerAccessRequest accessRequest) {
 		this.accessRequest = accessRequest;
@@ -104,7 +163,7 @@ public final class RangerScriptExecutionContext {
 			ret = (RangerTagForEval)val;
 		} else {
 			if (LOG.isDebugEnabled()) {
-				LOG.debug("getCurrentTag() - No current TAG object. Script execution must be for resource-based policy.");
+				logDebug("RangerScriptExecutionContext.getCurrentTag() - No current TAG object. Script execution must be for resource-based policy.");
 			}
 		}
 		return ret;
@@ -203,23 +262,40 @@ public final class RangerScriptExecutionContext {
 		this.result = result;
 	}
 
-	// Utilities - TODO
+	private Date getAsDate(String value, SimpleDateFormat df) {
+		Date ret = null;
+
+		TimeZone savedTimeZone = df.getTimeZone();
+		try {
+			ret = df.parse(value);
+		} catch (ParseException exception) {
+			// Ignore
+		} finally {
+			df.setTimeZone(savedTimeZone);
+		}
+
+		return ret;
+	}
 
 	public Date getAsDate(String value) {
 		Date ret = null;
 
 		if (StringUtils.isNotBlank(value)) {
-			SimpleDateFormat df = new SimpleDateFormat(DATETIME_FORMAT_PATTERN);
-			try {
-				Date expiryDate = df.parse(value);
-				if (expiryDate == null) {
-					LOG.error("Could not parse provided expiry_date into a valid date, expiry_date=" + value + ", Format-String=" + DATETIME_FORMAT_PATTERN);
-				} else {
-					ret = StringUtil.getUTCDateForLocalDate(expiryDate);
+			for (SimpleDateFormat simpleDateFormat : THREADLOCAL_DATE_FORMATS.get()) {
+				ret = getAsDate(value, simpleDateFormat);
+				if (ret != null) {
+					if (LOG.isDebugEnabled()) {
+						logDebug("RangerScriptExecutionContext.getAsDate() -The best match found for Format-String:[" + simpleDateFormat.toPattern() + "], date:[" + ret +"]");
+					}
+					break;
 				}
-			} catch (Exception ex) {
-				LOG.error("RangerScriptExecutionContext.getAsDate() - Could not convert " + value + " to Date, exception=" + ex);
 			}
+		}
+
+		if (ret == null) {
+			logError("RangerScriptExecutionContext.getAsDate() - Could not convert [" + value + "] to Date using any of the Format-Strings: " + Arrays.toString(dateFormatStrings));
+		} else {
+			ret = StringUtil.getUTCDateForLocalDate(ret);
 		}
 
 		return ret;
@@ -285,30 +361,30 @@ public final class RangerScriptExecutionContext {
 			if (LOG.isDebugEnabled()) {
 				String resource = accessRequest.getResource().getAsString();
 
-				LOG.debug("getAllTags() - No TAGS. No TAGS for the RangerAccessResource=" + resource);
+				logDebug("RangerScriptExecutionContext.getAllTags() - No TAGS. No TAGS for the RangerAccessResource=" + resource);
 			}
 		}
 
 		return ret;
 	}
 
-	public void logDebug(String msg) {
+	public void logDebug(Object msg) {
 		LOG.debug(msg);
 	}
 
-	public void logInfo(String msg) {
+	public void logInfo(Object msg) {
 		LOG.info(msg);
 	}
 
-	public void logWarn(String msg) {
+	public void logWarn(Object msg) {
 		LOG.warn(msg);
 	}
 
-	public void logError(String msg) {
+	public void logError(Object msg) {
 		LOG.error(msg);
 	}
 
-	public void logFatal(String msg) {
+	public void logFatal(Object msg) {
 		LOG.fatal(msg);
 	}
 }

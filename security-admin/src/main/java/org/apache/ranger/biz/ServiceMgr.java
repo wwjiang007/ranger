@@ -90,7 +90,7 @@ public class ServiceMgr {
 		String rangerPrincipal = SecureClientLogin.getPrincipal(PropertiesUtil.getProperty(ADMIN_USER_PRINCIPAL), PropertiesUtil.getProperty(HOST_NAME));
 		String rangerkeytab = PropertiesUtil.getProperty(ADMIN_USER_KEYTAB);
 		
-		if(!StringUtils.isEmpty(authType) && authType.trim().equalsIgnoreCase(KERBEROS_TYPE) && SecureClientLogin.isKerberosCredentialExists(lookupPrincipal, lookupKeytab)){
+		if(!StringUtils.isEmpty(authType) && KERBEROS_TYPE.equalsIgnoreCase(authType.trim()) && SecureClientLogin.isKerberosCredentialExists(lookupPrincipal, lookupKeytab)){
 			if(service != null && service.getConfigs() != null){
 				service.getConfigs().put(HadoopConfigHolder.RANGER_LOOKUP_PRINCIPAL, lookupPrincipal);
 				service.getConfigs().put(HadoopConfigHolder.RANGER_LOOKUP_KEYTAB, lookupKeytab);
@@ -98,7 +98,7 @@ public class ServiceMgr {
 				service.getConfigs().put(HadoopConfigHolder.RANGER_AUTH_TYPE, authType);				
 			}
 		}
-		if(!StringUtils.isEmpty(authType) && authType.trim().equalsIgnoreCase(KERBEROS_TYPE) && SecureClientLogin.isKerberosCredentialExists(rangerPrincipal, rangerkeytab)){
+		if(!StringUtils.isEmpty(authType) && KERBEROS_TYPE.equalsIgnoreCase(authType.trim()) && SecureClientLogin.isKerberosCredentialExists(rangerPrincipal, rangerkeytab)){
 			if(service != null && service.getConfigs() != null){
 				service.getConfigs().put(HadoopConfigHolder.RANGER_PRINCIPAL, rangerPrincipal);
 				service.getConfigs().put(HadoopConfigHolder.RANGER_KEYTAB, rangerkeytab);
@@ -143,7 +143,7 @@ public class ServiceMgr {
 		String rangerPrincipal = SecureClientLogin.getPrincipal(PropertiesUtil.getProperty(ADMIN_USER_PRINCIPAL), PropertiesUtil.getProperty(HOST_NAME));
 		String rangerkeytab = PropertiesUtil.getProperty(ADMIN_USER_KEYTAB);
 		
-		if(!StringUtils.isEmpty(authType) && authType.trim().equalsIgnoreCase(KERBEROS_TYPE) && SecureClientLogin.isKerberosCredentialExists(lookupPrincipal, lookupKeytab)){
+		if(!StringUtils.isEmpty(authType) && KERBEROS_TYPE.equalsIgnoreCase(authType.trim()) && SecureClientLogin.isKerberosCredentialExists(lookupPrincipal, lookupKeytab)){
 			if(service != null && service.getConfigs() != null){
 				service.getConfigs().put(HadoopConfigHolder.RANGER_LOOKUP_PRINCIPAL, lookupPrincipal);
 				service.getConfigs().put(HadoopConfigHolder.RANGER_LOOKUP_KEYTAB, lookupKeytab);
@@ -151,7 +151,7 @@ public class ServiceMgr {
 				service.getConfigs().put(HadoopConfigHolder.RANGER_AUTH_TYPE, authType);
 			}
 		}
-		if(!StringUtils.isEmpty(authType) && authType.trim().equalsIgnoreCase(KERBEROS_TYPE) && SecureClientLogin.isKerberosCredentialExists(rangerPrincipal, rangerkeytab)){
+		if(!StringUtils.isEmpty(authType) && KERBEROS_TYPE.equalsIgnoreCase(authType.trim()) && SecureClientLogin.isKerberosCredentialExists(rangerPrincipal, rangerkeytab)){
 			if(service != null && service.getConfigs() != null){
 				service.getConfigs().put(HadoopConfigHolder.RANGER_PRINCIPAL, rangerPrincipal);
 				service.getConfigs().put(HadoopConfigHolder.RANGER_KEYTAB, rangerkeytab);
@@ -174,7 +174,7 @@ public class ServiceMgr {
 				// Timeout value use during validate config is 10 times that used during lookup
 				long time = getTimeoutValueForValidateConfigInMilliSeconds(svc);
 				ValidateCallable callable = new ValidateCallable(svc);
-				HashMap<String, Object> responseData = timedExecutor.timedTask(callable, time, TimeUnit.MILLISECONDS);
+				Map<String, Object> responseData = timedExecutor.timedTask(callable, time, TimeUnit.MILLISECONDS);
 
 				ret = generateResponseForTestConn(responseData, "");
 			} catch (Exception e) {
@@ -240,23 +240,25 @@ public class ServiceMgr {
 						((RangerServiceTag)ret).setTagStore(tagStore);
 					}
 				} else {
-					LOG.warn("ServiceMgr.getRangerServiceByService(" + service + "): could not find service class '" + serviceDef.getImplClass() + "'");
+					LOG.warn("ServiceMgr.getRangerServiceByService(" + service + "): could not find service class '"
+						 + serviceDef.getImplClass() + "' for the service type '" + serviceType + "'");
 				}
 			} else {
-				LOG.warn("ServiceMgr.getRangerServiceByService(" + service + "): could not find the service-type '" + serviceType + "'");
+				LOG.warn("ServiceMgr.getRangerServiceByService(" + service + "): could not find the service-def for the service type '" + serviceType + "'");
 			}
 		} else {
-			LOG.warn("ServiceMgr.getRangerServiceByService(" + service + "): could not find the service-type");
+			LOG.warn("ServiceMgr.getRangerServiceByService(" + service + "): could not find the service-type '" + serviceType + "'");
 		}
 
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("<== ServiceMgr.getRangerServiceByService(" + service + "): " + ret);
-		}		
+		}
 
 		return ret;
 	}
 
 	private static Map<String, Class<RangerBaseService>> serviceTypeClassMap = new HashMap<String, Class<RangerBaseService>>();
+	private static String RANGER_DEFAULT_SERVICE_NAME = "org.apache.ranger.plugin.service.RangerDefaultService";
 
 	@SuppressWarnings("unchecked")
 	private Class<RangerBaseService> getClassForServiceType(RangerServiceDef serviceDef) throws Exception {
@@ -281,18 +283,30 @@ public class ServiceMgr {
 						if(LOG.isDebugEnabled()) {
 							LOG.debug("ServiceMgr.getClassForServiceType(" + serviceType + "): service-class " + clsName + " not found in cache");
 						}
-
-						URL[]          pluginFiles = getPluginFilesForServiceType(serviceType);
-						URLClassLoader clsLoader   = new URLClassLoader(pluginFiles, Thread.currentThread().getContextClassLoader());
-
 						try {
-							Class<?> cls = Class.forName(clsName, true, clsLoader);
 
-							ret = (Class<RangerBaseService>)cls;
+							Class<?> cls;
+
+							if (StringUtils.isEmpty(clsName)) {
+								if (LOG.isDebugEnabled()) {
+									LOG.debug("No service-class configured for service-type:[" + serviceType + "], using RangerDefaultService");
+								}
+								clsName = RANGER_DEFAULT_SERVICE_NAME;
+
+								cls = Class.forName(clsName);
+							} else {
+								URL[] pluginFiles = getPluginFilesForServiceType(serviceType);
+
+								URLClassLoader clsLoader = new URLClassLoader(pluginFiles, Thread.currentThread().getContextClassLoader());
+
+								cls = Class.forName(clsName, true, clsLoader);
+							}
+
+							ret = (Class<RangerBaseService>) cls;
 
 							serviceTypeClassMap.put(serviceType, ret);
 
-							if(LOG.isDebugEnabled()) {
+							if (LOG.isDebugEnabled()) {
 								LOG.debug("ServiceMgr.getClassForServiceType(" + serviceType + "): service-class " + clsName + " added to cache");
 							}
 						} catch (Exception excp) {
@@ -343,7 +357,7 @@ public class ServiceMgr {
 
 		URL pluginJarPath = getClass().getClassLoader().getResource(dirPath);
 
-		if(pluginJarPath != null && pluginJarPath.getProtocol().equals("file")) {
+		if(pluginJarPath != null && "file".equals(pluginJarPath.getProtocol())) {
 			try {
 				File[] dirFiles = new File(pluginJarPath.toURI()).listFiles();
 
@@ -373,7 +387,7 @@ public class ServiceMgr {
 	}
 
 	private VXResponse generateResponseForTestConn(
-			HashMap<String, Object> responseData, String msg) {
+			Map<String, Object> responseData, String msg) {
 		VXResponse vXResponse = new VXResponse();
 
 		Long objId = null;
@@ -544,7 +558,7 @@ public class ServiceMgr {
 		}
 	}
 
-	static class ValidateCallable extends TimedCallable<HashMap<String, Object>> {
+	static class ValidateCallable extends TimedCallable<Map<String, Object>> {
 
 		public ValidateCallable(RangerBaseService svc) {
 			super(svc);
@@ -556,7 +570,7 @@ public class ServiceMgr {
 		}
 
 		@Override
-		public HashMap<String, Object> actualCall() throws Exception {
+		public Map<String, Object> actualCall() throws Exception {
 			return svc.validateConfig();
 		}
 	}

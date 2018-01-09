@@ -49,7 +49,7 @@ import org.junit.runners.MethodSorters;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
@@ -192,7 +192,7 @@ public class TestTagREST {
 	 
 	@Test
 	public void test4createTagDef() {
-		RangerTagDef oldtagDef = new RangerTagDef(); 
+		RangerTagDef oldtagDef = new RangerTagDef();
 		oldtagDef.setId(id);
 		
 		try {
@@ -399,7 +399,7 @@ public class TestTagREST {
 		ret.add(rangerTagDef);
 		
 		try {
-			Mockito.when(tagStore.getTagDefs((SearchFilter)Mockito.anyObject())).thenReturn(ret);
+			Mockito.when(tagStore.getTagDefs((SearchFilter)Mockito.any())).thenReturn(ret);
 		} catch (Exception e) {
 		}
 		List<RangerTagDef> result = tagREST.getAllTagDefs();
@@ -409,7 +409,7 @@ public class TestTagREST {
 		Assert.assertEquals(result.get(0).getVersion(), ret.get(0).getVersion());
 		
 		try {
-			Mockito.verify(tagStore).getTagDefs((SearchFilter)Mockito.anyObject());
+			Mockito.verify(tagStore).getTagDefs((SearchFilter)Mockito.any());
 		} catch (Exception e) {
 		}
 	}
@@ -417,7 +417,7 @@ public class TestTagREST {
 	@Test
 	public void test15getAllTagDefs() {
 		try {
-			Mockito.when(tagStore.getTagDefs((SearchFilter)Mockito.anyObject())).thenReturn(null);
+			Mockito.when(tagStore.getTagDefs((SearchFilter)Mockito.any())).thenReturn(null);
 		} catch (Exception e) {
 		}
 		Mockito.when(restErrorUtil.createRESTException(Mockito.anyInt(), Mockito.anyString(), Mockito.anyBoolean())).thenThrow(new WebApplicationException());
@@ -425,7 +425,7 @@ public class TestTagREST {
 		tagREST.getAllTagDefs();
 		
 		try {
-			Mockito.verify(tagStore).getTagDefs((SearchFilter)Mockito.anyObject());
+			Mockito.verify(tagStore).getTagDefs((SearchFilter)Mockito.any());
 		} catch (Exception e) {
 		}
 		Mockito.verify(restErrorUtil).createRESTException(Mockito.anyInt(),
@@ -452,7 +452,7 @@ public class TestTagREST {
 	
 	@Test
 	public void test17createTag() {
-		RangerTag oldTag = null; 
+		RangerTag oldTag = null;
 		RangerTag newTag = new RangerTag();
 		newTag.setId(id);
 		newTag.setGuid(gId);
@@ -524,7 +524,7 @@ public class TestTagREST {
 	@Test
 	public void test19createTag(){
 		RangerTag oldTag = new RangerTag();
-		oldTag.setId(id);	
+		oldTag.setId(id);
 		
 		try {
 			Mockito.when(validator.preCreateTag(oldTag)).thenReturn(oldTag);
@@ -702,7 +702,7 @@ public class TestTagREST {
 		ret.add(rangerTag);
 		
 		try {
-			Mockito.when(tagStore.getTags((SearchFilter)Mockito.anyObject())).thenReturn(ret);
+			Mockito.when(tagStore.getTags((SearchFilter)Mockito.any())).thenReturn(ret);
 		} catch (Exception e) {
 		}
 		
@@ -712,7 +712,7 @@ public class TestTagREST {
 		Assert.assertNotNull(result.get(0).getId());
 		
 		try {
-			Mockito.verify(tagStore).getTags((SearchFilter)Mockito.anyObject());
+			Mockito.verify(tagStore).getTags((SearchFilter)Mockito.any());
 		} catch (Exception e) {
 		}
 	}
@@ -722,7 +722,7 @@ public class TestTagREST {
 		List<RangerTag> ret = new ArrayList<RangerTag>();
 		
 		try {
-			Mockito.when(tagStore.getTags((SearchFilter)Mockito.anyObject())).thenReturn(ret);
+			Mockito.when(tagStore.getTags((SearchFilter)Mockito.any())).thenReturn(ret);
 		} catch (Exception e) {
 		}
 		
@@ -730,7 +730,7 @@ public class TestTagREST {
 		Assert.assertNotNull(result);
 		
 		try {
-			Mockito.verify(tagStore).getTags((SearchFilter)Mockito.anyObject());
+			Mockito.verify(tagStore).getTags((SearchFilter)Mockito.any());
 		} catch (Exception e) {
 		}
 	}
@@ -953,13 +953,13 @@ public class TestTagREST {
 		}
 	}
 	
-	@Test 
+	@Test
 	public void test35getServiceResourcesByService() {
 		List<RangerServiceResource> oldSRS = new ArrayList<RangerServiceResource>();
 		RangerServiceResource rangerServiceResource = new RangerServiceResource();
 		rangerServiceResource.setId(id);
 		rangerServiceResource.setServiceName(serviceName);
-		oldSRS.add(rangerServiceResource);		
+		oldSRS.add(rangerServiceResource);
 		
 		try {
 			Mockito.when(tagStore.getServiceResourcesByService(serviceName)).thenReturn(oldSRS);
@@ -978,9 +978,9 @@ public class TestTagREST {
 		}
 	}
 	
-	@Test 
+	@Test
 	public void test59getServiceResourcesByService() {
-		List<RangerServiceResource> oldSRS = new ArrayList<RangerServiceResource>();		
+		List<RangerServiceResource> oldSRS = new ArrayList<RangerServiceResource>();
 		
 		try {
 			Mockito.when(tagStore.getServiceResourcesByService(serviceName)).thenReturn(oldSRS);
@@ -1028,7 +1028,7 @@ public class TestTagREST {
 		ret.add(rangerServiceResource);
 		
 		try {
-			Mockito.when(tagStore.getServiceResources((SearchFilter)Mockito.anyObject())).thenReturn(ret);
+			Mockito.when(tagStore.getServiceResources((SearchFilter)Mockito.any())).thenReturn(ret);
 		} catch (Exception e) {
 		}
 		List<RangerServiceResource> result = tagREST.getAllServiceResources();
@@ -1037,7 +1037,7 @@ public class TestTagREST {
 		Assert.assertEquals(result.get(0).getServiceName(), ret.get(0).getServiceName());
 		
 		try {
-			Mockito.verify(tagStore).getServiceResources((SearchFilter)Mockito.anyObject());
+			Mockito.verify(tagStore).getServiceResources((SearchFilter)Mockito.any());
 		} catch (Exception e) {
 		}
 	}
@@ -1287,7 +1287,7 @@ public class TestTagREST {
 		ret.add(rangerTagResourceMap);
 		
 		try {
-			Mockito.when(tagStore.getTagResourceMaps((SearchFilter)Mockito.anyObject())).thenReturn(ret);
+			Mockito.when(tagStore.getTagResourceMaps((SearchFilter)Mockito.any())).thenReturn(ret);
 		} catch (Exception e) {
 		}
 		
@@ -1297,7 +1297,7 @@ public class TestTagREST {
 		Assert.assertEquals(result.get(0).getTagId(), ret.get(0).getTagId());
 		
 		try {
-			Mockito.verify(tagStore).getTagResourceMaps((SearchFilter)Mockito.anyObject());
+			Mockito.verify(tagStore).getTagResourceMaps((SearchFilter)Mockito.any());
 		} catch (Exception e) {
 		}
 	}
@@ -1307,7 +1307,7 @@ public class TestTagREST {
 		List<RangerTagResourceMap> ret = new ArrayList<RangerTagResourceMap>();
 		
 		try {
-			Mockito.when(tagStore.getTagResourceMaps((SearchFilter)Mockito.anyObject())).thenReturn(ret);
+			Mockito.when(tagStore.getTagResourceMaps((SearchFilter)Mockito.any())).thenReturn(ret);
 		} catch (Exception e) {
 		}
 		
@@ -1315,7 +1315,7 @@ public class TestTagREST {
 		Assert.assertNotNull(result);
 		
 		try {
-			Mockito.verify(tagStore).getTagResourceMaps((SearchFilter)Mockito.anyObject());
+			Mockito.verify(tagStore).getTagResourceMaps((SearchFilter)Mockito.any());
 		} catch (Exception e) {
 		}
 	}
@@ -1431,11 +1431,6 @@ public class TestTagREST {
 			Mockito.when(tagStore.getServiceTagsIfUpdated(serviceName, lastKnownVersion)).thenReturn(oldServiceTag);
 		} catch (Exception e) {
 		}
-		try {
-			Mockito.doNothing().when(assetMgr).createPluginInfo(serviceName, pluginId, null, 1, 1L, lastKnownVersion, 1, 0);
-
-		} catch (Exception e) {
-		}
 		ServiceTags serviceTags = tagREST.getServiceTagsIfUpdated(serviceName, lastKnownVersion, 0L, pluginId, null);
 		Assert.assertEquals(serviceTags.getServiceName(), oldServiceTag.getServiceName());
 		Assert.assertEquals(serviceTags.getTagVersion(), oldServiceTag.getTagVersion());
@@ -1485,7 +1480,6 @@ public class TestTagREST {
 		
 		try {
 			Mockito.when(tagStore.getServiceTagsIfUpdated(serviceName, lastKnownVersion)).thenReturn(oldServiceTag);
-			Mockito.doNothing().when(assetMgr).createPluginInfo(serviceName, pluginId, null, 1, 1L, lastKnownVersion, 1, 0);
 		} catch (Exception e) {
 		}
 		
@@ -1548,7 +1542,6 @@ public class TestTagREST {
 		
 		try {
 			Mockito.when(tagStore.getServiceTagsIfUpdated(serviceName, lastKnownVersion)).thenReturn(oldServiceTag);
-			Mockito.doNothing().when(assetMgr).createPluginInfo(serviceName, pluginId, null, 1, 1L, lastKnownVersion, 1, 0);
 		} catch (Exception e) {
 		}
 		
@@ -1614,7 +1607,6 @@ public class TestTagREST {
 		Mockito.when(bizUtil.isUserAllowed(rangerService, Allowed_User_List_For_Tag_Download)).thenReturn(isAllowed);
 		try {
 			Mockito.when(tagStore.getServiceTagsIfUpdated(serviceName, lastKnownVersion)).thenReturn(oldServiceTag);
-			Mockito.doNothing().when(assetMgr).createPluginInfo(serviceName, pluginId, null, 1, 1L, lastKnownVersion, 1, 0);
 		} catch (Exception e) {
 		}
 		
@@ -1680,7 +1672,6 @@ public class TestTagREST {
 		Mockito.when(bizUtil.isUserAllowed(rangerService, Allowed_User_List_For_Tag_Download)).thenReturn(isAllowed);
 		try {
 			Mockito.when(tagStore.getServiceTagsIfUpdated(serviceName, lastKnownVersion)).thenReturn(oldServiceTag);
-			Mockito.doNothing().when(assetMgr).createPluginInfo(serviceName, pluginId, null, 1, 1L, lastKnownVersion, 1, 0);
 		} catch (Exception e) {
 		}
 		
@@ -1801,7 +1792,6 @@ public class TestTagREST {
 		Mockito.when(bizUtil.isUserAllowed(rangerService, Allowed_User_List_For_Tag_Download)).thenReturn(isAllowed);
 		try {
 			Mockito.when(tagStore.getServiceTagsIfUpdated(serviceName, lastKnownVersion)).thenReturn(oldServiceTag);
-			Mockito.doNothing().when(assetMgr).createPluginInfo(serviceName, pluginId, null, 1, 1L, lastKnownVersion, 1, 0);
 		} catch (Exception e) {
 		}
 		Mockito.when(restErrorUtil.createRESTException(Mockito.anyInt(), Mockito.anyString(), Mockito.anyBoolean())).thenThrow(new WebApplicationException());

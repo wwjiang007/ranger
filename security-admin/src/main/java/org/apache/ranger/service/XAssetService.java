@@ -37,7 +37,6 @@ import org.apache.ranger.common.SearchField.DATA_TYPE;
 import org.apache.ranger.common.SearchField.SEARCH_TYPE;
 import org.apache.ranger.common.StringUtil;
 import org.apache.ranger.common.view.VTrxLogAttr;
-import org.apache.ranger.db.RangerDaoManager;
 import org.apache.ranger.entity.XXAsset;
 import org.apache.ranger.entity.XXTrxLog;
 import org.apache.ranger.util.RangerEnumUtil;
@@ -54,9 +53,6 @@ public class XAssetService extends XAssetServiceBase<XXAsset, VXAsset> {
 
 	@Autowired
 	JSONUtil jsonUtil;
-
-	@Autowired
-	RangerDaoManager appDaoMgr;
 	
 	@Autowired
 	StringUtil stringUtil;
@@ -87,7 +83,7 @@ public class XAssetService extends XAssetServiceBase<XXAsset, VXAsset> {
 
 	@Override
 	protected void validateForCreate(VXAsset vObj) {
-		XXAsset xxAsset = appDaoMgr.getXXAsset()
+		XXAsset xxAsset = daoManager.getXXAsset()
 				.findByAssetName(vObj.getName());
 		if (xxAsset != null) {
 			String errorMessage = "Repository Name already exists";
@@ -233,7 +229,7 @@ public class XAssetService extends XAssetServiceBase<XXAsset, VXAsset> {
 	}
 
 	public List<XXTrxLog> getTransactionLog(VXAsset vObj, XXAsset mObj, String action){
-		if(vObj == null ||action == null || (action.equalsIgnoreCase("update") && mObj == null)){
+		if(vObj == null ||action == null || ("update".equalsIgnoreCase(action) && mObj == null)){
 			return null;
 		}
 		
@@ -267,14 +263,14 @@ public class XAssetService extends XAssetServiceBase<XXAsset, VXAsset> {
 					value = ""+field.get(vObj);
 				}
 				
-				if(action.equalsIgnoreCase("create")){
+				if("create".equalsIgnoreCase(action)){
 					if(stringUtil.isEmpty(value)){
 						continue;
 					}
 					xTrxLog.setNewValue(value);
-				} else if(action.equalsIgnoreCase("delete")){
+				} else if("delete".equalsIgnoreCase(action)){
 					xTrxLog.setPreviousValue(value);
-				} else if(action.equalsIgnoreCase("update")){
+				} else if("update".equalsIgnoreCase(action)){
 					String oldValue = null;
 					Field[] mFields = mObj.getClass().getDeclaredFields();
 					for(Field mField : mFields){
@@ -291,7 +287,7 @@ public class XAssetService extends XAssetServiceBase<XXAsset, VXAsset> {
 							break;
 						}
 					}
-					if(fieldName.equalsIgnoreCase("config")){
+					if("config".equalsIgnoreCase(fieldName)){
 						Map<String, String> vConfig = jsonUtil.jsonToMap(value);
 						Map<String, String> xConfig = jsonUtil.jsonToMap(oldValue);
 						
@@ -303,7 +299,7 @@ public class XAssetService extends XAssetServiceBase<XXAsset, VXAsset> {
 						    if (!xConfig.containsKey(key)) {
 						    	newConfig.put(key, entry.getValue());
 						    } else if(!entry.getValue().equalsIgnoreCase(xConfig.get(key))){
-						    	if(key.equalsIgnoreCase("password") && entry
+						    	if("password".equalsIgnoreCase(key) && entry
 						    			.getValue().equalsIgnoreCase(hiddenPasswordString)){
 						    		continue;
 						    	}
@@ -349,7 +345,7 @@ public class XAssetService extends XAssetServiceBase<XXAsset, VXAsset> {
 				Entry<String, String> passwordEntry = getPasswordEntry(configMap);
 				Entry<String, String> isEncryptedEntry = getIsEncryptedEntry(configMap);
 				if (passwordEntry != null){
-					if(isEncryptedEntry==null || !isEncryptedEntry.getValue().equalsIgnoreCase("true")||isForced==true){
+					if(isEncryptedEntry==null || !"true".equalsIgnoreCase(isEncryptedEntry.getValue())||isForced==true){
 						String password=passwordEntry.getValue();
 						String encryptPassword=PasswordUtils.encryptPassword(password);
 						String decryptPassword=PasswordUtils.decryptPassword(encryptPassword);
@@ -378,8 +374,7 @@ public class XAssetService extends XAssetServiceBase<XXAsset, VXAsset> {
 				Entry<String, String> isEncryptedEntry = getIsEncryptedEntry(configMap);
 				if (isEncryptedEntry!=null && passwordEntry != null){					
 					if (!stringUtil.isEmpty(isEncryptedEntry.getValue())
-							&& isEncryptedEntry.getValue().equalsIgnoreCase(
-									"true")) {
+							&& "true".equalsIgnoreCase(isEncryptedEntry.getValue())) {
 						String encryptPassword = passwordEntry.getValue();
 						String decryptPassword = PasswordUtils
 								.decryptPassword(encryptPassword);

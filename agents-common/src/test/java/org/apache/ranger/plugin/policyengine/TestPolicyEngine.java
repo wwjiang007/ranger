@@ -147,7 +147,11 @@ public class TestPolicyEngine {
 				"                <name>ranger.plugin.hive.trusted.proxy.ipaddresses</name>\n" +
 				"                <value>255.255.255.255; 128.101.101.101;128.101.101.99</value>\n" +
 				"        </property>\n" +
-				"</configuration>\n");
+				"        <property>\n" +
+				"                <name>ranger.plugin.tag.attr.additional.date.formats</name>\n" +
+				"                <value>abcd||xyz||yyyy/MM/dd'T'HH:mm:ss.SSS'Z'</value>\n" +
+				"        </property>\n" +
+                "</configuration>\n");
 		writer.close();
 
 		RangerConfiguration config = RangerConfiguration.getInstance();
@@ -262,6 +266,13 @@ public class TestPolicyEngine {
 
 		runTestsFromResourceFiles(conditionsTestResourceFiles);
 	}
+
+    @Test
+    public void testPolicyEngine_hiveForShowDatabases() {
+        String[] conditionsTestResourceFiles = { "/policyengine/test_policyengine_tag_hive_for_show_databases.json" };
+
+        runTestsFromResourceFiles(conditionsTestResourceFiles);
+    }
 
 	@Test
 	public void testPolicyEngine_descendant_tags() {

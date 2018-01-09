@@ -38,7 +38,6 @@ function getInstallProperty() {
 # Base env variable for Ranger related files/directories
 #
 PROJ_NAME=ranger
-BASE_CONF_DIR=/etc/${PROJ_NAME}
 
 #
 # The script should be run by "root" user
@@ -133,17 +132,28 @@ CUSTOM_USER=${CUSTOM_USER// }
 CUSTOM_GROUP=$(getInstallProperty 'CUSTOM_GROUP')
 CUSTOM_GROUP=${CUSTOM_GROUP// }
 
+CUSTOM_GROUP_STATUS=${CUSTOM_GROUP};
+CUSTOM_USER_STATUS=${CUSTOM_USER};
+egrep "^$CUSTOM_GROUP" /etc/group >& /dev/null
+if [ $? -ne 0 ]
+then
+	CUSTOM_GROUP_STATUS=""
+fi
+id -u ${CUSTOM_USER} > /dev/null 2>&1
+if [ $? -ne 0 ]
+then
+	CUSTOM_USER_STATUS=""
+fi
 
-
-if [ ! -z "${CUSTOM_USER}" ] && [ ! -z "${CUSTOM_GROUP}" ]
+if [ ! -z "${CUSTOM_USER_STATUS}" ] && [ ! -z "${CUSTOM_GROUP_STATUS}" ]
 then
   echo "Custom user and group is available, using custom user and group."
   CFG_OWNER_INF="${CUSTOM_USER}:${CUSTOM_GROUP}"
-elif [ ! -z "${CUSTOM_USER}" ] && [ -z "${CUSTOM_GROUP}" ]
+elif [ ! -z "${CUSTOM_USER_STATUS}" ] && [ -z "${CUSTOM_GROUP_STATUS}" ]
 then
   echo "Custom user is available, using custom user and default group."
   CFG_OWNER_INF="${CUSTOM_USER}:${HCOMPONENT_NAME}"
-elif [ -z  "${CUSTOM_USER}" ] && [ ! -z  "${CUSTOM_GROUP}" ]
+elif [ -z  "${CUSTOM_USER_STATUS}" ] && [ ! -z  "${CUSTOM_GROUP_STATUS}" ]
 then
   echo "Custom group is available, using default user and custom group."
   CFG_OWNER_INF="${HCOMPONENT_NAME}:${CUSTOM_GROUP}"
@@ -154,7 +164,14 @@ fi
 
 if [ "${HCOMPONENT_INSTALL_DIR_NAME}" = "" ]
 then
-	HCOMPONENT_INSTALL_DIR_NAME=${HCOMPONENT_NAME}
+    if [ "${HCOMPONENT_NAME}" = "knox" ];
+    then
+        HCOMPONENT_INSTALL_DIR_NAME=$(getInstallProperty 'KNOX_HOME')
+    fi
+    if [ "${HCOMPONENT_INSTALL_DIR_NAME}" = "" ]
+    then
+	    HCOMPONENT_INSTALL_DIR_NAME=${HCOMPONENT_NAME}
+    fi
 fi
 
 firstletter=${HCOMPONENT_INSTALL_DIR_NAME:0:1}
@@ -186,6 +203,11 @@ elif [ "${HCOMPONENT_NAME}" = "storm" ]; then
     HCOMPONENT_LIB_DIR=${HCOMPONENT_INSTALL_DIR}/extlib-daemon
 elif [ "${HCOMPONENT_NAME}" = "atlas" ]; then
     HCOMPONENT_LIB_DIR=${HCOMPONENT_INSTALL_DIR}/libext
+elif [ "${HCOMPONENT_NAME}" = "hadoop" ] ||
+     [ "${HCOMPONENT_NAME}" = "yarn" ]; then
+    HCOMPONENT_LIB_DIR=${HCOMPONENT_INSTALL_DIR}/share/hadoop/hdfs/lib
+elif [ "${HCOMPONENT_NAME}" = "sqoop" ]; then
+    HCOMPONENT_LIB_DIR=${HCOMPONENT_INSTALL_DIR}/server/lib
 fi
 
 HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/conf
@@ -200,6 +222,12 @@ if [ "${HCOMPONENT_NAME}" = "solr" ]; then
     fi    
 elif [ "${HCOMPONENT_NAME}" = "kafka" ]; then
     HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/config
+elif [ "${HCOMPONENT_NAME}" = "hadoop" ]; then
+    HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/etc/hadoop
+elif [ "${HCOMPONENT_NAME}" = "yarn" ]; then
+    HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/etc/hadoop
+elif [ "${HCOMPONENT_NAME}" = "sqoop" ]; then
+    HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/conf
 fi
 
 HCOMPONENT_ARCHIVE_CONF_DIR=${HCOMPONENT_CONF_DIR}/.archive
@@ -222,9 +250,13 @@ fi
 
 if [ ! -d "${HCOMPONENT_LIB_DIR}" ]
 then
-	echo "ERROR: Unable to find the lib directory of component [${HCOMPONENT_NAME}];  dir [${HCOMPONENT_LIB_DIR}] not found."
-	echo "Exiting installation."
-	exit 1
+    mkdir -p "${HCOMPONENT_LIB_DIR}"
+    if [ ! -d "${HCOMPONENT_LIB_DIR}" ]
+    then
+        echo "ERROR: Unable to find the lib directory of component [${HCOMPONENT_NAME}];  dir [${HCOMPONENT_LIB_DIR}] not found."
+        echo "Exiting installation."
+        exit 1
+    fi
 fi
 
 ambari_hive_install="N"
@@ -390,54 +422,6 @@ then
 	chmod a+rx ${POLICY_CACHE_FILE_PATH}
 	chown -R ${CFG_OWNER_INF} /etc/${PROJ_NAME}/${REPO_NAME}
 	
-
-	#
-	# We need to do the AUDIT JDBC url 
-	#
-db_flavor=''
-db_flavor=`echo $(getInstallProperty 'XAAUDIT.DB.FLAVOUR') | tr '[:lower:]' '[:upper:]'`
-if [ "${db_flavor}" != "" ]
-then
-    audit_db_hostname=$(getInstallProperty 'XAAUDIT.DB.HOSTNAME')
-    audit_db_name=$(getInstallProperty 'XAAUDIT.DB.DATABASE_NAME')
-
-	if [ "${db_flavor}" = "MYSQL" ]
-	then
-    	export XAAUDIT_DB_JDBC_URL="jdbc:mysql://${audit_db_hostname}/${audit_db_name}"
-    	export XAAUDIT_DB_JDBC_DRIVER="com.mysql.jdbc.Driver"
-	elif [ "${db_flavor}" = "ORACLE" ]
-	then
-		count=$(grep -o ":" <<< "$audit_db_hostname" | wc -l)
-		#if [[ ${count} -eq 2 ]] ; then
-		if [ ${count} -eq 2 ] || [ ${count} -eq 0 ]; then
-			#jdbc:oracle:thin:@[HOST][:PORT]:SID or #jdbc:oracle:thin:@GL
-			newPropertyValue="jdbc:oracle:thin:@${audit_db_hostname}"
-		else
-			#jdbc:oracle:thin:@//[HOST][:PORT]/SERVICE
-			newPropertyValue="jdbc:oracle:thin:@//${audit_db_hostname}"
-		fi
-		export XAAUDIT_DB_JDBC_URL=${newPropertyValue}
-    	export XAAUDIT_DB_JDBC_DRIVER="oracle.jdbc.OracleDriver"
-    elif [ "${db_flavor}" = "POSTGRES" ]
-	then
-		export XAAUDIT_DB_JDBC_URL="jdbc:postgresql://${audit_db_hostname}/${audit_db_name}"
-		export XAAUDIT_DB_JDBC_DRIVER="org.postgresql.Driver"
-	elif [ "${db_flavor}" = "MSSQL" ]
-	then
-		export XAAUDIT_DB_JDBC_URL="jdbc:sqlserver://${audit_db_hostname};databaseName=${audit_db_name}"
-		export XAAUDIT_DB_JDBC_DRIVER="com.microsoft.sqlserver.jdbc.SQLServerDriver"
-	elif [ "${db_flavor}" = "SQLA" ]
-	then
-		export XAAUDIT_DB_JDBC_URL="jdbc:sqlanywhere:database=${audit_db_name};host=${audit_db_hostname}"
-		export XAAUDIT_DB_JDBC_DRIVER="sap.jdbc4.sqlanywhere.IDriver"
-	else
-        echo "Audit is not specified with a valid db_flavor: [${db_flavor}]. Ignoring audit ..."
-        export XAAUDIT_DB_JDBC_URL="jdbc:${db_flavor}://${audit_db_hostname}/${audit_db_name}"
-        export XAAUDIT_DB_JDBC_DRIVER="com.unknown.driver.${db_flavor}"
-	fi
-fi
-
-
 	for f in ${PROJ_INSTALL_DIR}/install/conf.templates/${action}/*.cfg
 	do
 		if [ -f "${f}" ]
@@ -452,6 +436,7 @@ fi
 					log "Creating default file from [${DEFAULT_XML_CONFIG}] for [${fullpathorgfn}] .."
 					cp ${DEFAULT_XML_CONFIG} ${fullpathorgfn}
 				 	chown ${CFG_OWNER_INF} ${fullpathorgfn}	
+					chmod a+r ${fullpathorgfn}
 				else
         			echo "ERROR: Unable to find ${fullpathorgfn}"
         			exit 1
@@ -508,64 +493,41 @@ fi
 #
 # Create library link
 #
-
 if [ "${action}" = "enable" ]
 then
-
-	#if [ -d "${PROJ_LIB_DIR}" ]
-	#then
-		dt=`date '+%Y%m%d%H%M%S'`
-        for f in ${PROJ_LIB_DIR}/*
-            do
-               if [ -f "${f}" ] || [ -d "${f}" ]
-               then
-                   bn=`basename $f`
-                   if [ -f ${HCOMPONENT_LIB_DIR}/${bn} ] || [  -d ${HCOMPONENT_LIB_DIR}/${bn} ]
-                   then
-                       log "Saving lib file: ${HCOMPONENT_LIB_DIR}/${bn} to ${HCOMPONENT_LIB_DIR}/.${bn}.${dt} ..."
-                       mv ${HCOMPONENT_LIB_DIR}/${bn} ${HCOMPONENT_LIB_DIR}/.${bn}.${dt}
-                   fi
-                   if [ ! -f ${HCOMPONENT_LIB_DIR}/${bn} ] && [ ! -d  ${HCOMPONENT_LIB_DIR}/${bn} ]
-                   then
-                       ln -s ${f} ${HCOMPONENT_LIB_DIR}/${bn}
-                   fi
-                fi
-        done
-		# ADD SQL CONNECTOR JAR TO PLUGIN DEPENDENCY JAR FOLDER
-		dbJar=$(getInstallProperty 'SQL_CONNECTOR_JAR')
-		if [ -f "${dbJar}" ]
-		then	
-			bn=`basename ${dbJar}`
-			if [ -f ${PROJ_LIB_PLUGIN_DIR}/${bn} ]
+	dt=`date '+%Y%m%d%H%M%S'`
+	for f in ${PROJ_LIB_DIR}/*
+	do
+		if [ -f "${f}" ] || [ -d "${f}" ]
+		then
+			bn=`basename $f`
+			if [ -f ${HCOMPONENT_LIB_DIR}/${bn} ] || [  -d ${HCOMPONENT_LIB_DIR}/${bn} ]
 			then
-			 	rm ${PROJ_LIB_PLUGIN_DIR}/${bn} 
+				log "Saving lib file: ${HCOMPONENT_LIB_DIR}/${bn} to ${HCOMPONENT_LIB_DIR}/.${bn}.${dt} ..."
+				mv ${HCOMPONENT_LIB_DIR}/${bn} ${HCOMPONENT_LIB_DIR}/.${bn}.${dt}
 			fi
-			if [ ! -f ${PROJ_LIB_PLUGIN_DIR}/${bn} ]
+			if [ ! -f ${HCOMPONENT_LIB_DIR}/${bn} ] && [ ! -d  ${HCOMPONENT_LIB_DIR}/${bn} ]
 			then
-			    ln -s ${dbJar} ${PROJ_LIB_PLUGIN_DIR}/${bn}
+				ln -s ${f} ${HCOMPONENT_LIB_DIR}/${bn}
 			fi
 		fi
-
-	#fi
+	done
 
 	#
 	# Encrypt the password and keep it secure in Credential Provider API
 	#
-	
 	CredFile=${CREDENTIAL_PROVIDER_FILE}
-
 	if ! [ `echo ${CredFile} | grep '^/.*'` ]
 	then
-  	echo "ERROR:Please enter the Credential File Store with proper file path"
-  	exit 1
+		echo "ERROR:Please enter the Credential File Store with proper file path"
+		exit 1
 	fi
-	
+
 	pardir=`dirname ${CredFile}`
 	
 	if [ ! -d "${pardir}" ]
 	then
 		mkdir -p "${pardir}" 
-	
 		if [ $? -ne 0 ]
 		then
     		echo "ERROR: Unable to create credential store file path"
@@ -575,44 +537,20 @@ then
 	fi
 
 	#
-	# Generate Credential Provider file and Credential for Audit DB access.
-	#
-	
-	
-	auditCredAlias="auditDBCred"
-	
-	auditdbCred=$(getInstallProperty 'XAAUDIT.DB.PASSWORD')
-	
-	if [ "${auditdbCred}" != "" ]; then
-		create_jceks "${auditCredAlias}"  "${auditdbCred}"  "${CredFile}"
-	fi
-	
-	
-	#
 	# Generate Credential Provider file and Credential for SSL KEYSTORE AND TRUSTSTORE
 	#
-	
-	
 	sslkeystoreAlias="sslKeyStore"
-	
 	sslkeystoreCred=$(getInstallProperty 'SSL_KEYSTORE_PASSWORD')
-	
 	create_jceks "${sslkeystoreAlias}" "${sslkeystoreCred}" "${CredFile}"
-	
-	
 	ssltruststoreAlias="sslTrustStore"
-	
 	ssltruststoreCred=$(getInstallProperty 'SSL_TRUSTSTORE_PASSWORD')
-	
 	create_jceks "${ssltruststoreAlias}" "${ssltruststoreCred}" "${CredFile}"
-	
 	chown ${CFG_OWNER_INF} ${CredFile}
 	#
 	# To allow all users in the server (where Hive CLI and HBase CLI is used),
 	# user needs to have read access for the credential file.
 	#
 	chmod a+r ${CredFile} 
-	
 fi
 
 #
@@ -717,13 +655,41 @@ then
 	fi
 fi
 
+#Check Properties whether in File, return code 1 if not exist
+#$1 -> propertyName; $2 -> fileName
+checkPropertyInFile(){
+	validate=$(sed '/^\#/d' $2 | grep "^$1"  | tail -n 1 | cut -d "=" -f1-) # for validation
+	if test -z "$validate" ; then return 1; fi
+}
+
+#Add Properties to File
+#$1 -> propertyName; $2 -> newPropertyValue; $3 -> fileName
+addPropertyToFile(){
+	echo "$1=$2">>$3
+	validate=$(sed '/^\#/d' $3 | grep "^$1"  | tail -n 1 | cut -d "=" -f2-) # for validation
+	if test -z "$validate" ; then log "[E] Failed to add properties '$1' to $3 file!"; exit 1; fi
+	echo "Property $1 added successfully with : '$2'"
+}
+
 #Update Properties to File
-#$1 -> propertyName $2 -> newPropertyValue $3 -> fileName
+#$1 -> propertyName; $2 -> newPropertyValue; $3 -> fileName
 updatePropertyToFile(){
 	sed -i 's@^'$1'=[^ ]*$@'$1'='$2'@g' $3
 	validate=$(sed '/^\#/d' $3 | grep "^$1"  | tail -n 1 | cut -d "=" -f2-) # for validation
 	if test -z "$validate" ; then log "[E] '$1' not found in $3 file while Updating....!!"; exit 1; fi
 	echo "Property $1 updated successfully with : '$2'"
+}
+
+#Add or Update Properties to File
+#$1 -> propertyName; $2 -> newPropertyValue; $3 -> fileName
+addOrUpdatePropertyToFile(){
+	checkPropertyInFile $1 $3
+	if [ $? -eq 1 ]
+	then
+		addPropertyToFile $1 $2 $3
+	else
+		updatePropertyToFile $1 $2 $3
+	fi
 }
 
 if [ "${HCOMPONENT_NAME}" = "atlas" ]
@@ -751,6 +717,29 @@ fi
 #
 # Set notice to restart the ${HCOMPONENT_NAME}
 #
+
+if [ "${HCOMPONENT_NAME}" = "sqoop" ]
+then
+	if [ "${action}" = "enable" ]
+	then
+		authName="org.apache.ranger.authorization.sqoop.authorizer.RangerSqoopAuthorizer"
+	else
+		authName=""
+	fi
+
+	dt=`date '+%Y%m%d%H%M%S'`
+	fn=`ls ${HCOMPONENT_CONF_DIR}/sqoop.properties 2> /dev/null`
+	if [ -f "${fn}" ]
+	then
+		dn=`dirname ${fn}`
+		bn=`basename ${fn}`
+		bf=${dn}/.${bn}.${dt}
+		echo "backup of ${fn} to ${bf} ..."
+		cp ${fn} ${bf}
+		echo "Add or Update properties file: [${fn}] ... "
+		addOrUpdatePropertyToFile org.apache.sqoop.security.authorization.validator $authName ${fn}
+	fi
+fi
 
 echo "Ranger Plugin for ${HCOMPONENT_NAME} has been ${action}d. Please restart ${HCOMPONENT_NAME} to ensure that changes are effective."
 

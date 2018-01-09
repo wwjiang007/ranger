@@ -26,15 +26,18 @@ import org.apache.atlas.authorize.AtlasAccessRequest;
 import org.apache.atlas.authorize.AtlasAuthorizationException;
 import org.apache.atlas.authorize.AtlasAuthorizer;
 import org.apache.atlas.authorize.AtlasResourceTypes;
+import org.apache.commons.logging.Log;
 import org.apache.ranger.plugin.audit.RangerDefaultAuditHandler;
 import org.apache.ranger.plugin.policyengine.RangerAccessRequestImpl;
 import org.apache.ranger.plugin.policyengine.RangerAccessResult;
 import org.apache.ranger.plugin.service.RangerBasePlugin;
+import org.apache.ranger.plugin.util.RangerPerfTracer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class RangerAtlasAuthorizer implements AtlasAuthorizer {
     private static final Logger LOG = LoggerFactory.getLogger(RangerAtlasAuthorizer.class);
+    private static final Log PERF_ATLASAUTH_REQUEST_LOG = RangerPerfTracer.getPerfLogger("atlasauth.request");
     private static boolean isDebugEnabled = LOG.isDebugEnabled();
     private static volatile RangerBasePlugin atlasPlugin = null;
 
@@ -70,6 +73,11 @@ public class RangerAtlasAuthorizer implements AtlasAuthorizer {
         if (isDebugEnabled) {
             LOG.debug("==> isAccessAllowed( " + request + " )");
         }
+        RangerPerfTracer perf = null;
+
+        if(RangerPerfTracer.isPerfTraceEnabled(PERF_ATLASAUTH_REQUEST_LOG)) {
+            perf = RangerPerfTracer.getPerfTracer(PERF_ATLASAUTH_REQUEST_LOG, "RangerAtlasAuthorizer.isAccessAllowed(request=" + request + ")");
+        }
 
         String resource = request.getResource();
         String user = request.getUser();
@@ -77,20 +85,23 @@ public class RangerAtlasAuthorizer implements AtlasAuthorizer {
         String action = request.getAction().name();
         Set<AtlasResourceTypes> resourceTypes = request.getResourceTypes();
         String clientIPAddress = request.getClientIPAddress();
+        String clusterName = atlasPlugin.getClusterName();
 
         for (AtlasResourceTypes resourceType : resourceTypes) {
             RangerAtlasAccessRequest rangerRequest =
-                new RangerAtlasAccessRequest(resourceType, resource, action, user, userGroups, clientIPAddress);
+                new RangerAtlasAccessRequest(resourceType, resource, action, user, userGroups, clientIPAddress, clusterName);
             if (isDebugEnabled) {
                 LOG.debug("Creating RangerAtlasAccessRequest with values [resource : " + resource + ", user : " + user
                     + ", Groups : " + userGroups + ", action : " + action + ", resourceType : " + resourceType
-                    + ", clientIP : " + clientIPAddress + "]");
+                    + ", clientIP : " + clientIPAddress + ", clusterName : " + clusterName + "]");
             }
             isAccessAllowed = checkAccess(rangerRequest);
             if (!isAccessAllowed) {
                 break;
             }
         }
+
+        RangerPerfTracer.log(perf);
 
         if (isDebugEnabled) {
             LOG.debug("<== isAccessAllowed Returning value :: " + isAccessAllowed);
@@ -104,7 +115,7 @@ public class RangerAtlasAuthorizer implements AtlasAuthorizer {
 
         if (plugin != null) {
             RangerAccessResult rangerResult = plugin.isAccessAllowed(request);
-            isAccessAllowed = (rangerResult == null) ? false : rangerResult.getIsAllowed();
+            isAccessAllowed = rangerResult != null && rangerResult.getIsAllowed();
         } else {
             isAccessAllowed = false;
             LOG.warn("AtlasPlugin not initialized properly : " + plugin+"... Access blocked!!!");
@@ -130,7 +141,7 @@ public class RangerAtlasAuthorizer implements AtlasAuthorizer {
 class RangerAtlasAccessRequest extends RangerAccessRequestImpl {
 
     public RangerAtlasAccessRequest(AtlasResourceTypes resType, String resource, String action, String user,
-        Set<String> userGroups, String clientIp) {
+        Set<String> userGroups, String clientIp, String clusterName) {
         super.setResource(new RangerAtlasResource(resType, resource));
         super.setAccessType(action);
         super.setUser(user);
@@ -138,6 +149,7 @@ class RangerAtlasAccessRequest extends RangerAccessRequestImpl {
         super.setAccessTime(new Date(System.currentTimeMillis()));
         super.setClientIPAddress(clientIp);
         super.setAction(action);
+        super.setClusterName(clusterName);
     }
 
 }

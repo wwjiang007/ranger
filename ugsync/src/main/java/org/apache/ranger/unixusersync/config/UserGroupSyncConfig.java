@@ -19,11 +19,6 @@
 
 package org.apache.ranger.unixusersync.config;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -31,19 +26,12 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.StringTokenizer;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-
 import org.apache.ranger.credentialapi.CredentialReader;
+import org.apache.ranger.plugin.util.XMLUtils;
 import org.apache.ranger.usergroupsync.UserGroupSink;
 import org.apache.ranger.usergroupsync.UserGroupSource;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-import org.w3c.dom.NodeList;
 
 import org.apache.log4j.Logger;
-
 
 
 public class UserGroupSyncConfig  {
@@ -59,6 +47,12 @@ public class UserGroupSyncConfig  {
 
 	public static final String  UGSYNC_PM_URL_PROP = 	"ranger.usersync.policymanager.baseURL";
 
+	public static final String UGSYNC_UNIX_PASSWORD_FILE = "ranger.usersync.unix.password.file";
+	public static final String  DEFAULT_UGSYNC_UNIX_PASSWORD_FILE =   "/etc/passwd";
+	
+	public static final String UGSYNC_UNIX_GROUP_FILE = "ranger.usersync.unix.group.file";
+	public static final String  DEFAULT_UGSYNC_UNIX_GROUP_FILE =   "/etc/group";
+	
 	public static final String  UGSYNC_MIN_USERID_PROP  = 	"ranger.usersync.unix.minUserId";
 
 	public static final String  UGSYNC_MIN_GROUPID_PROP =   "ranger.usersync.unix.minGroupId";
@@ -194,6 +188,9 @@ public class UserGroupSyncConfig  {
 	private static final String LGSYNC_GROUP_MEMBER_ATTRIBUTE_NAME = "ranger.usersync.group.memberattributename";
 	private static final String DEFAULT_LGSYNC_GROUP_MEMBER_ATTRIBUTE_NAME = "member";
 
+	private static final String LGSYNC_GROUP_HIERARCHY_LEVELS = "ranger.usersync.ldap.grouphierarchylevels";
+	private static final int DEFAULT_LGSYNC_GROUP_HIERARCHY_LEVELS = 0;
+
 	private static final String UGSYNC_UPDATE_MILLIS_MIN = "ranger.usersync.unix.updatemillismin";
 	private final static long DEFAULT_UGSYNC_UPDATE_MILLIS_MIN = 1 * 60 * 1000; // ms
 
@@ -229,6 +226,13 @@ public class UserGroupSyncConfig  {
 	private static final String SYNC_MAPPING_GROUPNAME_HANDLER = "ranger.usersync.mapping.groupname.handler";
 	private static final String DEFAULT_SYNC_MAPPING_GROUPNAME_HANDLER = "org.apache.ranger.usergroupsync.RegEx";
 
+    private static final String ROLE_ASSIGNMENT_LIST_DELIMITER = "ranger.usersync.role.assignment.list.delimiter";
+
+    private static final String USERS_GROUPS_ASSIGNMENT_LIST_DELIMITER = "ranger.usersync.users.groups.assignment.list.delimiter";
+
+    private static final String USERNAME_GROUPNAME_ASSIGNMENT_LIST_DELIMITER = "ranger.usersync.username.groupname.assignment.list.delimiter";
+
+    private static final String GROUP_BASED_ROLE_ASSIGNMENT_RULES = "ranger.usersync.group.based.role.assignment.rules";
 	private Properties prop = new Properties();
 
 	private static volatile UserGroupSyncConfig me = null;
@@ -251,104 +255,9 @@ public class UserGroupSyncConfig  {
 	}
 
 	private void init() {
-		readConfigFile(CORE_SITE_CONFIG_FILE);
-		readConfigFile(CONFIG_FILE);
-		readConfigFile(DEFAULT_CONFIG_FILE);		
-	}
-
-	private void readConfigFile(String fileName) {
-		try {
-			InputStream in = getFileInputStream(fileName);
-			if (in != null) {
-				try {
-					//					prop.load(in);
-					DocumentBuilderFactory xmlDocumentBuilderFactory = DocumentBuilderFactory
-							.newInstance();
-					xmlDocumentBuilderFactory.setIgnoringComments(true);
-					xmlDocumentBuilderFactory.setNamespaceAware(true);
-					DocumentBuilder xmlDocumentBuilder = xmlDocumentBuilderFactory
-							.newDocumentBuilder();
-					Document xmlDocument = xmlDocumentBuilder.parse(in);
-					xmlDocument.getDocumentElement().normalize();
-
-					NodeList nList = xmlDocument
-							.getElementsByTagName("property");
-
-					for (int temp = 0; temp < nList.getLength(); temp++) {
-
-						Node nNode = nList.item(temp);
-
-						if (nNode.getNodeType() == Node.ELEMENT_NODE) {
-
-							Element eElement = (Element) nNode;
-
-							String propertyName = "";
-							String propertyValue = "";
-							if (eElement.getElementsByTagName("name").item(
-									0) != null) {
-								propertyName = eElement
-										.getElementsByTagName("name")
-										.item(0).getTextContent().trim();
-							}
-							if (eElement.getElementsByTagName("value")
-									.item(0) != null) {
-								propertyValue = eElement
-										.getElementsByTagName("value")
-										.item(0).getTextContent().trim();
-							}
-
-							if (prop.get(propertyName) != null) {
-								prop.remove(propertyName);
-							}
-
-							prop.put(propertyName, propertyValue);
-
-						}
-					}
-				}
-				finally {
-					try {
-						in.close();
-					}
-					catch(IOException ioe) {
-						// Ignore IOE when closing stream
-					}
-				}
-			}
-		} catch (Throwable e) {
-			throw new RuntimeException("Unable to load configuration file [" + CONFIG_FILE + "]", e);
-		}
-	}
-
-
-	private InputStream getFileInputStream(String path) throws FileNotFoundException {
-
-		InputStream ret = null;
-
-		File f = new File(path);
-
-		if (f.exists()) {
-			ret = new FileInputStream(f);
-		} else {
-			ret = getClass().getResourceAsStream(path);
-
-			if (ret == null) {
-				if (! path.startsWith("/")) {
-					ret = getClass().getResourceAsStream("/" + path);
-				}
-			}
-
-			if (ret == null) {
-				ret = ClassLoader.getSystemClassLoader().getResourceAsStream(path);
-				if (ret == null) {
-					if (! path.startsWith("/")) {
-						ret = ClassLoader.getSystemResourceAsStream("/" + path);
-					}
-				}
-			}
-		}
-
-		return ret;
+		XMLUtils.loadConfig(CORE_SITE_CONFIG_FILE, prop);
+		XMLUtils.loadConfig(CONFIG_FILE, prop);
+		XMLUtils.loadConfig(DEFAULT_CONFIG_FILE, prop);
 	}
 
 	public String getUserSyncFileSource(){
@@ -365,6 +274,24 @@ public class UserGroupSyncConfig  {
 		if ( val == null) {
 			val = DEFAULT_USER_GROUP_TEXTFILE_DELIMITER;
 		}
+		return val;
+	}
+	
+	public String getUnixPasswordFile() {
+		String val = prop.getProperty(UGSYNC_UNIX_PASSWORD_FILE);
+		if ( val == null ) {
+			val = DEFAULT_UGSYNC_UNIX_PASSWORD_FILE;
+		}
+
+		return val;
+	}
+	
+	public String getUnixGroupFile() {
+		String val = prop.getProperty(UGSYNC_UNIX_GROUP_FILE);
+		if ( val == null ) {
+			val = DEFAULT_UGSYNC_UNIX_GROUP_FILE;
+		}
+
 		return val;
 	}
 
@@ -750,6 +677,9 @@ public class UserGroupSyncConfig  {
 		} else {
 			groupSearchFirstEnabled  = Boolean.valueOf(val);
 		}
+		if (isGroupSearchEnabled() == false) {
+			groupSearchFirstEnabled = false;
+		}
 		return groupSearchFirstEnabled;
 	}
 
@@ -829,6 +759,20 @@ public class UserGroupSyncConfig  {
 		}
 		return val;
 	}
+
+	public int getGroupHierarchyLevels() {
+        	int groupHierarchyLevels;
+        	String val = prop.getProperty(LGSYNC_GROUP_HIERARCHY_LEVELS);
+        	if(val == null || val.trim().isEmpty()) {
+        	    groupHierarchyLevels = DEFAULT_LGSYNC_GROUP_HIERARCHY_LEVELS;
+        	} else {
+        	    groupHierarchyLevels = Integer.parseInt(val);
+        	}
+        	if (groupHierarchyLevels < 0)  {
+        	    groupHierarchyLevels = DEFAULT_LGSYNC_GROUP_HIERARCHY_LEVELS;
+        	}
+        	return groupHierarchyLevels;
+    	}
 
 	public String getProperty(String aPropertyName) {
 		return prop.getProperty(aPropertyName);
@@ -948,6 +892,52 @@ public class UserGroupSyncConfig  {
 		return val;
 	}
 
+    public String getGroupRoleRules() {
+        if (prop != null && prop.containsKey(GROUP_BASED_ROLE_ASSIGNMENT_RULES)) {
+            String GroupRoleRules = prop
+                    .getProperty(GROUP_BASED_ROLE_ASSIGNMENT_RULES);
+            if (GroupRoleRules != null && !GroupRoleRules.isEmpty()) {
+                return GroupRoleRules.trim();
+            }
+        }
+        return null;
+    }
+
+    public String getUserGroupDelimiter() {
+        if (prop != null
+                && prop.containsKey(USERS_GROUPS_ASSIGNMENT_LIST_DELIMITER)) {
+            String UserGroupDelimiter = prop
+                    .getProperty(USERS_GROUPS_ASSIGNMENT_LIST_DELIMITER);
+            if (UserGroupDelimiter != null && !UserGroupDelimiter.isEmpty()) {
+                return UserGroupDelimiter;
+            }
+        }
+        return null;
+    }
+
+    public String getUserGroupNameDelimiter() {
+        if (prop != null
+                && prop.containsKey(USERNAME_GROUPNAME_ASSIGNMENT_LIST_DELIMITER)) {
+            String UserGroupNameDelimiter = prop
+                    .getProperty(USERNAME_GROUPNAME_ASSIGNMENT_LIST_DELIMITER);
+            if (UserGroupNameDelimiter != null
+                    && !UserGroupNameDelimiter.isEmpty()) {
+                return UserGroupNameDelimiter;
+            }
+        }
+        return null;
+    }
+
+    public String getRoleDelimiter() {
+        if (prop != null && prop.containsKey(ROLE_ASSIGNMENT_LIST_DELIMITER)) {
+            String roleDelimiter = prop
+                    .getProperty(ROLE_ASSIGNMENT_LIST_DELIMITER);
+            if (roleDelimiter != null && !roleDelimiter.isEmpty()) {
+                return roleDelimiter;
+            }
+        }
+        return null;
+    }
 	public boolean isStartTlsEnabled() {
 		boolean starttlsEnabled;
 		String val = prop.getProperty(LGSYNC_LDAP_STARTTLS_ENABLED);
@@ -1031,7 +1021,17 @@ public class UserGroupSyncConfig  {
 	}
 	
 	/* Used only for unit testing */
-    public void setDeltaSync(boolean deltaSyncEnabled) {
-        prop.setProperty(LGSYNC_LDAP_DELTASYNC_ENABLED, String.valueOf(deltaSyncEnabled));
-    }
+    	public void setDeltaSync(boolean deltaSyncEnabled) {
+        	prop.setProperty(LGSYNC_LDAP_DELTASYNC_ENABLED, String.valueOf(deltaSyncEnabled));
+    	}	
+
+	/* Used only for unit testing */
+    	public void setUserNameAttribute(String userNameAttr) {
+		prop.setProperty(LGSYNC_USER_NAME_ATTRIBUTE, userNameAttr);
+	}
+
+	/* Used only for unit testing */
+	public void setGroupHierarchyLevel(int groupHierarchyLevel) {
+        	prop.setProperty(LGSYNC_GROUP_HIERARCHY_LEVELS, String.valueOf(groupHierarchyLevel));
+        }
 }

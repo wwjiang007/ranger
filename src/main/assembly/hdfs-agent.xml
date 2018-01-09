@@ -79,7 +79,6 @@
    			<dependencySet>
      			<outputDirectory>/lib/ranger-hdfs-plugin-impl</outputDirectory>
 				<includes>
-					<include>com.google.code.gson:gson*</include>
 					<include>org.eclipse.persistence:javax.persistence</include>
 					<include>org.eclipse.persistence:eclipselink</include>
 					<include>org.apache.httpcomponents:httpmime:jar:${httpcomponents.httpmime.version}</include>
@@ -110,6 +109,11 @@
 		<excludes>
 			<exclude>*.sh</exclude>
 		</excludes>
+		<fileMode>700</fileMode>
+	</fileSet>
+	<fileSet>
+		<outputDirectory>/install/conf.templates/disable</outputDirectory>
+		<directory>hdfs-agent/disable-conf</directory>
 		<fileMode>700</fileMode>
 	</fileSet>
     <!-- version file -->

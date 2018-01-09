@@ -20,6 +20,8 @@
  package org.apache.ranger.services.hive.client;
 
 import java.io.Closeable;
+import java.io.File;
+import java.net.MalformedURLException;
 import java.security.PrivilegedAction;
 import java.security.PrivilegedExceptionAction;
 import java.sql.Connection;
@@ -39,17 +41,31 @@ import javax.security.auth.Subject;
 
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.FilenameUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.HiveMetaStoreClient;
+import org.apache.hadoop.hive.metastore.api.FieldSchema;
+import org.apache.hadoop.hive.metastore.api.MetaException;
 import org.apache.ranger.plugin.client.BaseClient;
 import org.apache.ranger.plugin.client.HadoopException;
+import org.apache.ranger.plugin.util.PasswordUtils;
+import org.apache.thrift.TException;
 
 public class HiveClient extends BaseClient implements Closeable {
 
 	private static final Log LOG = LogFactory.getLog(HiveClient.class);
 	
-	Connection con = null;
-	boolean isKerberosAuth=false;
+	private static final String ERR_MSG = "You can still save the repository and start creating "
+			+ "policies, but you would not be able to use autocomplete for "
+			+ "resource names. Check ranger_admin.log for more info.";
+
+	private Connection con;
+	private HiveMetaStoreClient hiveClient;
+	private String hiveSiteFilePath;
+	private boolean isKerberosAuth;
+	private boolean enableHiveMetastoreLookup;
 
 	public HiveClient(String serviceName) throws Exception {
 		super(serviceName, null);
@@ -62,6 +78,8 @@ public class HiveClient extends BaseClient implements Closeable {
 	}
 
 	public void initHive() throws Exception {
+		enableHiveMetastoreLookup = getConfigHolder().isEnableHiveMetastoreLookup();
+		hiveSiteFilePath = getConfigHolder().getHiveSiteFilePath();
 		isKerberosAuth = getConfigHolder().isKerberosAuthentication();
 		if (isKerberosAuth) {
 			LOG.info("Secured Mode: JDBC Connection done with preAuthenticated Subject");
@@ -90,8 +108,12 @@ public class HiveClient extends BaseClient implements Closeable {
 			public List<String>  run() {
 				List<String> ret = null;
 				try {
-					ret = getDBList(dbMatching,dbList);
-				} catch ( HadoopException he) {
+					if (enableHiveMetastoreLookup) {
+						ret = getDBListFromHM(dbMatching,dbList);
+					} else {
+						ret = getDBList(dbMatching,dbList);
+					}
+				} catch (HadoopException he) {
 					LOG.error("<== HiveClient getDatabaseList() :Unable to get the Database List", he);
 					throw he;
 				}
@@ -100,21 +122,56 @@ public class HiveClient extends BaseClient implements Closeable {
 		});
 		return dblist;
 	}
+
+	private List<String> getDBListFromHM(String databaseMatching, List<String>dbList) throws  HadoopException {
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("==> HiveClient getDBListFromHM databaseMatching : " + databaseMatching + " ExcludedbList : " + dbList);
+		}
+		List<String> ret = new ArrayList<String>();
+		try {
+			List<String> hiveDBList = null;
+			if (hiveClient != null) {
+				if (databaseMatching.equalsIgnoreCase("*")) {
+					hiveDBList = hiveClient.getAllDatabases();
+				} else {
+					hiveDBList = hiveClient.getDatabases(databaseMatching);
+				}
+			}
+			if (hiveDBList != null) {
+				for (String dbName : hiveDBList) {
+					if (dbList != null && dbList.contains(dbName)) {
+						continue;
+					}
+					ret.add(dbName);
+				}
+			}
+		} catch (MetaException e) {
+			String msgDesc = "Unable to get Database";
+			HadoopException hdpException = new HadoopException(msgDesc, e);
+			hdpException.generateResponseDataMap(false, getMessage(e),
+					msgDesc + ERR_MSG, null, null);
+			if (LOG.isDebugEnabled()) {
+				LOG.debug("<== HiveClient.getDBListFromHM() Error : " , e);
+			}
+			throw hdpException;
+		}
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("<== HiveClient.getDBListFromHM(): " + ret);
+		}
+		return ret;
+	}
 		
 	private List<String> getDBList(String databaseMatching, List<String>dbList) throws  HadoopException {
-		if(LOG.isDebugEnabled()) {
+		if (LOG.isDebugEnabled()) {
 			LOG.debug("==> HiveClient getDBList databaseMatching : " + databaseMatching + " ExcludedbList :" + dbList);
 		}
 
 		List<String> ret = new ArrayList<String>();
-		String errMsg = " You can still save the repository and start creating "
-				+ "policies, but you would not be able to use autocomplete for "
-				+ "resource names. Check ranger_admin.log for more info.";
 		if (con != null) {
 			Statement stat =  null;
 			ResultSet rs = null;
 			String sql = "show databases";
-			if (databaseMatching != null && ! databaseMatching.isEmpty()) {
+			if (databaseMatching != null && !databaseMatching.isEmpty()) {
 				sql = sql + " like \"" + databaseMatching  + "\"";
 			}
 			try {
@@ -122,7 +179,7 @@ public class HiveClient extends BaseClient implements Closeable {
 				rs = stat.executeQuery(sql);
 				while (rs.next()) {
 					String dbName = rs.getString(1);
-					if ( dbList != null && dbList.contains(dbName)) {
+					if (dbList != null && dbList.contains(dbName)) {
 						continue;
 					}
 					ret.add(rs.getString(1));
@@ -133,8 +190,8 @@ public class HiveClient extends BaseClient implements Closeable {
 				HadoopException hdpException = new HadoopException(msgDesc,
 						sqlt);
 				hdpException.generateResponseDataMap(false, getMessage(sqlt),
-						msgDesc + errMsg, null, null);
-				if(LOG.isDebugEnabled()) {
+						msgDesc + ERR_MSG, null, null);
+				if (LOG.isDebugEnabled()) {
 					LOG.debug("<== HiveClient.getDBList() Error : ",  sqlt);
 				}
 				throw hdpException;
@@ -143,8 +200,8 @@ public class HiveClient extends BaseClient implements Closeable {
 				HadoopException hdpException = new HadoopException(msgDesc,
 						sqle);
 				hdpException.generateResponseDataMap(false, getMessage(sqle),
-						msgDesc + errMsg, null, null);
-				if(LOG.isDebugEnabled()) {
+						msgDesc + ERR_MSG, null, null);
+				if (LOG.isDebugEnabled()) {
 					LOG.debug("<== HiveClient.getDBList() Error : " , sqle);
 				}
 				throw hdpException;
@@ -155,7 +212,7 @@ public class HiveClient extends BaseClient implements Closeable {
 			
 		}
 
-		if(LOG.isDebugEnabled()) {
+		if (LOG.isDebugEnabled()) {
 			  LOG.debug("<== HiveClient.getDBList(): " + ret);
 		}
 
@@ -169,11 +226,15 @@ public class HiveClient extends BaseClient implements Closeable {
 
 		List<String> tableList = Subject.doAs(getLoginSubject(), new PrivilegedAction<List<String>>() {
 			public List<String>  run() {
-				 List<String> ret = null;
+				List<String> ret = null;
 				try {
-					ret = getTblList(tblNameMatching,dbList,tblList);
-				} catch(HadoopException he) {
-					LOG.error("<== HiveClient getTblList() :Unable to get the Table List", he);
+					if (enableHiveMetastoreLookup) {
+						ret = getTblListFromHM(tblNameMatching,dbList,tblList);
+					} else {
+						ret = getTblList(tblNameMatching,dbList,tblList);
+					}
+				} catch (HadoopException he) {
+					LOG.error("<== HiveClient getTableList() :Unable to get the Table List", he);
 					throw he;
 				}
 				return ret;
@@ -183,15 +244,44 @@ public class HiveClient extends BaseClient implements Closeable {
 		return tableList;
 	}
 
+	private List<String> getTblListFromHM(String tableNameMatching, List<String> dbList, List<String> tblList) throws HadoopException {
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("==> HiveClient getTblListFromHM() tableNameMatching : " + tableNameMatching + " ExcludedbList :" + dbList + "ExcludeTableList :" + tblList);
+		}
+		List<String> ret = new ArrayList<String>();
+		if (hiveClient != null && dbList != null && !dbList.isEmpty()) {
+			for (String dbName : dbList) {
+				try {
+					List<String> hiveTblList = hiveClient.getTables(dbName, tableNameMatching);
+					for (String tblName : hiveTblList) {
+						if (tblList != null && tblList.contains(tblName)) {
+							continue;
+						}
+						ret.add(tblName);
+					}
+				} catch (MetaException e) {
+					String msgDesc = "Unable to get Table.";
+					HadoopException hdpException = new HadoopException(msgDesc,e);
+					hdpException.generateResponseDataMap(false, getMessage(e), msgDesc + ERR_MSG, null, null);
+					if (LOG.isDebugEnabled()) {
+						LOG.debug("<== HiveClient.getTblListFromHM() Error : " , e);
+					}
+					throw hdpException;
+				}
+			}
+		}
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("<== HiveClient getTblListFromHM() " +  ret);
+		}
+		return ret;
+	}
+
 	private List<String> getTblList(String tableNameMatching, List<String> dbList, List<String> tblList) throws HadoopException {
-		if(LOG.isDebugEnabled()) {
+		if (LOG.isDebugEnabled()) {
 			LOG.debug("==> HiveClient getTblList() tableNameMatching : " + tableNameMatching + " ExcludedbList :" + dbList + "ExcludeTableList :" + tblList);
 		}
 
 		List<String> ret = new ArrayList<String>();
-		String errMsg = " You can still save the repository and start creating "
-				+ "policies, but you would not be able to use autocomplete for "
-				+ "resource names. Check ranger_admin.log for more info.";
 		if (con != null) {
 			Statement stat =  null;
 			ResultSet rs = null;
@@ -200,7 +290,7 @@ public class HiveClient extends BaseClient implements Closeable {
 
 			try {
 				if (dbList != null && !dbList.isEmpty()) {
-					for ( String db: dbList) {
+					for (String db : dbList) {
 						sql = "use " + db;
 						
 						try {
@@ -213,15 +303,15 @@ public class HiveClient extends BaseClient implements Closeable {
 						}
 						
 						sql = "show tables ";
-						if (tableNameMatching != null && ! tableNameMatching.isEmpty()) {
+						if (tableNameMatching != null && !tableNameMatching.isEmpty()) {
 							sql = sql + " like \"" + tableNameMatching  + "\"";
 						}
                         try {
                             stat = con.createStatement();
                             rs = stat.executeQuery(sql);
-                            while (rs.next()) {
+							while (rs.next()) {
                                 String tblName = rs.getString(1);
-                                if (tblList != null && tblList.contains(tblName)) {
+								if (tblList != null	&& tblList.contains(tblName)) {
                                     continue;
                                 }
                                 ret.add(tblName);
@@ -240,8 +330,8 @@ public class HiveClient extends BaseClient implements Closeable {
 				HadoopException hdpException = new HadoopException(msgDesc,
 						sqlt);
 				hdpException.generateResponseDataMap(false, getMessage(sqlt),
-						msgDesc + errMsg, null, null);
-				if(LOG.isDebugEnabled()) {
+						msgDesc + ERR_MSG, null, null);
+				if (LOG.isDebugEnabled()) {
 					LOG.debug("<== HiveClient.getTblList() Error : " , sqlt);
 				}
 				throw hdpException;
@@ -250,8 +340,8 @@ public class HiveClient extends BaseClient implements Closeable {
 				HadoopException hdpException = new HadoopException(msgDesc,
 						sqle);
 				hdpException.generateResponseDataMap(false, getMessage(sqle),
-						msgDesc + errMsg, null, null);
-				if(LOG.isDebugEnabled()) {
+						msgDesc + ERR_MSG, null, null);
+				if (LOG.isDebugEnabled()) {
 					LOG.debug("<== HiveClient.getTblList() Error : " , sqle);
 				}
 				throw hdpException;
@@ -259,7 +349,7 @@ public class HiveClient extends BaseClient implements Closeable {
 			
 		}
 
-		if(LOG.isDebugEnabled()) {
+		if (LOG.isDebugEnabled()) {
 			LOG.debug("<== HiveClient getTblList() " +  ret);
 		}
 
@@ -282,11 +372,15 @@ public class HiveClient extends BaseClient implements Closeable {
 		final List<String> tableList    = tblList;
 		final List<String> clmList 	= colList;
 		List<String> columnList = Subject.doAs(getLoginSubject(), new PrivilegedAction<List<String>>() {
-			public List<String>  run() {
+			public List<String> run() {
 				    List<String> ret = null;
 					try {
-						ret = getClmList(clmNameMatching,databaseList,tableList,clmList);
-					} catch ( HadoopException he) {
+						if (enableHiveMetastoreLookup) {
+							ret = getClmListFromHM(clmNameMatching,databaseList,tableList,clmList);
+						} else {
+							ret = getClmList(clmNameMatching,databaseList,tableList,clmList);
+						}
+					} catch (HadoopException he) {
 						LOG.error("<== HiveClient getColumnList() :Unable to get the Column List", he);
 						throw he;
 					}
@@ -295,21 +389,64 @@ public class HiveClient extends BaseClient implements Closeable {
 			});
 		return columnList;
 	}
-	
+
+	private List<String> getClmListFromHM(String columnNameMatching,List<String> dbList, List<String> tblList, List<String> colList) throws HadoopException {
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("==> HiveClient.getClmListFromHM() columnNameMatching: " + columnNameMatching + " dbList :" + dbList +  " tblList: " + tblList + " colList: " + colList);
+		}
+		List<String> ret = new ArrayList<String>();
+		String columnNameMatchingRegEx = null;
+
+		if (columnNameMatching != null && !columnNameMatching.isEmpty()) {
+			columnNameMatchingRegEx = columnNameMatching;
+		}
+		if (hiveClient != null && dbList != null && !dbList.isEmpty() && tblList != null && !tblList.isEmpty()) {
+			for (String db : dbList) {
+				for (String tbl : tblList) {
+					try {
+						List<FieldSchema> hiveSch = hiveClient.getFields(db, tbl);
+						if (hiveSch != null) {
+							for (FieldSchema sch : hiveSch) {
+								String columnName = sch.getName();
+								if (colList != null && colList.contains(columnName)) {
+									continue;
+								}
+								if (columnNameMatchingRegEx == null) {
+									ret.add(columnName);
+								} else if (FilenameUtils.wildcardMatch(columnName, columnNameMatchingRegEx)) {
+									ret.add(columnName);
+								}
+							}
+						}
+					} catch (TException e) {
+						String msgDesc = "Unable to get Columns.";
+						HadoopException hdpException = new HadoopException(msgDesc, e);
+						hdpException.generateResponseDataMap(false, getMessage(e), msgDesc + ERR_MSG, null, null);
+						if (LOG.isDebugEnabled()) {
+							LOG.debug("<== HiveClient.getClmListFromHM() Error : " ,e);
+						}
+						throw hdpException;
+					}
+				}
+			}
+		}
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("<== HiveClient.getClmListFromHM() " + ret );
+		}
+		return ret;
+	}
+
 	private List<String> getClmList(String columnNameMatching,List<String> dbList, List<String> tblList, List<String> colList) throws HadoopException {
-		if(LOG.isDebugEnabled()) {
-			LOG.debug("<== HiveClient.getClmList() columnNameMatching: " + columnNameMatching + " dbList :" + dbList +  " tblList: " + tblList + " colList: " + colList);
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("==> HiveClient.getClmList() columnNameMatching: " + columnNameMatching + " dbList :" + dbList +  " tblList: " + tblList + " colList: " + colList);
 		}
 
 		List<String> ret = new ArrayList<String>();
-		String errMsg = " You can still save the repository and start creating "
-				+ "policies, but you would not be able to use autocomplete for "
-				+ "resource names. Check ranger_admin.log for more info.";
 		if (con != null) {
 			
 			String columnNameMatchingRegEx = null;
 			
-			if (columnNameMatching != null && ! columnNameMatching.isEmpty()) {
+			if (columnNameMatching != null && !columnNameMatching.isEmpty()) {
 				columnNameMatchingRegEx = columnNameMatching;
 			}
 			
@@ -320,8 +457,8 @@ public class HiveClient extends BaseClient implements Closeable {
 
 			if (dbList != null && !dbList.isEmpty() &&
 				tblList != null && !tblList.isEmpty()) {
-				for (String db: dbList) {
-					for(String tbl:tblList) {
+				for (String db : dbList) {
+					for (String tbl : tblList) {
 						try {
 							sql = "use " + db;
 							
@@ -355,8 +492,8 @@ public class HiveClient extends BaseClient implements Closeable {
 								HadoopException hdpException = new HadoopException(msgDesc,
 										sqlt);
 								hdpException.generateResponseDataMap(false, getMessage(sqlt),
-										msgDesc + errMsg, null, null);
-								if(LOG.isDebugEnabled()) {
+										msgDesc + ERR_MSG, null, null);
+								if (LOG.isDebugEnabled()) {
 									LOG.debug("<== HiveClient.getClmList() Error : " ,sqlt);
 								}
 								throw hdpException;
@@ -365,8 +502,8 @@ public class HiveClient extends BaseClient implements Closeable {
 								HadoopException hdpException = new HadoopException(msgDesc,
 										sqle);
 								hdpException.generateResponseDataMap(false, getMessage(sqle),
-										msgDesc + errMsg, null, null);
-								if(LOG.isDebugEnabled()) {
+										msgDesc + ERR_MSG, null, null);
+								if (LOG.isDebugEnabled()) {
 									LOG.debug("<== HiveClient.getClmList() Error : " ,sqle);
 								}
 								throw hdpException;
@@ -379,7 +516,7 @@ public class HiveClient extends BaseClient implements Closeable {
 			}
 		}
 
-		if(LOG.isDebugEnabled()) {
+		if (LOG.isDebugEnabled()) {
 			LOG.debug("<== HiveClient.getClmList() " + ret );
 		}
 
@@ -437,122 +574,184 @@ public class HiveClient extends BaseClient implements Closeable {
 
 	
 	private void initConnection(String userName, String password) throws HadoopException  {
-	
-		Properties prop = getConfigHolder().getRangerSection();
-		String driverClassName = prop.getProperty("jdbc.driverClassName");
-		String url =  prop.getProperty("jdbc.url");	
-		String errMsg = " You can still save the repository and start creating "
-				+ "policies, but you would not be able to use autocomplete for "
-				+ "resource names. Check ranger_admin.log for more info.";
-	
-		if (driverClassName != null) {
+		if (enableHiveMetastoreLookup) {
 			try {
-				Driver driver = (Driver)Class.forName(driverClassName).newInstance();
-				DriverManager.registerDriver(driver);
-			} catch (SQLException e) {
-				String msgDesc = "initConnection: Caught SQLException while registering "
-						+ "Hive driver, so Unable to connect to Hive Thrift Server instance.";
-				HadoopException hdpException = new HadoopException(msgDesc, e);
-				hdpException.generateResponseDataMap(false, getMessage(e),
-						msgDesc + errMsg, null, null);
-				if ( LOG.isDebugEnabled()) {
-					LOG.debug(msgDesc, hdpException);
+				HiveConf conf = new HiveConf();
+				if (!StringUtils.isEmpty(hiveSiteFilePath)) {
+					File f = new File(hiveSiteFilePath);
+					if (f.exists()) {
+						conf.addResource(f.toURI().toURL());
+					} else {
+						if(LOG.isDebugEnabled()) {
+							LOG.debug("Hive site conf file path " + hiveSiteFilePath + " does not exists for Hive Metastore lookup");
+						}
+					}
+				} else {
+					if (LOG.isDebugEnabled()) {
+						LOG.debug("Hive site conf file path property not found for Hive Metastore lookup");
+					}
 				}
-				throw hdpException;
-			} catch (IllegalAccessException ilae) {
+				hiveClient = new HiveMetaStoreClient(conf);
+			} catch (HadoopException he) {
 				String msgDesc = "initConnection: Class or its nullary constructor might not accessible."
 						+ "So unable to initiate connection to hive thrift server instance.";
-				HadoopException hdpException = new HadoopException(msgDesc, ilae);
-				hdpException.generateResponseDataMap(false, getMessage(ilae),
-						msgDesc + errMsg, null, null);
-				if ( LOG.isDebugEnabled()) {
+				HadoopException hdpException = new HadoopException(msgDesc, he);
+				hdpException.generateResponseDataMap(false, getMessage(he),
+						msgDesc + ERR_MSG, null, null);
+				if (LOG.isDebugEnabled()) {
 					LOG.debug(msgDesc, hdpException);
 				}
 				throw hdpException;
-			} catch (InstantiationException ie) {
-				String msgDesc = "initConnection: Class may not have its nullary constructor or "
-						+ "may be the instantiation fails for some other reason."
+			} catch (MalformedURLException e) {
+				String msgDesc = "initConnection: URL might be malformed."
 						+ "So unable to initiate connection to hive thrift server instance.";
-				HadoopException hdpException = new HadoopException(msgDesc, ie);
-				hdpException.generateResponseDataMap(false, getMessage(ie),
-						msgDesc + errMsg, null, null);
-				if ( LOG.isDebugEnabled()) {
+				HadoopException hdpException = new HadoopException(msgDesc, e);
+				hdpException.generateResponseDataMap(false, getMessage(e), msgDesc + ERR_MSG, null, null);
+				if (LOG.isDebugEnabled()) {
 					LOG.debug(msgDesc, hdpException);
 				}
 				throw hdpException;
-				
-			} catch (ExceptionInInitializerError eie) {
-				String msgDesc = "initConnection: Got ExceptionInInitializerError, "
-						+ "The initialization provoked by this method fails."
+			} catch (MetaException e) {
+				String msgDesc = "initConnection: Meta info is not proper."
 						+ "So unable to initiate connection to hive thrift server instance.";
-				HadoopException hdpException = new HadoopException(msgDesc, eie);
-				hdpException.generateResponseDataMap(false, getMessage(eie),
-						msgDesc + errMsg, null, null);
-				if ( LOG.isDebugEnabled()) {
+				HadoopException hdpException = new HadoopException(msgDesc, e);
+				hdpException.generateResponseDataMap(false, getMessage(e), msgDesc + ERR_MSG, null, null);
+				if (LOG.isDebugEnabled()) {
+					LOG.debug(msgDesc, hdpException);
+				}
+				throw hdpException;
+			} catch ( Throwable t) {
+				String msgDesc = "Unable to connect to Hive Thrift Server instance";
+				HadoopException hdpException = new HadoopException(msgDesc, t);
+				hdpException.generateResponseDataMap(false, getMessage(t), msgDesc + ERR_MSG, null, null);
+				if (LOG.isDebugEnabled()) {
+					LOG.debug(msgDesc, hdpException);
+				}
+		        throw hdpException;
+			}
+		} else {
+			Properties prop = getConfigHolder().getRangerSection();
+			String driverClassName = prop.getProperty("jdbc.driverClassName");
+			String url =  prop.getProperty("jdbc.url");
+
+			if (driverClassName != null) {
+				try {
+					Driver driver = (Driver)Class.forName(driverClassName).newInstance();
+					DriverManager.registerDriver(driver);
+				} catch (SQLException e) {
+					String msgDesc = "initConnection: Caught SQLException while registering "
+							+ "Hive driver, so Unable to connect to Hive Thrift Server instance.";
+					HadoopException hdpException = new HadoopException(msgDesc, e);
+					hdpException.generateResponseDataMap(false, getMessage(e),
+							msgDesc + ERR_MSG, null, null);
+					if (LOG.isDebugEnabled()) {
+						LOG.debug(msgDesc, hdpException);
+					}
+					throw hdpException;
+				} catch (IllegalAccessException ilae) {
+					String msgDesc = "initConnection: Class or its nullary constructor might not accessible."
+							+ "So unable to initiate connection to hive thrift server instance.";
+					HadoopException hdpException = new HadoopException(msgDesc, ilae);
+					hdpException.generateResponseDataMap(false, getMessage(ilae),
+							msgDesc + ERR_MSG, null, null);
+					if (LOG.isDebugEnabled()) {
+						LOG.debug(msgDesc, hdpException);
+					}
+					throw hdpException;
+				} catch (InstantiationException ie) {
+					String msgDesc = "initConnection: Class may not have its nullary constructor or "
+							+ "may be the instantiation fails for some other reason."
+							+ "So unable to initiate connection to hive thrift server instance.";
+					HadoopException hdpException = new HadoopException(msgDesc, ie);
+					hdpException.generateResponseDataMap(false, getMessage(ie),
+							msgDesc + ERR_MSG, null, null);
+					if (LOG.isDebugEnabled()) {
+						LOG.debug(msgDesc, hdpException);
+					}
+					throw hdpException;
+				} catch (ExceptionInInitializerError eie) {
+					String msgDesc = "initConnection: Got ExceptionInInitializerError, "
+							+ "The initialization provoked by this method fails."
+							+ "So unable to initiate connection to hive thrift server instance.";
+					HadoopException hdpException = new HadoopException(msgDesc, eie);
+					hdpException.generateResponseDataMap(false, getMessage(eie),
+							msgDesc + ERR_MSG, null, null);
+					if (LOG.isDebugEnabled()) {
+						LOG.debug(msgDesc, hdpException);
+					}
+					throw hdpException;
+				} catch (SecurityException se) {
+					String msgDesc = "initConnection: unable to initiate connection to hive thrift server instance,"
+							+ " The caller's class loader is not the same as or an ancestor "
+							+ "of the class loader for the current class and invocation of "
+							+ "s.checkPackageAccess() denies access to the package of this class.";
+					HadoopException hdpException = new HadoopException(msgDesc, se);
+					hdpException.generateResponseDataMap(false, getMessage(se),
+							msgDesc + ERR_MSG, null, null);
+					if (LOG.isDebugEnabled()) {
+						LOG.debug(msgDesc, hdpException);
+					}
+					throw hdpException;
+				} catch (Throwable t) {
+					String msgDesc = "initConnection: Unable to connect to Hive Thrift Server instance, "
+							+ "please provide valid value of field : {jdbc.driverClassName}.";
+					HadoopException hdpException = new HadoopException(msgDesc, t);
+					hdpException.generateResponseDataMap(false, getMessage(t),
+							msgDesc + ERR_MSG, null, "jdbc.driverClassName");
+					if (LOG.isDebugEnabled()) {
+						LOG.debug(msgDesc, hdpException);
+					}
+					throw hdpException;
+				}
+			}
+
+			String decryptedPwd = null;
+			try {
+				decryptedPwd = PasswordUtils.decryptPassword(password);
+			} catch (Exception ex) {
+				LOG.info("Password decryption failed; trying Hive connection with received password string");
+				decryptedPwd = null;
+			} finally {
+				if (decryptedPwd == null) {
+					decryptedPwd = password;
+				}
+			}
+
+			try {
+
+				if (userName == null && password == null) {
+					con = DriverManager.getConnection(url);
+				} else {
+					con = DriverManager.getConnection(url, userName, decryptedPwd);
+				}
+			} catch (SQLException e) {
+				String msgDesc = "Unable to connect to Hive Thrift Server instance.";
+				HadoopException hdpException = new HadoopException(msgDesc, e);
+				hdpException.generateResponseDataMap(false, getMessage(e), msgDesc
+						+ ERR_MSG, null, null);
+				if (LOG.isDebugEnabled()) {
 					LOG.debug(msgDesc, hdpException);
 				}
 				throw hdpException;
 			} catch (SecurityException se) {
-				String msgDesc = "initConnection: unable to initiate connection to hive thrift server instance,"
-						+ " The caller's class loader is not the same as or an ancestor "
-						+ "of the class loader for the current class and invocation of "
-						+ "s.checkPackageAccess() denies access to the package of this class.";
+				String msgDesc = "Unable to connect to Hive Thrift Server instance.";
 				HadoopException hdpException = new HadoopException(msgDesc, se);
-				hdpException.generateResponseDataMap(false, getMessage(se),
-						msgDesc + errMsg, null, null);
-				if ( LOG.isDebugEnabled()) {
+				hdpException.generateResponseDataMap(false, getMessage(se), msgDesc
+						+ ERR_MSG, null, null);
+				if (LOG.isDebugEnabled()) {
 					LOG.debug(msgDesc, hdpException);
 				}
 				throw hdpException;
-			} catch (Throwable t) {
-				String msgDesc = "initConnection: Unable to connect to Hive Thrift Server instance, "
-						+ "please provide valid value of field : {jdbc.driverClassName}.";
+			} catch ( Throwable t) {
+				String msgDesc = "Unable to connect to Hive Thrift Server instance";
 				HadoopException hdpException = new HadoopException(msgDesc, t);
 				hdpException.generateResponseDataMap(false, getMessage(t),
-						msgDesc + errMsg, null, "jdbc.driverClassName");
-				if ( LOG.isDebugEnabled()) {
+						msgDesc + ERR_MSG, null, url);
+				if (LOG.isDebugEnabled()) {
 					LOG.debug(msgDesc, hdpException);
 				}
-				throw hdpException;
+		        throw hdpException;
 			}
-		}
-		
-		try {
-			
-			if (userName == null && password == null) {
-				con = DriverManager.getConnection(url);
-			}
-			else {			
-				con = DriverManager.getConnection(url, userName, password);
-			}
-		
-		} catch (SQLException e) {
-			String msgDesc = "Unable to connect to Hive Thrift Server instance.";
-			HadoopException hdpException = new HadoopException(msgDesc, e);
-			hdpException.generateResponseDataMap(false, getMessage(e), msgDesc
-					+ errMsg, null, null);
-			if ( LOG.isDebugEnabled()) {
-				LOG.debug(msgDesc, hdpException);
-			}
-			throw hdpException;
-		} catch (SecurityException se) {
-			String msgDesc = "Unable to connect to Hive Thrift Server instance.";
-			HadoopException hdpException = new HadoopException(msgDesc, se);
-			hdpException.generateResponseDataMap(false, getMessage(se), msgDesc
-					+ errMsg, null, null);
-			if ( LOG.isDebugEnabled()) {
-				LOG.debug(msgDesc, hdpException);
-			}
-			throw hdpException;
-		} catch ( Throwable t) {
-			String msgDesc = "Unable to connect to Hive Thrift Server instance";
-			HadoopException hdpException = new HadoopException(msgDesc, t);
-			hdpException.generateResponseDataMap(false, getMessage(t),
-					msgDesc + errMsg, null, url);
-			if ( LOG.isDebugEnabled()) {
-				LOG.debug(msgDesc, hdpException);
-			}
-	        throw hdpException;
 		}
 	}
 
@@ -581,7 +780,7 @@ public class HiveClient extends BaseClient implements Closeable {
 				}
 				else {
 					if (CollectionUtils.isNotEmpty(dbList)) {
-						for (String str : dbList ) {
+						for (String str : dbList) {
 							System.out.println("database: " + str );
 						}
 					}
@@ -591,9 +790,8 @@ public class HiveClient extends BaseClient implements Closeable {
 				List<String> tableList = hc.getTableList(args[2],null,null);
 				if (tableList.size() == 0) {
 					System.out.println("No tables found under database[" + args[1] + "] with table filter [" + args[2] + "]");
-				}
-				else {
-					for(String str : tableList) {
+				} else {
+					for (String str : tableList) {
 						System.out.println("Table: " + str);
 					}
 				}
@@ -602,9 +800,8 @@ public class HiveClient extends BaseClient implements Closeable {
 				List<String> columnList = hc.getColumnList(args[3],null,null,null);
 				if (columnList.size() == 0) {
 					System.out.println("No columns found for db:" + args[1] + ", table: [" + args[2] + "], with column filter [" + args[3] + "]");
-				}
-				else {
-					for (String str : columnList ) {
+				} else {
+					for (String str : columnList) {
 						System.out.println("Column: " + str);
 					}
 				}
@@ -620,14 +817,11 @@ public class HiveClient extends BaseClient implements Closeable {
 		}	
 	}
 
-	public static HashMap<String, Object> connectionTest(String serviceName,
+	public static Map<String, Object> connectionTest(String serviceName,
 			Map<String, String> connectionProperties) throws Exception {
 		HiveClient connectionObj = null;
-		HashMap<String, Object> responseData = new HashMap<String, Object>();
+		Map<String, Object> responseData = new HashMap<String, Object>();
 		boolean connectivityStatus = false;
-		String errMsg = " You can still save the repository and start creating "
-				+ "policies, but you would not be able to use autocomplete for "
-				+ "resource names. Check ranger_admin.log for more info.";
 		List<String> testResult = null;
 		try {
 			connectionObj = new HiveClient(serviceName,	connectionProperties);
@@ -642,14 +836,14 @@ public class HiveClient extends BaseClient implements Closeable {
 						null, null, responseData);
 				} else {
 					String failureMsg = "Unable to retrieve any databases using given parameters.";
-					generateResponseDataMap(connectivityStatus, failureMsg, failureMsg + errMsg,
+					generateResponseDataMap(connectivityStatus, failureMsg, failureMsg + ERR_MSG,
 						null, null, responseData);
 				}
 			}
-		} catch ( Exception e) {
+		} catch (Exception e) {
 			throw e;
-		} finally  {
-			if ( connectionObj != null) {
+		} finally {
+			if (connectionObj != null) {
 				connectionObj.close();
 			}
 		}

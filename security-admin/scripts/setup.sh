@@ -42,19 +42,13 @@ get_prop(){
         fi
 }
 
-PROPFILE=$PWD/install.properties
+PROPFILE=${RANGER_ADMIN_CONF:-$PWD}/install.properties
 if [ ! -f "${PROPFILE}" ]; then
     echo "$PROPFILE file not found....!!"
     exit 1;
 fi
 
 LOGFILE=$(eval echo " $(get_prop 'LOGFILE' $PROPFILE)")
-pidFolderName='/var/run/ranger'
-mkdir -p ${pidFolderName}
-if [ ! $? = "0" ];then
-    log "Make $pidFolderName failure....!!";
-    exit 1;
-fi
 
 PYTHON_COMMAND_INVOKER=$(get_prop 'PYTHON_COMMAND_INVOKER' $PROPFILE)
 DB_FLAVOR=$(get_prop 'DB_FLAVOR' $PROPFILE)
@@ -77,9 +71,6 @@ audit_solr_urls=$(get_prop 'audit_solr_urls' $PROPFILE)
 audit_solr_user=$(get_prop 'audit_solr_user' $PROPFILE)
 audit_solr_password=$(get_prop 'audit_solr_password' $PROPFILE)
 audit_solr_zookeepers=$(get_prop 'audit_solr_zookeepers' $PROPFILE)
-audit_db_name=''
-audit_db_user=''
-audit_db_password=''
 policymgr_external_url=$(get_prop 'policymgr_external_url' $PROPFILE)
 policymgr_http_enabled=$(get_prop 'policymgr_http_enabled' $PROPFILE)
 policymgr_https_keystore_file=$(get_prop 'policymgr_https_keystore_file' $PROPFILE)
@@ -87,6 +78,7 @@ policymgr_https_keystore_keyalias=$(get_prop 'policymgr_https_keystore_keyalias'
 policymgr_https_keystore_password=$(get_prop 'policymgr_https_keystore_password' $PROPFILE)
 policymgr_supportedcomponents=$(get_prop 'policymgr_supportedcomponents' $PROPFILE)
 unix_user=$(get_prop 'unix_user' $PROPFILE)
+unix_user_pwd=$(get_prop 'unix_user_pwd' $PROPFILE)
 unix_group=$(get_prop 'unix_group' $PROPFILE)
 authentication_method=$(get_prop 'authentication_method' $PROPFILE)
 remoteLoginEnabled=$(get_prop 'remoteLoginEnabled' $PROPFILE)
@@ -165,6 +157,13 @@ check_ret_status_for_groupadd(){
     fi
 }
 
+check_user_pwd(){
+    if [ -z "$1" ]; then
+        log "[E] The unix user password is empty. Please set user password.";
+        exit 1;
+    fi
+}
+
 is_command () {
     log "[I] check if command $1 exists"
     type "$1" >/dev/null
@@ -214,13 +213,6 @@ updatePropertyToFilePy(){
     check_ret_status $? "Update property failed for: " $1
 }
 
-init_logfiles () {
-    for f in $LOGFILES; do
-        touch $f
-    done
-    #log "start date for $0 = `date`"
-}
-
 init_variables(){
 	curDt=`date '+%Y%m%d%H%M%S'`
 	VERSION=`cat ${PWD}/version`
@@ -243,11 +235,7 @@ init_variables(){
 			exit 1
 		fi
 	fi
-	if [ "${audit_store}" == "db" ] ;then
-		audit_db_name=$(get_prop 'audit_db_name' $PROPFILE)
-		audit_db_user=$(get_prop 'audit_db_user' $PROPFILE)
-		audit_db_password=$(get_prop 'audit_db_password' $PROPFILE)
-	fi
+
 	db_ssl_enabled=`echo $db_ssl_enabled | tr '[:upper:]' '[:lower:]'`
 	if [ "${db_ssl_enabled}" != "true" ]
 	then
@@ -303,21 +291,25 @@ check_java_version() {
 		log "[E] JAVA_HOME environment property not defined, aborting installation."
 		exit 1
 	fi
-
         export JAVA_BIN=${JAVA_HOME}/bin/java
 
 	if is_command ${JAVA_BIN} ; then
 		log "[I] '${JAVA_BIN}' command found"
 	else
-               log "[E] '${JAVA_BIN}' command not found"
-               exit 1;
+        log "[E] '${JAVA_BIN}' command not found"
+        exit 1;
 	fi
 
 	version=$("$JAVA_BIN" -version 2>&1 | awk -F '"' '/version/ {print $2}')
 	major=`echo ${version} | cut -d. -f1`
 	minor=`echo ${version} | cut -d. -f2`
-	if [[ "${major}" == 1 && "${minor}" < 7 ]] ; then
-		log "[E] Java 1.7 is required, current java version is $version"
+	current_java_version="$major.$minor"
+	num_current_java_version=`echo $current_java_version|awk ' { printf("%3.2f\n", $0); } '`
+	JAVA_VERSION_REQUIRED=`echo $JAVA_VERSION_REQUIRED | awk '{gsub(/ /,"")}1'`
+	JAVA_VERSION_REQUIRED=`echo $JAVA_VERSION_REQUIRED | awk '{gsub(/'"'"'/,"")}1'`
+	num_required_java_version=`echo $JAVA_VERSION_REQUIRED|awk ' { printf("%3.2f\n", $0); } '`
+	if [ `echo "$num_current_java_version < $num_required_java_version" | bc` -eq 1 ];then
+		log "[E] The java version must be greater than or equal to $JAVA_VERSION_REQUIRED, the current java version is $version"
 		exit 1;
 	fi
 }
@@ -493,13 +485,6 @@ update_properties() {
 		newPropertyValue="jdbc:log4jdbc:mysql://${DB_HOST}/${db_name}"
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
 
-		if [ "${audit_store}" == "db" ]
-		then
-			propertyName=ranger.jpa.audit.jdbc.url
-			newPropertyValue="jdbc:log4jdbc:mysql://${DB_HOST}/${audit_db_name}"
-			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
-		fi
-
 		propertyName=ranger.jpa.jdbc.dialect
 		newPropertyValue="org.eclipse.persistence.platform.database.MySQLPlatform"
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
@@ -530,12 +515,6 @@ update_properties() {
 		fi
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
 
-		if [ "${audit_store}" == "db" ]
-		then
-			propertyName=ranger.jpa.audit.jdbc.url
-			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
-		fi
-
 		propertyName=ranger.jpa.jdbc.dialect
 		newPropertyValue="org.eclipse.persistence.platform.database.OraclePlatform"
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
@@ -555,20 +534,11 @@ update_properties() {
 	if [ "${DB_FLAVOR}" == "POSTGRES" ]
 	then
 		db_name=`echo ${db_name} | tr '[:upper:]' '[:lower:]'`
-		audit_db_name=`echo ${audit_db_name} | tr '[:upper:]' '[:lower:]'`
 		db_user=`echo ${db_user} | tr '[:upper:]' '[:lower:]'`
-		audit_db_user=`echo ${audit_db_user} | tr '[:upper:]' '[:lower:]'`
 
 		propertyName=ranger.jpa.jdbc.url
 		newPropertyValue="jdbc:postgresql://${DB_HOST}/${db_name}"
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
-
-		if [ "${audit_store}" == "db" ]
-		then
-			propertyName=ranger.jpa.audit.jdbc.url
-			newPropertyValue="jdbc:postgresql://${DB_HOST}/${audit_db_name}"
-			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
-		fi
 
 		propertyName=ranger.jpa.jdbc.dialect
 		newPropertyValue="org.eclipse.persistence.platform.database.PostgreSQLPlatform"
@@ -593,13 +563,6 @@ update_properties() {
 		newPropertyValue="jdbc:sqlserver://${DB_HOST};databaseName=${db_name}"
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
 
-		if [ "${audit_store}" == "db" ]
-		then
-			propertyName=ranger.jpa.audit.jdbc.url
-			newPropertyValue="jdbc:sqlserver://${DB_HOST};databaseName=${audit_db_name}"
-			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
-		fi
-
 		propertyName=ranger.jpa.jdbc.dialect
 		newPropertyValue="org.eclipse.persistence.platform.database.SQLServerPlatform"
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
@@ -622,13 +585,6 @@ update_properties() {
 		propertyName=ranger.jpa.jdbc.url
 		newPropertyValue="jdbc:sqlanywhere:database=${db_name};host=${DB_HOST}"
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
-
-		if [ "${audit_store}" == "db" ]
-		then
-			propertyName=ranger.jpa.audit.jdbc.url
-			newPropertyValue="jdbc:sqlanywhere:database=${audit_db_name};host=${DB_HOST}"
-			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
-		fi
 
 		propertyName=ranger.jpa.jdbc.dialect
 		newPropertyValue="org.eclipse.persistence.platform.database.SQLAnywherePlatform"
@@ -677,12 +633,6 @@ update_properties() {
 	newPropertyValue="${db_user}"
 	updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
 
-	if [ "${audit_store}" == "db" ]
-	then
-		propertyName=ranger.jpa.audit.jdbc.user
-		newPropertyValue="${audit_db_user}"
-		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
-	fi
 	##########
 
 	keystore="${cred_keystore_filename}"
@@ -728,38 +678,6 @@ update_properties() {
 	fi
 
 	###########
-	if [ "${audit_store}" == "db" ]
-	then
-	    audit_db_password_alias=ranger.auditdb.password
-
-	    echo "Starting configuration for Audit DB credentials:"
-
-	    if [ "${keystore}" != "" ]
-	    then
-		$PYTHON_COMMAND_INVOKER ranger_credential_helper.py -l "cred/lib/*" -f "$keystore" -k "$audit_db_password_alias" -v "$audit_db_password" -c 1
-
-			propertyName=ranger.jpa.audit.jdbc.credential.alias
-		newPropertyValue="${audit_db_password_alias}"
-			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
-			propertyName=ranger.jpa.audit.jdbc.password
-		newPropertyValue="_"
-			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
-	    else
-			propertyName=ranger.jpa.audit.jdbc.password
-		newPropertyValue="${audit_db_password}"
-			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
-	    fi
-
-	    if test -f $keystore; then
-		chown -R ${unix_user}:${unix_group} ${keystore}
-		#echo "$keystore found."
-	    else
-		#echo "$keystore not found. so use clear text password"
-			propertyName=ranger.jpa.audit.jdbc.password
-		newPropertyValue="${audit_db_password}"
-			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
-	    fi
-	fi
 	if [ "${audit_store}" == "solr" ]
 	then
 		if [ "${audit_solr_zookeepers}" != "" ]
@@ -1250,20 +1168,46 @@ do_authentication_setup(){
 }
 #=====================================================================
 setup_unix_user_group(){
-	log "[I] Setting up UNIX user : ${unix_user} and group: ${unix_group}";
-    groupadd ${unix_group}
-    check_ret_status_for_groupadd $? "Creating group ${unix_group} failed"
+	log "[I] Setting up UNIX user : ${unix_user} and group: ${unix_group}"
+
+	#create group if it does not exist
+	egrep "^$unix_group" /etc/group >& /dev/null
+	if [ $? -ne 0 ]
+	then
+		groupadd ${unix_group}
+		check_ret_status_for_groupadd $? "Creating group ${unix_group} failed"
+	fi
+
+	#create user if it does not exists
 	id -u ${unix_user} > /dev/null 2>&1
 	if [ $? -ne 0 ]
 	then
-	    log "[I] Creating new user and adding to group";
+		check_user_pwd ${unix_user_pwd}
+	    log "[I] Creating new user and adding to group"
         useradd ${unix_user} -g ${unix_group} -m
 		check_ret_status $? "useradd ${unix_user} failed"
+
+		passwdtmpfile=passwd.tmp
+		if [  -f "$passwdtmpfile" ]; then
+			rm -rf  ${passwdtmpfile}
+		fi
+		cat> ${passwdtmpfile} << EOF
+${unix_user}:${unix_user_pwd}
+EOF
+		chpasswd <  ${passwdtmpfile}
+		rm -rf  ${passwdtmpfile}
 	else
-	    log "[I] User already exists, adding it to group";
-	    usermod -g ${unix_group} ${unix_user}
+	    useringroup=`id ${unix_user}`
+        useringrouparr=(${useringroup// / })
+	    if [[  ${useringrouparr[1]} =~ "(${unix_group})" ]]
+		then
+			log "[I] the ${unix_user} user already exists and belongs to group ${unix_group}"
+		else
+			log "[I] User already exists, adding it to group ${unix_group}"
+			usermod -g ${unix_group} ${unix_user}
+		fi
 	fi
-	log "[I] Setting up UNIX user : ${unix_user} and group: ${unix_group} DONE";
+	log "[I] Setting up UNIX user : ${unix_user} and group: ${unix_group} DONE"
 }
 
 setup_install_files(){
@@ -1285,13 +1229,13 @@ setup_install_files(){
 		if [ "${hadoop_conf}" == "" ]
 		then
 			log "[WARN] Property hadoop_conf not found. Creating blank core-site.xml."
-			echo "<configuration></configuration>" > ${WEBAPP_ROOT}/WEB-INF/classes/conf/core-site.xml
+			echo "<configuration></configuration>" > ${ranger_hadoop_conf_file}
 		else
 			if [ -f ${hadoop_conf_file} ]; then
-                                ln -sf ${hadoop_conf_file} ${WEBAPP_ROOT}/WEB-INF/classes/conf/core-site.xml
+                                ln -sf ${hadoop_conf_file} ${ranger_hadoop_conf_file}
                         else
                                 log "[WARN] core-site.xml file not found in provided hadoop_conf path. Creating blank core-site.xml"
-				echo "<configuration></configuration>" > ${WEBAPP_ROOT}/WEB-INF/classes/conf/core-site.xml
+				echo "<configuration></configuration>" > ${ranger_hadoop_conf_file}
                         fi
 		fi
 	fi
@@ -1363,14 +1307,22 @@ setup_install_files(){
         fi
         echo "export RANGER_ADMIN_LOG_DIR=${RANGER_ADMIN_LOG_DIR}" > ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-admin-env-logdir.sh
         chmod a+rx ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-admin-env-logdir.sh
-
+		
+		if [ -z "${RANGER_PID_DIR_PATH}" ]
+		then
+			RANGER_PID_DIR_PATH=/var/run/ranger
+		fi
         if [ ! -d ${RANGER_PID_DIR_PATH} ]; then
-                log "[I]Creating Ranger PID folder: ${RANGER_PID_DIR_PATH}"
-                mkdir -p ${RANGER_PID_DIR_PATH}
+			log "[I]Creating Ranger PID folder: ${RANGER_PID_DIR_PATH}"
+			mkdir -p ${RANGER_PID_DIR_PATH}
+			if [ ! $? = "0" ];then
+				log "Make $RANGER_PID_DIR_PATH failure....!!";
+				exit 1;
+			fi
         fi
-        if [ -d ${RANGER_PID_DIR_PATH} ]; then
-                chown -R ${unix_user} ${RANGER_PID_DIR_PATH}
-        fi
+		
+        chown -R ${unix_user} ${RANGER_PID_DIR_PATH}
+		
         echo "export RANGER_PID_DIR_PATH=${RANGER_PID_DIR_PATH}" > ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-admin-env-piddir.sh
         echo "export RANGER_USER=${unix_user}" >> ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-admin-env-piddir.sh
         chmod a+rx ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-admin-env-piddir.sh
@@ -1405,7 +1357,6 @@ setup_install_files(){
 	fi
 }
 
-init_logfiles
 log " --------- Running Ranger PolicyManager Web Application Install Script --------- "
 log "[I] uname=`uname`"
 log "[I] hostname=`hostname`"
@@ -1421,24 +1372,29 @@ check_python_command
 run_dba_steps
 if [ "$?" == "0" ]
 then
-update_properties
-do_authentication_setup
+	update_properties
+	do_authentication_setup
 else
 	log "[E] DB schema setup failed! Please contact Administrator."
 	exit 1
 fi
 if [ "$?" == "0" ]
 then
-echo "ln -sf ${WEBAPP_ROOT}/WEB-INF/classes/conf ${INSTALL_DIR}/conf"
-ln -sf ${WEBAPP_ROOT}/WEB-INF/classes/conf ${INSTALL_DIR}/conf
+	echo "ln -sf ${WEBAPP_ROOT}/WEB-INF/classes/conf ${INSTALL_DIR}/conf"
+	ln -sf ${WEBAPP_ROOT}/WEB-INF/classes/conf ${INSTALL_DIR}/conf
 else
 	exit 1
 fi
 if [ "$?" == "0" ]
 then
-$PYTHON_COMMAND_INVOKER db_setup.py
+	$PYTHON_COMMAND_INVOKER db_setup.py
+	if [ "$?" == "0" ]
+	then
+		$PYTHON_COMMAND_INVOKER db_setup.py -javapatch
+	else
+		exit 1
+	fi
 else
-        exit 1
+	exit 1
 fi
-$PYTHON_COMMAND_INVOKER db_setup.py -javapatch
 echo "Installation of Ranger PolicyManager Web Application is completed."

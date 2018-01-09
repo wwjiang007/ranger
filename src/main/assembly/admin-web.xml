@@ -74,8 +74,9 @@
               <include>org.apache.hive:hive-service:jar:${hive.version}</include>
               <include>org.apache.hive:hive-exec:jar:${hive.version}</include>
               <include>org.apache.hive:hive-jdbc:jar:${hive.version}</include>
-              <include>org.apache.hive:hive-jdbc:jar:standalone:${hive.version}</include>
               <include>org.apache.hive:hive-metastore:jar:${hive.version}</include>
+              <include>org.apache.thrift:libfb303:jar:${hive.thrift.version}</include>
+              <include>org.apache.thrift:libthrift:jar:${hive.thrift.version}</include>
             </includes>
           </dependencySet>
         </dependencySets>
@@ -199,6 +200,7 @@
                 <outputDirectory>/ews/lib</outputDirectory>
                 <includes>
                     <include>org.apache.tomcat.embed:tomcat-embed*</include>
+                    <include>org.apache.tomcat:tomcat-annotations-api*</include>
                     <include>org.eclipse.jdt.core.compiler:ecj:jar:P20140317-1600</include>
                     <include>log4j:log4j</include>
 		    		<include>org.apache.hadoop:hadoop-auth:jar:${hadoop.version}</include>
@@ -265,7 +267,6 @@
                 <outputDirectory>/jisql/lib</outputDirectory>
                 <unpack>false</unpack>
 				<includes>
-                    <include>net.sourceforge.javacsv:javacsv</include>
                     <include>net.sf.jopt-simple:jopt-simple</include>
 				</includes>
             </dependencySet>
@@ -328,6 +329,19 @@
           </includes>
       </moduleSet>
 
+      <moduleSet>
+          <binaries>
+              <includeDependencies>true</includeDependencies>
+              <outputDirectory>/ews/webapp/WEB-INF/classes/ranger-plugins/sqoop</outputDirectory>
+              <unpack>false</unpack>
+              <directoryMode>755</directoryMode>
+              <fileMode>644</fileMode>
+          </binaries>
+          <includes>
+              <include>org.apache.ranger:ranger-sqoop-plugin</include>
+          </includes>
+      </moduleSet>
+
   </moduleSets>
 
   <fileSets>
@@ -377,7 +391,8 @@
 			<include>ranger_credential_helper.py</include>
 			<include>deleteUserGroupUtil.py</include>
 			<include>changepasswordutil.py</include>
-                        <include>changeusernameutil.py</include>
+                <include>changeusernameutil.py</include>
+                <include>rolebasedusersearchutil.py</include>
 		</includes>
 		<fileMode>544</fileMode>
 	</fileSet>

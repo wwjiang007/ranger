@@ -19,6 +19,7 @@
 
 package org.apache.ranger.plugin.service;
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Hashtable;
 import java.util.Map;
@@ -31,6 +32,7 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.ranger.admin.client.RangerAdminClient;
 import org.apache.ranger.admin.client.RangerAdminRESTClient;
 import org.apache.ranger.authorization.hadoop.config.RangerConfiguration;
+import org.apache.ranger.plugin.model.RangerPolicy;
 import org.apache.ranger.plugin.model.RangerServiceDef;
 import org.apache.ranger.plugin.policyengine.RangerAccessRequest;
 import org.apache.ranger.plugin.policyengine.RangerAccessRequestImpl;
@@ -43,7 +45,7 @@ import org.apache.ranger.plugin.policyengine.RangerPolicyEngineImpl;
 import org.apache.ranger.plugin.policyengine.RangerPolicyEngineOptions;
 import org.apache.ranger.plugin.policyengine.RangerResourceAccessInfo;
 import org.apache.ranger.plugin.policyengine.RangerRowFilterResult;
-import org.apache.ranger.plugin.policyevaluator.RangerPolicyEvaluator;
+import org.apache.ranger.plugin.store.EmbeddedServiceDefsUtil;
 import org.apache.ranger.plugin.util.GrantRevokeRequest;
 import org.apache.ranger.plugin.util.PolicyRefresher;
 import org.apache.ranger.plugin.util.ServicePolicies;
@@ -57,6 +59,7 @@ public class RangerBasePlugin {
 	private String                    serviceType;
 	private String                    appId;
 	private String                    serviceName;
+	private String                    clusterName;
 	private PolicyRefresher           refresher;
 	private RangerPolicyEngine        policyEngine;
 	private RangerPolicyEngineOptions policyEngineOptions = new RangerPolicyEngineOptions();
@@ -76,6 +79,14 @@ public class RangerBasePlugin {
 
 	public String getServiceType() {
 		return serviceType;
+	}
+
+	public String getClusterName() {
+		return clusterName;
+	}
+
+	public void setClusterName(String clusterName) {
+		this.clusterName = clusterName;
 	}
 
 	public RangerServiceDef getServiceDef() {
@@ -101,16 +112,18 @@ public class RangerBasePlugin {
 	public void init() {
 		cleanup();
 
-		RangerConfiguration.getInstance().addResourcesForServiceType(serviceType);
-		RangerConfiguration.getInstance().initAudit(appId);
+		RangerConfiguration configuration = RangerConfiguration.getInstance();
+		configuration.addResourcesForServiceType(serviceType);
+		configuration.initAudit(appId);
 
 		String propertyPrefix    = "ranger.plugin." + serviceType;
-		long   pollingIntervalMs = RangerConfiguration.getInstance().getLong(propertyPrefix + ".policy.pollIntervalMs", 30 * 1000);
-		String cacheDir          = RangerConfiguration.getInstance().get(propertyPrefix + ".policy.cache.dir");
-		serviceName = RangerConfiguration.getInstance().get(propertyPrefix + ".service.name");
+		long   pollingIntervalMs = configuration.getLong(propertyPrefix + ".policy.pollIntervalMs", 30 * 1000);
+		String cacheDir          = configuration.get(propertyPrefix + ".policy.cache.dir");
+		serviceName = configuration.get(propertyPrefix + ".service.name");
+		clusterName = RangerConfiguration.getInstance().get(propertyPrefix + ".ambari.cluster.name", "");
 
-		useForwardedIPAddress = RangerConfiguration.getInstance().getBoolean(propertyPrefix + ".use.x-forwarded-for.ipaddress", false);
-		String trustedProxyAddressString = RangerConfiguration.getInstance().get(propertyPrefix + ".trusted.proxy.ipaddresses");
+		useForwardedIPAddress = configuration.getBoolean(propertyPrefix + ".use.x-forwarded-for.ipaddress", false);
+		String trustedProxyAddressString = configuration.get(propertyPrefix + ".trusted.proxy.ipaddresses");
 		trustedProxyAddresses = StringUtils.split(trustedProxyAddressString, RANGER_TRUSTED_PROXY_IPADDRESSES_SEPARATOR_CHAR);
 		if (trustedProxyAddresses != null) {
 			for (int i = 0; i < trustedProxyAddresses.length; i++) {
@@ -128,12 +141,9 @@ public class RangerBasePlugin {
 			LOG.warn("Ranger plugin will trust RemoteIPAddress and treat first X-Forwarded-Address in the access-request as the clientIPAddress");
 		}
 
-		policyEngineOptions.evaluatorType           = RangerConfiguration.getInstance().get(propertyPrefix + ".policyengine.option.evaluator.type", RangerPolicyEvaluator.EVALUATOR_TYPE_AUTO);
-		policyEngineOptions.cacheAuditResults       = RangerConfiguration.getInstance().getBoolean(propertyPrefix + ".policyengine.option.cache.audit.results", true);
-		policyEngineOptions.disableContextEnrichers = RangerConfiguration.getInstance().getBoolean(propertyPrefix + ".policyengine.option.disable.context.enrichers", false);
-		policyEngineOptions.disableCustomConditions = RangerConfiguration.getInstance().getBoolean(propertyPrefix + ".policyengine.option.disable.custom.conditions", false);
-		policyEngineOptions.disableTagPolicyEvaluation = RangerConfiguration.getInstance().getBoolean(propertyPrefix + ".policyengine.option.disable.tagpolicy.evaluation", false);
-		policyEngineOptions.disableTrieLookupPrefilter = RangerConfiguration.getInstance().getBoolean(propertyPrefix + ".policyengine.option.disable.trie.lookup.prefilter", false);
+		policyEngineOptions.configureForPlugin(configuration, propertyPrefix);
+
+		LOG.info(policyEngineOptions);
 
 		RangerAdminClient admin = createAdminClient(serviceName, appId, propertyPrefix);
 
@@ -141,7 +151,7 @@ public class RangerBasePlugin {
 		refresher.setDaemon(true);
 		refresher.startRefresher();
 
-		long policyReorderIntervalMs = RangerConfiguration.getInstance().getLong(propertyPrefix + ".policy.policyReorderInterval", 60 * 1000);
+		long policyReorderIntervalMs = configuration.getLong(propertyPrefix + ".policy.policyReorderInterval", 60 * 1000);
 		if (policyReorderIntervalMs >= 0 && policyReorderIntervalMs < 15 * 1000) {
 			policyReorderIntervalMs = 15 * 1000;
 		}
@@ -150,12 +160,12 @@ public class RangerBasePlugin {
 			LOG.debug(propertyPrefix + ".policy.policyReorderInterval:" + policyReorderIntervalMs);
 		}
 
-		if (policyReorderIntervalMs > 0) {
+		if (policyEngineOptions.disableTrieLookupPrefilter && policyReorderIntervalMs > 0) {
 			policyEngineRefreshTimer = new Timer("PolicyEngineRefreshTimer", true);
 			try {
 				policyEngineRefreshTimer.schedule(new PolicyEngineRefresher(this), policyReorderIntervalMs, policyReorderIntervalMs);
 				if (LOG.isDebugEnabled()) {
-					LOG.debug("Scheduled PolicyEngineRefresher to reorder policies nbased on number of evaluations in and every " + policyReorderIntervalMs + " milliseconds");
+					LOG.debug("Scheduled PolicyEngineRefresher to reorder policies based on number of evaluations in and every " + policyReorderIntervalMs + " milliseconds");
 				}
 			} catch (IllegalStateException exception) {
 				LOG.error("Error scheduling policyEngineRefresher:", exception);
@@ -163,8 +173,7 @@ public class RangerBasePlugin {
 				policyEngineRefreshTimer = null;
 			}
 		} else {
-			LOG.info("Policies will NOT be reordered based on number of evaluations because "
-					+ propertyPrefix + ".policy.policyReorderInterval is set to a negative number[" + policyReorderIntervalMs +"]");
+			LOG.info("Policies will NOT be reordered based on number of evaluations");
 		}
 	}
 
@@ -174,6 +183,9 @@ public class RangerBasePlugin {
 		try {
 			RangerPolicyEngine oldPolicyEngine = this.policyEngine;
 
+			if (policies == null) {
+				policies = getDefaultSvcPolicies();
+			}
 			if (policies == null) {
 				this.policyEngine = null;
 			} else {
@@ -297,7 +309,7 @@ public class RangerBasePlugin {
 
 	public void grantAccess(GrantRevokeRequest request, RangerAccessResultProcessor resultProcessor) throws Exception {
 		if(LOG.isDebugEnabled()) {
-			LOG.debug("==> RangerAdminRESTClient.grantAccess(" + request + ")");
+			LOG.debug("==> RangerBasePlugin.grantAccess(" + request + ")");
 		}
 
 		PolicyRefresher   refresher = this.refresher;
@@ -317,13 +329,13 @@ public class RangerBasePlugin {
 		}
 
 		if(LOG.isDebugEnabled()) {
-			LOG.debug("<== RangerAdminRESTClient.grantAccess(" + request + ")");
+			LOG.debug("<== RangerBasePlugin.grantAccess(" + request + ")");
 		}
 	}
 
 	public void revokeAccess(GrantRevokeRequest request, RangerAccessResultProcessor resultProcessor) throws Exception {
 		if(LOG.isDebugEnabled()) {
-			LOG.debug("==> RangerAdminRESTClient.revokeAccess(" + request + ")");
+			LOG.debug("==> RangerBasePlugin.revokeAccess(" + request + ")");
 		}
 
 		PolicyRefresher   refresher = this.refresher;
@@ -343,13 +355,13 @@ public class RangerBasePlugin {
 		}
 
 		if(LOG.isDebugEnabled()) {
-			LOG.debug("<== RangerAdminRESTClient.revokeAccess(" + request + ")");
+			LOG.debug("<== RangerBasePlugin.revokeAccess(" + request + ")");
 		}
 	}
 
 	public static RangerAdminClient createAdminClient(String rangerServiceName, String applicationId, String propertyPrefix) {
 		if(LOG.isDebugEnabled()) {
-			LOG.debug("==> RangerAdminRESTClient.createAdminClient(" + rangerServiceName + ", " + applicationId + ", " + propertyPrefix + ")");
+			LOG.debug("==> RangerBasePlugin.createAdminClient(" + rangerServiceName + ", " + applicationId + ", " + propertyPrefix + ")");
 		}
 
 		RangerAdminClient ret = null;
@@ -382,7 +394,7 @@ public class RangerBasePlugin {
 		ret.init(rangerServiceName, applicationId, propertyPrefix);
 
 		if(LOG.isDebugEnabled()) {
-			LOG.debug("<== RangerAdminRESTClient.createAdminClient(" + rangerServiceName + ", " + applicationId + ", " + propertyPrefix + "): policySourceImpl=" + policySourceImpl + ", client=" + ret);
+			LOG.debug("<== RangerBasePlugin.createAdminClient(" + rangerServiceName + ", " + applicationId + ", " + propertyPrefix + "): policySourceImpl=" + policySourceImpl + ", client=" + ret);
 		}
 		return ret;
 	}
@@ -399,6 +411,7 @@ public class RangerBasePlugin {
 			accessRequest.setClientType(request.getClientType());
 			accessRequest.setRequestData(request.getRequestData());
 			accessRequest.setSessionId(request.getSessionId());
+			accessRequest.setClusterName(request.getClusterName());
 
 			// call isAccessAllowed() to determine if audit is enabled or not
 			RangerAccessResult accessResult = isAccessAllowed(accessRequest, null);
@@ -415,7 +428,36 @@ public class RangerBasePlugin {
 			}
 		}
 	}
-	
+
+	public RangerServiceDef getDefaultServiceDef() {
+		RangerServiceDef ret = null;
+
+		if (StringUtils.isNotBlank(serviceType)) {
+			try {
+				ret = EmbeddedServiceDefsUtil.instance().getEmbeddedServiceDef(serviceType);
+			} catch (Exception exp) {
+				LOG.error("Could not get embedded service-def for " + serviceType);
+			}
+		}
+		return ret;
+	}
+
+	private ServicePolicies getDefaultSvcPolicies() {
+		ServicePolicies ret = null;
+
+		RangerServiceDef serviceDef = getServiceDef();
+		if (serviceDef == null) {
+			serviceDef = getDefaultServiceDef();
+		}
+		if (serviceDef != null) {
+			ret = new ServicePolicies();
+			ret.setServiceDef(serviceDef);
+			ret.setServiceName(serviceName);
+			ret.setPolicies(new ArrayList<RangerPolicy>());
+		}
+		return ret;
+	}
+
 	public boolean logErrorMessage(String message) {
 		LogHistory log = logHistoryList.get(message);
 		if (log == null) {

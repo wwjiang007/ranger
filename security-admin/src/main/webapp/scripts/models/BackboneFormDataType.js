@@ -23,6 +23,7 @@ define(function(require) {
 	var Backbone 	= require('backbone');
 	var XAUtils 	= require('utils/XAUtils');
 	var XAEnums		= require('utils/XAEnums');
+	var localization	= require('utils/XALangSupport');
 
 	var FormDataType = Backbone.Model.extend({
 		type : [ 'string', 'boolean', 'int' ],
@@ -33,7 +34,10 @@ define(function(require) {
 			var getResourceConfigs = function(configs){
 				if(XAUtils.isMaskingPolicy(form.model.get('policyType'))){
 					if(XAUtils.isRenderMasking(form.rangerServiceDefModel.get('dataMaskDef'))){
-						configs = form.rangerServiceDefModel.get('dataMaskDef').resources;
+						var resources = form.rangerServiceDefModel.get('dataMaskDef').resources;
+						if(!_.isEmpty(resources)){
+							configs = form.rangerServiceDefModel.get('dataMaskDef').resources;
+						}
 						configs = _.map(configs, function(obj){ obj.type =  'string'; return obj; });
 						return configs;
 					}
@@ -44,6 +48,7 @@ define(function(require) {
 						return configs;
 					}
 				}
+				configs = _.sortBy(configs, function(m){ return m.itemId });
 				return configs;
 			};
 			var getValidators = function(formObj, v){
@@ -75,6 +80,13 @@ define(function(require) {
 						case 'string':
 							if(!isPolicyForm) {
 								formObj.type = 'Text';
+								if(!_.isUndefined(v.uiHint) && !_.isEmpty(v.uiHint)){
+									var UIHint = JSON.parse(v.uiHint);
+									if(!_.isUndefined(UIHint.TextFieldWithIcon) && UIHint.TextFieldWithIcon){
+										formObj.type = 'TextFieldWithIcon';
+										formObj.errorMsg = UIHint.info;
+									}
+								}
 								break;
 							}
 							if($.inArray(v.level, samelevelFieldCreated) >= 0){
@@ -108,19 +120,24 @@ define(function(require) {
 									formObj['resourceOpts'] = resourceOpts; 
 								}
 								//same level resources check
-								var optionsAttrs = [];
+								var optionsAttrs = [] ,parentResource;
 								if(!_.isUndefined(v.level)){
-									optionsAttrs = _.filter(config,function(field){ if(field.level == v.level) return field;})
+									optionsAttrs = _.filter(config,function(field){ 
+										if(field.level == v.level && field.parent == v.parent){
+											return field;	
+										}
+									});
 								}
-								//TODO
-								//if policyType is masking then check for supported resources
-//									if( XAUtils.isMaskingPolicy(form.model.get('policyType')) && optionsAttrs.length > 1 ){
-//										var allResourceNames  = _.map(optionsAttrs, function(m){ return m.name});
-//										var rscNames = allResourceNames.splice(allResourceNames.indexOf(v.name), 1);
-//										if(_.intersection(allResourceNames, rscNames) != rscNames){
-//											optionsAttrs = _.filter(optionsAttrs, function(m){ return $.inArray(m.name, allResourceNames) >= 0;})
-//										}
-//									}
+								var resourceDef = _.findWhere(optionsAttrs,{'name':v.name});
+								//for parent leftnode status
+								if(v.parent){
+									parentResource = _.findWhere(config ,{'name':v.parent});
+								}
+								//show only required resources in acccess policy in order to show their access types
+								if(!_.isUndefined(v.parent) && !_.isEmpty(v.parent)
+										&& parentResource.isValidLeaf){
+									optionsAttrs.unshift({'level':v.level, name:'none',label:'none'});
+								}
 								if(optionsAttrs.length > 1){
 									var optionsTitle = _.map(optionsAttrs,function(field){ return field.name;});
 									formObj['sameLevelOpts'] = optionsTitle;

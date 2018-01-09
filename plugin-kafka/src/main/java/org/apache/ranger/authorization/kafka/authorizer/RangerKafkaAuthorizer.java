@@ -42,12 +42,14 @@ import org.apache.ranger.plugin.policyengine.RangerAccessResourceImpl;
 import org.apache.ranger.plugin.policyengine.RangerAccessResult;
 import org.apache.ranger.plugin.service.RangerBasePlugin;
 
+import org.apache.ranger.plugin.util.RangerPerfTracer;
 import scala.collection.immutable.HashSet;
 import scala.collection.immutable.Set;
 
 public class RangerKafkaAuthorizer implements Authorizer {
 	private static final Log logger = LogFactory
 			.getLog(RangerKafkaAuthorizer.class);
+	private static final Log PERF_KAFKAAUTH_REQUEST_LOG = RangerPerfTracer.getPerfLogger("kafkaauth.request");
 
 	public static final String KEY_TOPIC = "topic";
 	public static final String KEY_CLUSTER = "cluster";
@@ -130,11 +132,14 @@ public class RangerKafkaAuthorizer implements Authorizer {
 			return true;
 		}
 
+		RangerPerfTracer perf = null;
+
+		if(RangerPerfTracer.isPerfTraceEnabled(PERF_KAFKAAUTH_REQUEST_LOG)) {
+			perf = RangerPerfTracer.getPerfTracer(PERF_KAFKAAUTH_REQUEST_LOG, "RangerKafkaAuthorizer.authorize(resource=" + resource + ")");
+		}
 		String userName = null;
 		if (session.principal() != null) {
 			userName = session.principal().getName();
-			userName = StringUtils.substringBefore(userName, "/");
-			userName = StringUtils.substringBefore(userName, "@");
 		}
 		java.util.Set<String> userGroups = MiscUtil
 				.getGroupsForRequestUser(userName);
@@ -160,6 +165,7 @@ public class RangerKafkaAuthorizer implements Authorizer {
 			validationStr += "Unsupported access type. operation=" + operation;
 		}
 		String action = accessType;
+		String clusterName = rangerPlugin.getClusterName();
 
 		RangerAccessRequestImpl rangerRequest = new RangerAccessRequestImpl();
 		rangerRequest.setUser(userName);
@@ -172,6 +178,7 @@ public class RangerKafkaAuthorizer implements Authorizer {
 		rangerRequest.setAccessType(accessType);
 		rangerRequest.setAction(action);
 		rangerRequest.setRequestData(resource.name());
+		rangerRequest.setClusterName(clusterName);
 
 		if (resource.resourceType().equals(Topic$.MODULE$)) {
 			rangerResource.setValue(KEY_TOPIC, resource.name());
@@ -204,6 +211,8 @@ public class RangerKafkaAuthorizer implements Authorizer {
 						+ rangerRequest, t);
 			}
 		}
+		RangerPerfTracer.log(perf);
+
 		if (logger.isDebugEnabled()) {
 			logger.debug("rangerRequest=" + rangerRequest + ", return="
 					+ returnValue);

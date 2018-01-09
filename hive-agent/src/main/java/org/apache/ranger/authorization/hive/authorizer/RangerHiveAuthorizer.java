@@ -36,8 +36,15 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.hive.common.FileUtils;
 import org.apache.hadoop.hive.conf.HiveConf;
+import org.apache.hadoop.hive.metastore.IMetaStoreClient;
+import org.apache.hadoop.hive.metastore.api.HiveObjectPrivilege;
+import org.apache.hadoop.hive.metastore.api.HiveObjectRef;
+import org.apache.hadoop.hive.metastore.api.PrincipalType;
+import org.apache.hadoop.hive.metastore.api.PrivilegeGrantInfo;
+import org.apache.hadoop.hive.ql.metadata.HiveException;
 import org.apache.hadoop.hive.ql.parse.SemanticException;
 import org.apache.hadoop.hive.ql.security.HiveAuthenticationProvider;
+import org.apache.hadoop.hive.ql.security.authorization.AuthorizationUtils;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveAccessControlException;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveAuthzContext;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveAuthzPluginException;
@@ -46,6 +53,7 @@ import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveMetastoreClie
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveOperationType;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrincipal;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrivilege;
+import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrivilegeInfo;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrivilegeObject;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrivilegeObject.HivePrivObjectActionType;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrivilegeObject.HivePrivilegeObjectType;
@@ -66,10 +74,13 @@ import org.apache.ranger.plugin.util.RangerAccessRequestUtil;
 
 import com.google.common.collect.Sets;
 
+import org.apache.ranger.plugin.util.RangerPerfTracer;
 import org.apache.ranger.plugin.util.RangerRequestedResources;
 
 public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 	private static final Log LOG = LogFactory.getLog(RangerHiveAuthorizer.class);
+
+	private static final Log PERF_HIVEAUTH_REQUEST_LOG = RangerPerfTracer.getPerfLogger("hiveauth.request");
 
 	private static final char COLUMN_SEP = ',';
 
@@ -142,6 +153,7 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 		try {
 			RangerHiveResource resource = getHiveResource(HiveOperationType.GRANT_PRIVILEGE, hivePrivObject);
 			GrantRevokeRequest request  = createGrantRevokeData(resource, hivePrincipals, hivePrivileges, grantorPrincipal, grantOption);
+			request.setClusterName(hivePlugin.getClusterName());
 
 			LOG.info("grantPrivileges(): " + request);
 			if(LOG.isDebugEnabled()) {
@@ -182,6 +194,7 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 		try {
 			RangerHiveResource resource = getHiveResource(HiveOperationType.REVOKE_PRIVILEGE, hivePrivObject);
 			GrantRevokeRequest request  = createGrantRevokeData(resource, hivePrincipals, hivePrivileges, grantorPrincipal, grantOption);
+			request.setClusterName(hivePlugin.getClusterName());
 
 			LOG.info("revokePrivileges(): " + request);
 			if(LOG.isDebugEnabled()) {
@@ -219,10 +232,13 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 
 		RangerHiveAuditHandler auditHandler = new RangerHiveAuditHandler();
 
+		RangerPerfTracer perf = null;
+
 		try {
 			HiveAuthzSessionContext sessionContext = getHiveAuthzSessionContext();
 			String                  user           = ugi.getShortUserName();
 			Set<String>             groups         = Sets.newHashSet(ugi.getGroupNames());
+			String clusterName = hivePlugin.getClusterName();
 
 			if(LOG.isDebugEnabled()) {
 				LOG.debug(toString(hiveOpType, inputHObjs, outputHObjs, context, sessionContext));
@@ -232,6 +248,10 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 				handleDfsCommand(hiveOpType, inputHObjs, user, auditHandler);
 
 				return;
+			}
+
+			if(RangerPerfTracer.isPerfTraceEnabled(PERF_HIVEAUTH_REQUEST_LOG)) {
+				perf = RangerPerfTracer.getPerfTracer(PERF_HIVEAUTH_REQUEST_LOG, "RangerHiveAuthorizer.checkPrivileges(hiveOpType=" + hiveOpType + ")");
 			}
 
 			List<RangerHiveAccessRequest> requests = new ArrayList<RangerHiveAccessRequest>();
@@ -244,9 +264,11 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 						continue;
 					}
 
-					if(resource.getObjectType() == HiveObjectType.URI) {
-						String   path       = hiveObj.getObjectName();
-						FsAction permission = FsAction.READ;
+					String 	path         		= hiveObj.getObjectName();
+					HiveObjectType hiveObjType  = resource.getObjectType();
+
+					if(hiveObjType == HiveObjectType.URI && isPathInFSScheme(path)) {
+						FsAction permission = getURIAccessType(hiveOpType);
 
 						if(!isURIAccessAllowed(user, permission, path, getHiveConf())) {
 							throw new HiveAccessControlException(String.format("Permission denied: user [%s] does not have [%s] privilege on [%s]", user, permission.name(), path));
@@ -255,14 +277,14 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 						continue;
 					}
 
-					HiveAccessType accessType = getAccessType(hiveObj, hiveOpType, true);
+					HiveAccessType accessType = getAccessType(hiveObj, hiveOpType, hiveObjType, true);
 
 					if(accessType == HiveAccessType.NONE) {
 						continue;
 					}
 
 					if(!existsByResourceAndAccessType(requests, resource, accessType)) {
-						RangerHiveAccessRequest request = new RangerHiveAccessRequest(resource, user, groups, hiveOpType, accessType, context, sessionContext);
+						RangerHiveAccessRequest request = new RangerHiveAccessRequest(resource, user, groups, hiveOpType, accessType, context, sessionContext, clusterName);
 
 						requests.add(request);
 					}
@@ -271,7 +293,7 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 				// this should happen only for SHOWDATABASES
 				if (hiveOpType == HiveOperationType.SHOWDATABASES) {
 					RangerHiveResource resource = new RangerHiveResource(HiveObjectType.DATABASE, null);
-					RangerHiveAccessRequest request = new RangerHiveAccessRequest(resource, user, groups, hiveOpType.name(), HiveAccessType.USE, context, sessionContext);
+					RangerHiveAccessRequest request = new RangerHiveAccessRequest(resource, user, groups, hiveOpType.name(), HiveAccessType.USE, context, sessionContext, clusterName);
 					requests.add(request);
 				} else {
 					if (LOG.isDebugEnabled()) {
@@ -288,9 +310,11 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 						continue;
 					}
 
-					if(resource.getObjectType() == HiveObjectType.URI) {
-						String   path       = hiveObj.getObjectName();
-						FsAction permission = FsAction.WRITE;
+					String   path       = hiveObj.getObjectName();
+					HiveObjectType hiveObjType  = resource.getObjectType();
+
+					if(hiveObjType == HiveObjectType.URI  && isPathInFSScheme(path)) {
+						FsAction permission = getURIAccessType(hiveOpType);
 
 		                if(!isURIAccessAllowed(user, permission, path, getHiveConf())) {
 		    				throw new HiveAccessControlException(String.format("Permission denied: user [%s] does not have [%s] privilege on [%s]", user, permission.name(), path));
@@ -299,14 +323,14 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 						continue;
 					}
 
-					HiveAccessType accessType = getAccessType(hiveObj, hiveOpType, false);
+					HiveAccessType accessType = getAccessType(hiveObj, hiveOpType, hiveObjType, false);
 
 					if(accessType == HiveAccessType.NONE) {
 						continue;
 					}
 
 					if(!existsByResourceAndAccessType(requests, resource, accessType)) {
-						RangerHiveAccessRequest request = new RangerHiveAccessRequest(resource, user, groups, hiveOpType, accessType, context, sessionContext);
+						RangerHiveAccessRequest request = new RangerHiveAccessRequest(resource, user, groups, hiveOpType, accessType, context, sessionContext, clusterName);
 
 						requests.add(request);
 					}
@@ -404,15 +428,16 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 					}
 				}
 
-				if(result != null && !result.getIsAllowed()) {
+				if(result == null || !result.getIsAllowed()) {
 					String path = resource.getAsString();
-					path = buildPathForException(path,hiveOpType);
+					path = (path == null) ? "Unknown resource!!" : buildPathForException(path, hiveOpType);
 					throw new HiveAccessControlException(String.format("Permission denied: user [%s] does not have [%s] privilege on [%s]",
 														 user, request.getHiveAccessType().name(), path));
 				}
 			}
 		} finally {
 			auditHandler.flushAudit();
+			RangerPerfTracer.log(perf);
 		}
 	}
 
@@ -432,7 +457,13 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 		if (LOG.isDebugEnabled()) {
 			LOG.debug(String.format("==> filterListCmdObjects(%s, %s)", objs, context));
 		}
-		
+
+		RangerPerfTracer perf = null;
+
+		if(RangerPerfTracer.isPerfTraceEnabled(PERF_HIVEAUTH_REQUEST_LOG)) {
+			perf = RangerPerfTracer.getPerfTracer(PERF_HIVEAUTH_REQUEST_LOG, "RangerHiveAuthorizer.filterListCmdObjects()");
+		}
+
 		List<HivePrivilegeObject> ret = null;
 
 		// bail out early if nothing is there to validate!
@@ -482,7 +513,7 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 				if (resource == null) {
 					LOG.error("filterListCmdObjects: RangerHiveResource returned by createHiveResource is null");
 				} else {
-					RangerHiveAccessRequest request = new RangerHiveAccessRequest(resource, user, groups, context, sessionContext);
+					RangerHiveAccessRequest request = new RangerHiveAccessRequest(resource, user, groups, context, sessionContext, hivePlugin.getClusterName());
 					RangerAccessResult result = hivePlugin.isAccessAllowed(request);
 					if (result == null) {
 						LOG.error("filterListCmdObjects: Internal error: null RangerAccessResult object received back from isAccessAllowed()!");
@@ -502,6 +533,8 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 			}
 		}
 
+		RangerPerfTracer.log(perf);
+
 		if (LOG.isDebugEnabled()) {
 			int count = ret == null ? 0 : ret.size();
 			LOG.debug(String.format("<== filterListCmdObjects: count[%d], ret[%s]", count, ret));
@@ -515,6 +548,12 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("==> applyRowFilterAndColumnMasking(" + queryContext + ", objCount=" + hiveObjs.size() + ")");
+		}
+
+		RangerPerfTracer perf = null;
+
+		if(RangerPerfTracer.isPerfTraceEnabled(PERF_HIVEAUTH_REQUEST_LOG)) {
+			perf = RangerPerfTracer.getPerfTracer(PERF_HIVEAUTH_REQUEST_LOG, "RangerHiveAuthorizer.applyRowFilterAndColumnMasking()");
 		}
 
 		if(CollectionUtils.isNotEmpty(hiveObjs)) {
@@ -568,6 +607,8 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 				}
 			}
 		}
+
+		RangerPerfTracer.log(perf);
 
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("<== applyRowFilterAndColumnMasking(" + queryContext + ", objCount=" + hiveObjs.size() + "): retCount=" + ret.size());
@@ -637,8 +678,9 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 			String                  user           = ugi.getShortUserName();
 			Set<String>             groups         = Sets.newHashSet(ugi.getGroupNames());
 			HiveObjectType          objectType     = HiveObjectType.TABLE;
+			String 					clusterName    = hivePlugin.getClusterName();
 			RangerHiveResource      resource       = new RangerHiveResource(objectType, databaseName, tableOrViewName);
-			RangerHiveAccessRequest request        = new RangerHiveAccessRequest(resource, user, groups, objectType.name(), HiveAccessType.SELECT, context, sessionContext);
+			RangerHiveAccessRequest request        = new RangerHiveAccessRequest(resource, user, groups, objectType.name(), HiveAccessType.SELECT, context, sessionContext, clusterName);
 
 			RangerRowFilterResult result = hivePlugin.evalRowFilterPolicies(request, auditHandler);
 
@@ -659,6 +701,7 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 	private boolean addCellValueTransformerAndCheckIfTransformed(HiveAuthzContext context, String databaseName, String tableOrViewName, String columnName, List<String> columnTransformers) throws SemanticException {
 		UserGroupInformation ugi = getCurrentUserGroupInfo();
 
+		String clusterName = hivePlugin.getClusterName();
 		if(ugi == null) {
 			throw new SemanticException("user information not available");
 		}
@@ -678,7 +721,7 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 			Set<String>             groups         = Sets.newHashSet(ugi.getGroupNames());
 			HiveObjectType          objectType     = HiveObjectType.COLUMN;
 			RangerHiveResource      resource       = new RangerHiveResource(objectType, databaseName, tableOrViewName, columnName);
-			RangerHiveAccessRequest request        = new RangerHiveAccessRequest(resource, user, groups, objectType.name(), HiveAccessType.SELECT, context, sessionContext);
+			RangerHiveAccessRequest request        = new RangerHiveAccessRequest(resource, user, groups, objectType.name(), HiveAccessType.SELECT, context, sessionContext, clusterName);
 
 			RangerDataMaskResult result = hivePlugin.evalDataMaskPolicies(request, auditHandler);
 
@@ -794,6 +837,9 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 
 	private HiveObjectType getObjectType(HivePrivilegeObject hiveObj, HiveOperationType hiveOpType) {
 		HiveObjectType objType = HiveObjectType.NONE;
+		if (hiveObj.getType() == null) {
+			return HiveObjectType.DATABASE;
+		}
 
 		switch(hiveObj.getType()) {
 			case DATABASE:
@@ -837,10 +883,22 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 
 		return objType;
 	}
-	
-	private HiveAccessType getAccessType(HivePrivilegeObject hiveObj, HiveOperationType hiveOpType, boolean isInput) {
+
+	private HiveAccessType getAccessType(HivePrivilegeObject hiveObj, HiveOperationType hiveOpType, HiveObjectType hiveObjectType, boolean isInput) {
 		HiveAccessType           accessType       = HiveAccessType.NONE;
 		HivePrivObjectActionType objectActionType = hiveObj.getActionType();
+
+		// This is for S3 read operation
+		if (hiveObjectType == HiveObjectType.URI && isInput ) {
+			accessType = HiveAccessType.READ;
+			return accessType;
+		}
+		// This is for S3 write
+		if (hiveObjectType == HiveObjectType.URI && !isInput ) {
+			accessType = HiveAccessType.WRITE;
+			return accessType;
+		}
+
 		switch(objectActionType) {
 			case INSERT:
 			case INSERT_OVERWRITE:
@@ -888,6 +946,8 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 				case ALTERTABLE_CLUSTER_SORT:
 				case ALTERTABLE_COMPACT:
 				case ALTERTABLE_DROPPARTS:
+				case ALTERTABLE_DROPCONSTRAINT:
+				case ALTERTABLE_ADDCONSTRAINT:
 				case ALTERTABLE_FILEFORMAT:
 				case ALTERTABLE_LOCATION:
 				case ALTERTABLE_MERGEFILES:
@@ -1030,6 +1090,141 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 		return accessType;
 	}
 
+	private FsAction getURIAccessType(HiveOperationType hiveOpType) {
+		FsAction ret = FsAction.NONE;
+
+		switch(hiveOpType) {
+			case LOAD:
+			case IMPORT:
+				ret = FsAction.READ;
+			break;
+
+			case EXPORT:
+				ret = FsAction.WRITE;
+			break;
+
+			case CREATEDATABASE:
+			case CREATETABLE:
+			case CREATETABLE_AS_SELECT:
+			case ALTERDATABASE:
+			case ALTERDATABASE_OWNER:
+			case ALTERTABLE_ADDCOLS:
+			case ALTERTABLE_REPLACECOLS:
+			case ALTERTABLE_RENAMECOL:
+			case ALTERTABLE_RENAMEPART:
+			case ALTERTABLE_RENAME:
+			case ALTERTABLE_DROPPARTS:
+			case ALTERTABLE_ADDPARTS:
+			case ALTERTABLE_TOUCH:
+			case ALTERTABLE_ARCHIVE:
+			case ALTERTABLE_UNARCHIVE:
+			case ALTERTABLE_PROPERTIES:
+			case ALTERTABLE_SERIALIZER:
+			case ALTERTABLE_PARTCOLTYPE:
+			case ALTERTABLE_DROPCONSTRAINT:
+			case ALTERTABLE_ADDCONSTRAINT:
+			case ALTERTABLE_SERDEPROPERTIES:
+			case ALTERTABLE_CLUSTER_SORT:
+			case ALTERTABLE_BUCKETNUM:
+			case ALTERTABLE_UPDATETABLESTATS:
+			case ALTERTABLE_UPDATEPARTSTATS:
+			case ALTERTABLE_PROTECTMODE:
+			case ALTERTABLE_FILEFORMAT:
+			case ALTERTABLE_LOCATION:
+			case ALTERINDEX_PROPS:
+			case ALTERTABLE_MERGEFILES:
+			case ALTERTABLE_SKEWED:
+			case ALTERTABLE_COMPACT:
+			case ALTERTABLE_EXCHANGEPARTITION:
+			case ALTERPARTITION_SERIALIZER:
+			case ALTERPARTITION_SERDEPROPERTIES:
+			case ALTERPARTITION_BUCKETNUM:
+			case ALTERPARTITION_PROTECTMODE:
+			case ALTERPARTITION_FILEFORMAT:
+			case ALTERPARTITION_LOCATION:
+			case ALTERPARTITION_MERGEFILES:
+			case ALTERTBLPART_SKEWED_LOCATION:
+				ret = FsAction.ALL;
+				break;
+
+			case EXPLAIN:
+			case DROPDATABASE:
+			case SWITCHDATABASE:
+			case LOCKDB:
+			case UNLOCKDB:
+			case DROPTABLE:
+			case DESCTABLE:
+			case DESCFUNCTION:
+			case MSCK:
+			case ANALYZE_TABLE:
+			case CACHE_METADATA:
+			case SHOWDATABASES:
+			case SHOWTABLES:
+			case SHOWCOLUMNS:
+			case SHOW_TABLESTATUS:
+			case SHOW_TBLPROPERTIES:
+			case SHOW_CREATEDATABASE:
+			case SHOW_CREATETABLE:
+			case SHOWFUNCTIONS:
+			case SHOWINDEXES:
+			case SHOWPARTITIONS:
+			case SHOWLOCKS:
+			case SHOWCONF:
+			case CREATEFUNCTION:
+			case DROPFUNCTION:
+			case RELOADFUNCTION:
+			case CREATEMACRO:
+			case DROPMACRO:
+			case CREATEVIEW:
+			case DROPVIEW:
+			case CREATEINDEX:
+			case DROPINDEX:
+			case ALTERINDEX_REBUILD:
+			case ALTERVIEW_PROPERTIES:
+			case DROPVIEW_PROPERTIES:
+			case LOCKTABLE:
+			case UNLOCKTABLE:
+			case CREATEROLE:
+			case DROPROLE:
+			case GRANT_PRIVILEGE:
+			case REVOKE_PRIVILEGE:
+			case SHOW_GRANT:
+			case GRANT_ROLE:
+			case REVOKE_ROLE:
+			case SHOW_ROLES:
+			case SHOW_ROLE_GRANT:
+			case SHOW_ROLE_PRINCIPALS:
+			case TRUNCATETABLE:
+			case QUERY:
+			case DESCDATABASE:
+			case ALTERVIEW_RENAME:
+			case ALTERVIEW_AS:
+			case SHOW_COMPACTIONS:
+			case SHOW_TRANSACTIONS:
+			case ABORT_TRANSACTIONS:
+			case SET:
+			case RESET:
+			case DFS:
+			case ADD:
+			case DELETE:
+			case COMPILE:
+			case START_TRANSACTION:
+			case COMMIT:
+			case ROLLBACK:
+			case SET_AUTOCOMMIT:
+			case GET_CATALOGS:
+			case GET_COLUMNS:
+			case GET_FUNCTIONS:
+			case GET_SCHEMAS:
+			case GET_TABLES:
+			case GET_TABLETYPES:
+			case GET_TYPEINFO:
+				break;
+		}
+
+		return ret;
+	}
+
 	private String buildPathForException(String path, HiveOperationType hiveOpType) {
 		String ret  	= path;
 		int endIndex 	= 0;
@@ -1090,6 +1285,23 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 
         return ret;
     }
+
+	private boolean isPathInFSScheme(String uri) {
+		// This is to find if HIVE URI operation done is for hdfs,file scheme
+		// else it may be for s3 which needs another set of authorization calls.
+		boolean ret = false;
+		String[] fsScheme = hivePlugin.getFSScheme();
+		if (fsScheme != null) {
+			for (int i = 0; i < fsScheme.length; i++) {
+				if (!uri.isEmpty() && uri.startsWith(fsScheme[i])) {
+					ret = true;
+					break;
+				}
+			}
+		}
+		return ret;
+	}
+
 
 	private void handleDfsCommand(HiveOperationType         hiveOpType,
 								  List<HivePrivilegeObject> inputHObjs,
@@ -1244,6 +1456,107 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 		return ret;
 	}
 
+	@Override
+	public List<HivePrivilegeInfo> showPrivileges(HivePrincipal principal,
+			HivePrivilegeObject privObj) throws HiveAuthzPluginException {
+		try {
+
+			LOG.debug("RangerHiveAuthorizer.showPrivileges()");
+			IMetaStoreClient mClient = getMetastoreClientFactory()
+					.getHiveMetastoreClient();
+			List<HivePrivilegeInfo> resPrivInfos = new ArrayList<HivePrivilegeInfo>();
+			String principalName = null;
+			PrincipalType principalType = null;
+			if (principal != null) {
+				principalName = principal.getName();
+				principalType = AuthorizationUtils
+						.getThriftPrincipalType(principal.getType());
+			}
+
+			List<HiveObjectPrivilege> msObjPrivs = mClient.list_privileges(
+					principalName, principalType,
+					this.getThriftHiveObjectRef(privObj));
+			if (msObjPrivs != null) {
+				for (HiveObjectPrivilege msObjPriv : msObjPrivs) {
+					HiveObjectRef msObjRef = msObjPriv.getHiveObject();
+					org.apache.hadoop.hive.metastore.api.HiveObjectType objectType = msObjRef
+							.getObjectType();
+					if (!isSupportedObjectType(objectType)) {
+						continue;
+					}
+					HivePrincipal resPrincipal = new HivePrincipal(
+							msObjPriv.getPrincipalName(),
+							AuthorizationUtils.getHivePrincipalType(msObjPriv
+									.getPrincipalType()));
+
+					PrivilegeGrantInfo msGrantInfo = msObjPriv.getGrantInfo();
+					HivePrivilege resPrivilege = new HivePrivilege(
+							msGrantInfo.getPrivilege(), null);
+
+					HivePrivilegeObject resPrivObj = new HivePrivilegeObject(
+							getPluginPrivilegeObjType(objectType),
+							msObjRef.getDbName(), msObjRef.getObjectName(),
+							msObjRef.getPartValues(), msObjRef.getColumnName());
+
+					HivePrincipal grantorPrincipal = new HivePrincipal(
+							msGrantInfo.getGrantor(),
+							AuthorizationUtils.getHivePrincipalType(msGrantInfo
+									.getGrantorType()));
+
+					HivePrivilegeInfo resPrivInfo = new HivePrivilegeInfo(
+							resPrincipal, resPrivilege, resPrivObj,
+							grantorPrincipal, msGrantInfo.isGrantOption(),
+							msGrantInfo.getCreateTime());
+					resPrivInfos.add(resPrivInfo);
+				}
+
+			} else {
+				throw new HiveAccessControlException(
+						"RangerHiveAuthorizer.showPrivileges():User has to specify"
+								+ " a user name or role in the show grant. ");
+			}
+			return resPrivInfos;
+
+		} catch (Exception e) {
+			LOG.error("RangerHiveAuthorizer.showPrivileges: showPrivileges returned by showPrivileges is null");
+			throw new HiveAuthzPluginException("hive showPrivileges" + ": "
+					+ e.getMessage(), e);
+		}
+	}
+
+	private boolean isSupportedObjectType(
+			org.apache.hadoop.hive.metastore.api.HiveObjectType objectType) {
+		switch (objectType) {
+		case DATABASE:
+		case TABLE:
+			return true;
+		default:
+			return false;
+		}
+
+	}
+
+	private HivePrivilegeObjectType getPluginPrivilegeObjType(
+			org.apache.hadoop.hive.metastore.api.HiveObjectType objectType) {
+		switch (objectType) {
+		case DATABASE:
+			return HivePrivilegeObjectType.DATABASE;
+		case TABLE:
+			return HivePrivilegeObjectType.TABLE_OR_VIEW;
+		default:
+			throw new AssertionError("Unexpected object type " + objectType);
+		}
+	}
+
+	static HiveObjectRef getThriftHiveObjectRef(HivePrivilegeObject privObj)
+			throws HiveAuthzPluginException {
+		try {
+			return AuthorizationUtils.getThriftHiveObjectRef(privObj);
+		} catch (HiveException e) {
+			throw new HiveAuthzPluginException(e);
+		}
+	}
+
 	private RangerRequestedResources buildRequestContextWithAllAccessedResources(List<RangerHiveAccessRequest> requests) {
 
 		RangerRequestedResources requestedResources = new RangerRequestedResources();
@@ -1373,25 +1686,41 @@ public class RangerHiveAuthorizer extends RangerHiveAuthorizerBase {
 }
 
 enum HiveObjectType { NONE, DATABASE, TABLE, VIEW, PARTITION, INDEX, COLUMN, FUNCTION, URI };
-enum HiveAccessType { NONE, CREATE, ALTER, DROP, INDEX, LOCK, SELECT, UPDATE, USE, ALL, ADMIN };
+enum HiveAccessType { NONE, CREATE, ALTER, DROP, INDEX, LOCK, SELECT, UPDATE, USE, READ, WRITE, ALL, ADMIN };
 
 class RangerHivePlugin extends RangerBasePlugin {
-	public static boolean UpdateXaPoliciesOnGrantRevoke             = RangerHadoopConstants.HIVE_UPDATE_RANGER_POLICIES_ON_GRANT_REVOKE_DEFAULT_VALUE;
+	public static boolean UpdateXaPoliciesOnGrantRevoke = RangerHadoopConstants.HIVE_UPDATE_RANGER_POLICIES_ON_GRANT_REVOKE_DEFAULT_VALUE;
 	public static boolean BlockUpdateIfRowfilterColumnMaskSpecified = RangerHadoopConstants.HIVE_BLOCK_UPDATE_IF_ROWFILTER_COLUMNMASK_SPECIFIED_DEFAULT_VALUE;
-	public static String DescribeShowTableAuth						= RangerHadoopConstants.HIVE_DESCRIBE_TABLE_SHOW_COLUMNS_AUTH_OPTION_PROP_DEFAULT_VALUE;
+	public static String DescribeShowTableAuth = RangerHadoopConstants.HIVE_DESCRIBE_TABLE_SHOW_COLUMNS_AUTH_OPTION_PROP_DEFAULT_VALUE;
+
+	private static String RANGER_PLUGIN_HIVE_ULRAUTH_FILESYSTEM_SCHEMES = "ranger.plugin.hive.urlauth.filesystem.schemes";
+	private static String RANGER_PLUGIN_HIVE_ULRAUTH_FILESYSTEM_SCHEMES_DEFAULT = "hdfs:,file:";
+	private static String FILESYSTEM_SCHEMES_SEPARATOR_CHAR = ",";
+	private String[] fsScheme = null;
 
 	public RangerHivePlugin(String appType) {
 		super("hive", appType);
 	}
-	
+
 	@Override
 	public void init() {
 		super.init();
 
-		RangerHivePlugin.UpdateXaPoliciesOnGrantRevoke             = RangerConfiguration.getInstance().getBoolean(RangerHadoopConstants.HIVE_UPDATE_RANGER_POLICIES_ON_GRANT_REVOKE_PROP, RangerHadoopConstants.HIVE_UPDATE_RANGER_POLICIES_ON_GRANT_REVOKE_DEFAULT_VALUE);
+		RangerHivePlugin.UpdateXaPoliciesOnGrantRevoke = RangerConfiguration.getInstance().getBoolean(RangerHadoopConstants.HIVE_UPDATE_RANGER_POLICIES_ON_GRANT_REVOKE_PROP, RangerHadoopConstants.HIVE_UPDATE_RANGER_POLICIES_ON_GRANT_REVOKE_DEFAULT_VALUE);
 		RangerHivePlugin.BlockUpdateIfRowfilterColumnMaskSpecified = RangerConfiguration.getInstance().getBoolean(RangerHadoopConstants.HIVE_BLOCK_UPDATE_IF_ROWFILTER_COLUMNMASK_SPECIFIED_PROP, RangerHadoopConstants.HIVE_BLOCK_UPDATE_IF_ROWFILTER_COLUMNMASK_SPECIFIED_DEFAULT_VALUE);
-		RangerHivePlugin.DescribeShowTableAuth				   	   = RangerConfiguration.getInstance().get(RangerHadoopConstants.HIVE_DESCRIBE_TABLE_SHOW_COLUMNS_AUTH_OPTION_PROP,RangerHadoopConstants.HIVE_DESCRIBE_TABLE_SHOW_COLUMNS_AUTH_OPTION_PROP_DEFAULT_VALUE);
+		RangerHivePlugin.DescribeShowTableAuth = RangerConfiguration.getInstance().get(RangerHadoopConstants.HIVE_DESCRIBE_TABLE_SHOW_COLUMNS_AUTH_OPTION_PROP, RangerHadoopConstants.HIVE_DESCRIBE_TABLE_SHOW_COLUMNS_AUTH_OPTION_PROP_DEFAULT_VALUE);
+
+		String fsSchemesString = RangerConfiguration.getInstance().get(RANGER_PLUGIN_HIVE_ULRAUTH_FILESYSTEM_SCHEMES, RANGER_PLUGIN_HIVE_ULRAUTH_FILESYSTEM_SCHEMES_DEFAULT);
+		fsScheme = StringUtils.split(fsSchemesString, FILESYSTEM_SCHEMES_SEPARATOR_CHAR);
+
+		if (fsScheme != null) {
+			for (int i = 0; i < fsScheme.length; i++) {
+				fsScheme[i] = fsScheme[i].trim();
+			}
+		}
+	}
+
+	public String[] getFSScheme() {
+		return fsScheme;
 	}
 }
-
-

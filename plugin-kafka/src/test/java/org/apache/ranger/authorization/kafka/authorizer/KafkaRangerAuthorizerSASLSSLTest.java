@@ -56,11 +56,12 @@ import kafka.utils.ZkUtils;
  * CustomAuthorizer that enforces some authorization rules:
  * 
  *  - The "IT" group can do anything
- *  - The "public" group can only "read/describe" on the "test" topic, not "write".
+ *  - The "public" group can "read/describe/write" on the "test" topic.
+ *  - The "public" group can only "read/describe" on the "dev" topic, but not write.
  * 
  * Policies available from admin via:
  * 
- * http://localhost:6080/service/plugins/policies/download/KafkaTest
+ * http://localhost:6080/service/plugins/policies/download/cl1_kafka
  * 
  * Clients and services authenticate to Kafka using the SASL SSL protocol as part of this test.
  */

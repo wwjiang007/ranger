@@ -19,7 +19,6 @@
 
 package org.apache.ranger.tagsync.source.atlas;
 
-import org.apache.atlas.typesystem.IReferenceableInstance;
 import org.apache.commons.lang.StringUtils;
 import org.apache.ranger.plugin.model.RangerServiceResource;
 
@@ -28,6 +27,7 @@ import java.util.*;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.ranger.tagsync.process.TagSyncConfig;
+import org.apache.ranger.tagsync.source.atlasrest.RangerAtlasEntity;
 
 public class AtlasResourceMapperUtil {
 	private static final Log LOG = LogFactory.getLog(AtlasResourceMapperUtil.class);
@@ -50,9 +50,9 @@ public class AtlasResourceMapperUtil {
 		return ret;
 	}
 
-	public static RangerServiceResource getRangerServiceResource(IReferenceableInstance atlasEntity) {
+	public static RangerServiceResource getRangerServiceResource(RangerAtlasEntity atlasEntity) {
 		if (LOG.isDebugEnabled()) {
-			LOG.debug("==> getRangerServiceResource(" + atlasEntity.getId()._getId() +")");
+			LOG.debug("==> getRangerServiceResource(" + atlasEntity.getGuid() +")");
 		}
 
 		RangerServiceResource resource = null;
@@ -63,12 +63,12 @@ public class AtlasResourceMapperUtil {
 			try {
 				resource = mapper.buildResource(atlasEntity);
 			} catch (Exception exception) {
-				LOG.error("Could not get serviceResource for atlas entity:" + atlasEntity.getId()._getId() + ": ", exception);
+				LOG.error("Could not get serviceResource for atlas entity:" + atlasEntity.getGuid() + ": ", exception);
 			}
 		}
 
 		if (LOG.isDebugEnabled()) {
-			LOG.debug("<== getRangerServiceResource(" + atlasEntity.getId()._getId() +"): resource=" + resource);
+			LOG.debug("<== getRangerServiceResource(" + atlasEntity.getGuid() +"): resource=" + resource);
 		}
 
 		return resource;

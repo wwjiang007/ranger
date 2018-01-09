@@ -208,8 +208,6 @@ define(function(require) {
 				selectTopologyName				: 'Select Topology Name',
 				selectServiceName				: 'Select Service Name',
 				topologyName					: 'Topology Name',
-				serivceName						: 'Service Name',
-				serivceType						: 'Service Type',
 				ipAddress						: 'IP Address',
 				isVisible                       : 'Visible',
 				delegatedAdmin					: 'Delegate Admin',
@@ -242,7 +240,8 @@ define(function(require) {
                 selectAndAddGroup               : 'Select and Add Group',
                 download                        : 'Download',
                 lastUpdate                      : 'Last Update',
-
+		  		modules		                	: 'Modules',
+				clusterName                     : 'Cluster Name'
 			},
 			btn : {
 				add							: 'Add',
@@ -328,18 +327,39 @@ define(function(require) {
                 topic                       :'Kafka topic.',
                 type                        :'Policy for all type.',
                 udf                         :'Hive udf.',
-                pluginStatus                :'Plugin Status'
+                pluginStatus                :'Plugin Status',
+                clusterName                 :'Name of ambari cluster',
+                url        					:'Hive url.',
+                enabled                     :'enabled',
+                disabled                    :'disabled',
+                Url                         :'Url',
+                recursive                   :'recursive',
+                nonRecursive                :'non-recursive',
+                dataBase                    :'DataBase',
+                exclude                     :'exclude',
+                include                     :'include',
+                yes                         :'Yes',
+                no                          :'No',
+                conditions                  :'Conditions',
+                exAllowCondition            :'Exclude from Allow Conditions',
+                denyCondition               :'Deny Conditions',
+                exDenyCondition             :'Exclude from Deny Conditions',
+                maskingOption               :'Masking Option',
+                masking                     :'Masking',
+                custom                      :'CUSTOM',
+                mask                        :'Mask',
+                rowFilter                   :'Row Filter'
                         },
 			msg : {
 				deletePolicyValidationMsg : 'Policy does not have any settings for the specific resource. Policy will be deleted. Press [Ok] to continue. Press [Cancel] to edit the policy.',
 				areYouSureWantToDelete	  : 'Are you sure want to delete ?',
 				policyDeleteMsg 		  : 'Policy deleted successfully',
 				policyNotAddedMsg		  : 'Policy not added!',
-				addGroupPermission		  : 'Please add permission(s) for the selected Group, else group will not be added.',
+				addGroupPermission		  : 'Please add permission(s) for the selected group, else group will not be added.',
 				addGroup		  		  : 'Please select group for the selected permission(s), else group will not be added.',
-				addUserPermission		  : 'Please add permission(s) for the selected User, else User will not be added.',
-				addUser		  		 	  : 'Please select User for the selected permission(s), else User will not be added.',
-				enterAlteastOneCharactere : 'Enter alteast one character.',
+				addUserPermission		  : 'Please add permission(s) for the selected user, else user will not be added.',
+				addUser		  		 	  : 'Please select user for the selected permission(s), else user will not be added.',
+				enterAlteastOneCharactere : 'Enter at least one character.',
 				permsAlreadyExistForSelectedUser : 'Permission already exists for selected user.',
 				permsAlreadyExistForSelectedGroup : 'Permission already exists for selected group.',
 				youDontHavePermission 	  : 'You don\'t have permission for the resource !!',
@@ -363,7 +383,7 @@ define(function(require) {
 				userUpdatedSucc           :     'User updated successfully',
 				grpUpdatedSucc            : 'Group updated successfully',
 				grpCreatedSucc            : 'Group created successfully',
-				errorLoadingAuditLogs	  : 'Unable to connect to Audit store !!',
+                                errorLoadingAuditLogs	  : 'Error loading audit logs!!',
                 enterCustomMask			  : 'Please enter custom masked value or expression !!',
                 policyNameMsg           :'Enter name of policy.',
                 policyTypeMsg           :'Select Type of policy eg. access, masking, row level filter policies.'    ,
@@ -378,17 +398,25 @@ define(function(require) {
                 resultMsg               :'Search by access result i.e Allowed/Denied logs.',
                 statusMsg               :'Status of Policy Enable/Disable.',
                 columnfamily            :'Hbase column-family',
-                searchForPluginStatus   : "Search for Plugin Status....",
+                searchForPluginStatus   : "Search for your plugin status...",
                 pleaseSelectUser        : 'Please select user.',
                 pleaseSelectGroup       : 'Please select group.',
                 addSelectedUserGroup	: 'Please add selected user/group to permissions else user/group will not be added.',
                 maskingPolicyInfoMsg   	: 'Please ensure that users/groups listed in this policy have access to the column via an <b>Access Policy</b>. This policy does not implicitly grant access to the column.',
+                maskingPolicyInfoMsgForTagBased   	: 'Please ensure that users/groups listed in this policy have access to the tag via an <b>Access Policy</b>. This policy does not implicitly grant access to the tag.',
                 rowFilterPolicyInfoMsg 	: 'Please ensure that users/groups listed in this policy have access to the table via an <b>Access Policy</b>. This policy does not implicitly grant access to the table.',
                 udfPolicyViolation      : '<b> Warning !!</b>  : UDF create is a privileged operation. Please make sure you grant them to only trusted users.',
                 noServiceToExport       :'No service found to export policies.',
                 noServiceToImport       :'No service found to import policies.',
                 noPolicytoExport        :'No policies found to export!',
-                importingFiles          :'Importing policies from file is started...'
+                importingFiles          :'Importing policies from file is started...',
+                noDeleteUserRow           :'Please select user first to delete.',
+                noDeleteGroupRow        :'Please select group first to delete.',
+                plsSelectUserToSetVisibility :' Please select user to set visibility or selected user is already visible/hidden.',
+                plsSelectGroupToSetVisibility:' Please select group to set visibility or selected group is already visible/hidden.',
+                activationTimeDelayMsg       :'Policy activation time delayed by more than 1hr from last update time.',
+                pleaseSelectAccessTypeForTagMasking : 'Please select access type first to enable add masking options.',
+                addUserOrGroupForDelegateAdmin      : 'Please select user/group for the selected permission(s)',
  
 			},
 			plcHldr : {
@@ -415,8 +443,8 @@ define(function(require) {
 				passwordError          :'Password should be minimum 8 characters with min one alphabet and one numeric.',
 				userNameValidationMsg  :'1. User name should be start with alphabet / numeric / underscore / non-us characters.<br> 2. Allowed special character ,._\-+/@= and space. <br>3. Name length should be greater than one.',
 				groupNameValidationMsg :'1. Group name should be start with alphabet / numeric / underscore / non-us characters.<br> 2. Allowed special character ,._\-+/@= and space. <br>3. Name length should be greater than one.',
-                                firstNameValidationMsg :'1. First name should be start with alphabet / numeric / underscore / non-us characters.<br> 2. Allowed special character ._-@ and space. <br>3. Name length should be greater than one.',
-                                lastNameValidationMsg  :'1. Last name should be start with alphabet / numeric / underscore / non-us characters.<br> 2. Allowed special character ._-@ and space. <br>3. Name length should be greater than one.',
+                firstNameValidationMsg :'1. First name should be start with alphabet / numeric / underscore / non-us characters.<br> 2. Allowed special character ._-@ and space. <br>3. Name length should be greater than one.',
+                lastNameValidationMsg  :'1. Last name should be start with alphabet / numeric / underscore / non-us characters.<br> 2. Allowed special character ._-@ and space. <br>3. Name length should be greater than one.',
 			},
 			serverMsg : {
 				
@@ -434,6 +462,12 @@ define(function(require) {
 				userAlreadyExistsError : 'User already exists',
 				repositoryNameAlreadyExistsError  : 'Repository name already exists'
 				
+			},
+			hintMsg : {
+				yarnRestUrl            :"1.For one url, eg.<br>'http or https://&lt;ipaddr&gt;:8088'<br>2.For multiple urls (use , or ; delimiter), eg.<br>'http://&lt;ipaddr1&gt;:8088,http://&lt;ipaddr2&gt;:8088'",
+				sqoopRestUrl           :"eg. 'http://&lt;ipaddr&gt;:12000'",
+				hiveJDBCUrl            :"1.For Remote Mode, eg.<br>jdbc:hive2://&lt;host&gt;:&lt;port&gt;<br>2.For Embedded Mode (no host or port), eg.<br>jdbc:hive2:///;initFile=&lt;file&gt;<br>3.For HTTP Mode, eg.<br>jdbc:hive2://&lt;host&gt;:&lt;port&gt;/;<br>transportMode=http;httpPath=&lt;httpPath&gt;<br>4.For SSL Mode, eg.<br>jdbc:hive2://&lt;host&gt;:&lt;port&gt;/;ssl=true;<br>sslTrustStore=tStore;trustStorePassword=pw<br>5.For ZooKeeper Mode, eg.<br>jdbc:hive2://&lt;host&gt;/;serviceDiscoveryMode=<br>zooKeeper;zooKeeperNamespace=hiveserver2<br>6.For Kerberos Mode, eg.<br>jdbc:hive2://&lt;host&gt;:&lt;port&gt;/;<br>principal=hive/domain@EXAMPLE.COM<br>",
+				hdfsNameNodeUrl		   :"1.For one Namenode Url, eg.<br>hdfs://&lt;host&gt;:&lt;port&gt;<br>2.For HA Namenode Urls(use , delimiter), eg.<br>hdfs://&lt;host&gt;:&lt;port&gt;,hdfs://&lt;host2&gt;:&lt;port2&gt;<br>"
 			}
 			
 

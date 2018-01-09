@@ -25,13 +25,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.logging.Logger;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.apache.ranger.biz.ServiceDBStore;
 import org.apache.ranger.common.AppConstants;
 import org.apache.ranger.common.JSONUtil;
-import org.apache.ranger.plugin.util.PasswordUtils;
 import org.apache.ranger.common.PropertiesUtil;
 import org.apache.ranger.common.view.VTrxLogAttr;
 import org.apache.ranger.db.XXServiceVersionInfoDao;
@@ -41,6 +41,7 @@ import org.apache.ranger.entity.XXServiceDef;
 import org.apache.ranger.entity.XXServiceVersionInfo;
 import org.apache.ranger.entity.XXTrxLog;
 import org.apache.ranger.plugin.model.RangerService;
+import org.apache.ranger.plugin.util.PasswordUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
@@ -48,7 +49,7 @@ import org.springframework.stereotype.Service;
 @Service
 @Scope("singleton")
 public class RangerServiceService extends RangerServiceServiceBase<XXService, RangerService> {
-	private static final Logger LOG = Logger.getLogger(RangerServiceService.class.getName());
+	private static final Log LOG = LogFactory.getLog(RangerServiceService.class.getName());
 	@Autowired
 	JSONUtil jsonUtil;
 
@@ -157,7 +158,7 @@ public class RangerServiceService extends RangerServiceServiceBase<XXService, Ra
 			}
 			Field[] superClassFields = vObj.getClass().getSuperclass().getDeclaredFields();
 			for(Field field : superClassFields) {
-				if(field.getName().equalsIgnoreCase("isEnabled")) {
+				if("isEnabled".equalsIgnoreCase(field.getName())) {
 					XXTrxLog xTrx = processFieldToCreateTrxLog(field, objectName, nameField, vObj, mObj, action);
 					if(xTrx != null) {
 						trxLogList.add(xTrx);
@@ -166,9 +167,9 @@ public class RangerServiceService extends RangerServiceServiceBase<XXService, Ra
 				}
 			}
 		} catch (IllegalAccessException e) {
-			LOG.info("Get transaction log failure." + e);
+			LOG.error("Transaction log failure.", e);
 		} catch (NoSuchFieldException e) {
-			LOG.info("Get transaction log failure." + e);
+			LOG.error("Transaction log failure.", e);
 		}
 		return trxLogList;
 	}
@@ -243,7 +244,7 @@ public class RangerServiceService extends RangerServiceServiceBase<XXService, Ra
 							}
 						} else if (!entry.getValue().equalsIgnoreCase(
 								xConfig.get(key))) {
-							if (key.equalsIgnoreCase("password")
+							if ("password".equalsIgnoreCase(key)
 									&& entry.getValue().equalsIgnoreCase(
 											hiddenPasswordString)) {
 								continue;
@@ -275,7 +276,7 @@ public class RangerServiceService extends RangerServiceServiceBase<XXService, Ra
 				xTrxLog.setNewValue(value);
 			}
 		} catch (IllegalArgumentException | IllegalAccessException e) {
-			LOG.info("Process field to create trx log failure." + e);
+			LOG.error("Process field to create trx log failure." , e);
 		}
 
 		xTrxLog.setAction(actionString);
@@ -295,14 +296,38 @@ public class RangerServiceService extends RangerServiceServiceBase<XXService, Ra
 		Map<String, String> configs = service.getConfigs();
 		
 		String pwd = configs.get(ServiceDBStore.CONFIG_KEY_PASSWORD);
-		if(!stringUtil.isEmpty(pwd) && pwd.equalsIgnoreCase(ServiceDBStore.HIDDEN_PASSWORD_STR)) {
+		if(!stringUtil.isEmpty(pwd) && ServiceDBStore.HIDDEN_PASSWORD_STR.equalsIgnoreCase(pwd)) {
 			XXServiceConfigMap pwdConfig = daoMgr.getXXServiceConfigMap().findByServiceAndConfigKey(service.getId(),
 					ServiceDBStore.CONFIG_KEY_PASSWORD);
-			if(pwdConfig != null) {
+                        if (pwdConfig != null) {
 				String encryptedPwd = pwdConfig.getConfigvalue();
-				String decryptedPwd = PasswordUtils.decryptPassword(encryptedPwd);
-				if(StringUtils.equalsIgnoreCase(PasswordUtils.encryptPassword(decryptedPwd), encryptedPwd)) {
-					configs.put(ServiceDBStore.CONFIG_KEY_PASSWORD, encryptedPwd);
+                                String decryptedPwd = "";
+                                String crypt_algo_array[] = null;
+                                if (encryptedPwd.contains(",")) {
+                                        crypt_algo_array = encryptedPwd.split(",");
+                                }
+                                if (crypt_algo_array != null && crypt_algo_array.length > 1) {
+					 String cryptAlgo = null;
+					 String encryptKey = null;
+					 String salt = null;
+					 int iterationCount = 0;
+                                        cryptAlgo = crypt_algo_array[0];
+                                        encryptKey = crypt_algo_array[1];
+                                        salt = crypt_algo_array[2];
+                                        iterationCount = Integer.parseInt(crypt_algo_array[3]);
+
+                                        String paddingString = cryptAlgo + "," +  encryptKey + "," + salt + "," + iterationCount;
+                                        decryptedPwd = PasswordUtils.decryptPassword(encryptedPwd);
+
+                                        if (StringUtils.equalsIgnoreCase(paddingString + "," + PasswordUtils.encryptPassword(paddingString + "," + decryptedPwd), encryptedPwd)) {
+                                                configs.put(ServiceDBStore.CONFIG_KEY_PASSWORD, encryptedPwd);
+                                        }
+                                } else {
+                                        encryptedPwd = pwdConfig.getConfigvalue();
+                                        decryptedPwd = PasswordUtils.decryptPassword(encryptedPwd);
+                                        if (StringUtils.equalsIgnoreCase(PasswordUtils.encryptPassword(decryptedPwd), encryptedPwd)) {
+                                                configs.put(ServiceDBStore.CONFIG_KEY_PASSWORD, encryptedPwd);
+                                        }
 				}
 			}
 		}

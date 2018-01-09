@@ -677,54 +677,6 @@ public class MiscUtil {
 			logger.debug("<=== MiscUtil.setUGIFromJAASConfig() jaasConfigAppName: " + jaasConfigAppName + " UGI: " + ugi + " principal: " + principal + " keytab: " + keytabFile);
 		}
 	}
-	public static void authWithConfig(String appName, Configuration config) {
-		try {
-			if (config != null) {
-				logger.info("Getting AppConfigrationEntry[] for appName="
-						+ appName + ", config=" + config.toString());
-				AppConfigurationEntry[] entries = config
-						.getAppConfigurationEntry(appName);
-				if (entries != null) {
-					logger.info("Got " + entries.length
-							+ "  AppConfigrationEntry elements for appName="
-							+ appName);
-					for (AppConfigurationEntry appEntry : entries) {
-						logger.info("APP_ENTRY:getLoginModuleName()="
-								+ appEntry.getLoginModuleName());
-						logger.info("APP_ENTRY:getControlFlag()="
-								+ appEntry.getControlFlag());
-						logger.info("APP_ENTRY.getOptions()="
-								+ appEntry.getOptions());
-					}
-				}
-
-				LoginContext loginContext = new LoginContext(appName,
-						new Subject(), null, config);
-				logger.info("Login in for appName=" + appName);
-				loginContext.login();
-				logger.info("Principals after login="
-						+ loginContext.getSubject().getPrincipals());
-				logger.info("UserGroupInformation.loginUserFromSubject(): appName="
-						+ appName
-						+ ", principals="
-						+ loginContext.getSubject().getPrincipals());
-
-				UserGroupInformation ugi = MiscUtil
-						.createUGIFromSubject(loginContext.getSubject());
-				if (ugi != null) {
-					MiscUtil.setUGILoginUser(ugi, loginContext.getSubject());
-				}
-
-				// UserGroupInformation.loginUserFromSubject(loginContext
-				// .getSubject());
-				logger.info("POST UserGroupInformation.loginUserFromSubject UGI="
-						+ UserGroupInformation.getLoginUser());
-			}
-		} catch (Throwable t) {
-			logger.fatal("Error logging as appName=" + appName + ", config="
-					+ config.toString() + ", error=" + t.getMessage());
-		}
-	}
 
 	public static void authWithKerberos(String keytab, String principal,
 			String nameRules) {
@@ -735,6 +687,7 @@ public class MiscUtil {
 		Subject serverSubject = new Subject();
 		int successLoginCount = 0;
 		String[] spnegoPrincipals = null;
+
 		try {
 			if (principal.equals("*")) {
 				spnegoPrincipals = KerberosUtil.getPrincipalNames(keytab,
@@ -753,6 +706,7 @@ public class MiscUtil {
 			boolean useKeytab = true;
 			if (!useKeytab) {
 				logger.info("Creating UGI with subject");
+                                LoginContext loginContext = null;
 				List<LoginContext> loginContexts = new ArrayList<LoginContext>();
 				for (String spnegoPrincipal : spnegoPrincipals) {
 					try {
@@ -760,7 +714,7 @@ public class MiscUtil {
 								+ ", for principal " + spnegoPrincipal);
 						final KerberosConfiguration kerberosConfiguration = new KerberosConfiguration(
 								keytab, spnegoPrincipal);
-						final LoginContext loginContext = new LoginContext("",
+                                                loginContext = new LoginContext("",
 								serverSubject, null, kerberosConfiguration);
 						loginContext.login();
 						successLoginCount++;
@@ -785,6 +739,10 @@ public class MiscUtil {
 						} catch (Throwable e) {
 							logger.error("Error creating UGI from subject. subject="
 									+ serverSubject);
+                                                } finally {
+                                                        if (loginContext != null) {
+                                                                loginContext.logout();
+                                                        }
 						}
 					} else {
 						logger.error("Total logins were successfull from keytab="

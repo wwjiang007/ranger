@@ -185,7 +185,7 @@ public abstract class RangerAbstractResourceMatcher implements RangerResourceMat
 			}
 		}
 
-		Collections.sort(resourceMatchers);
+		Collections.sort(resourceMatchers, new ResourceMatcher.PriorityComparator());
 
 		return CollectionUtils.isNotEmpty(resourceMatchers) ?
 				new ResourceMatcherWrapper(needsDynamicEval, resourceMatchers) : null;
@@ -205,7 +205,7 @@ public abstract class RangerAbstractResourceMatcher implements RangerResourceMat
 			String policyValue = policyValues.get(0);
 
 			if(isMatchAny) {
-				ret = StringUtils.containsOnly(resource, WILDCARD_ASTERISK);
+				ret = StringUtils.isEmpty(resource) || StringUtils.containsOnly(resource, WILDCARD_ASTERISK);
 			} else {
 				ret = optIgnoreCase ? StringUtils.equalsIgnoreCase(resource, policyValue) : StringUtils.equals(resource, policyValue);
 			}
@@ -335,14 +335,16 @@ public abstract class RangerAbstractResourceMatcher implements RangerResourceMat
 			}
 		}
 
-		if (needWildcardMatch) {
+		if (needWildcardMatch) { // test?, test*a*, test*a*b, *test*a
 			ret = optIgnoreCase ? new CaseInsensitiveWildcardMatcher(policyValue) : new CaseSensitiveWildcardMatcher(policyValue);
-		} else if (wildcardStartIdx == -1) {
+		} else if (wildcardStartIdx == -1) { // test, testa, testab
 			ret = optIgnoreCase ? new CaseInsensitiveStringMatcher(policyValue) : new CaseSensitiveStringMatcher(policyValue);
-		} else if (wildcardStartIdx == 0) {
+		} else if (wildcardStartIdx == 0) { // *test, **test, *testa, *testab
 			String matchStr = policyValue.substring(wildcardEndIdx + 1);
 			ret = optIgnoreCase ? new CaseInsensitiveEndsWithMatcher(matchStr) : new CaseSensitiveEndsWithMatcher(matchStr);
-		} else {
+		} else if (wildcardEndIdx != (len - 1)) { // test*a, test*ab
+			ret = optIgnoreCase ? new CaseInsensitiveWildcardMatcher(policyValue) : new CaseSensitiveWildcardMatcher(policyValue);
+		} else { // test*, test**, testa*, testab*
 			String matchStr = policyValue.substring(0, wildcardStartIdx);
 			ret = optIgnoreCase ? new CaseInsensitiveStartsWithMatcher(matchStr) : new CaseSensitiveStartsWithMatcher(matchStr);
 		}

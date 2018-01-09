@@ -22,13 +22,6 @@
 PROPFILE=$PWD/install.properties
 propertyValue=''
 
-CONF_FILE=$PWD/ews/webapp/WEB-INF/classes/conf
-ETC_CONF_FILE=/etc/ranger/kms/conf
-pidFolderName='/var/run/ranger_kms'
-if [ ! -d "${pidFolderName}" ]; then
-    mkdir -p "${pidFolderName}"
-fi
-
 if [ ! -f ${PROPFILE} ]
 then
 	echo "$PROPFILE file not found....!!";
@@ -68,6 +61,7 @@ db_ssl_required=$(get_prop 'db_ssl_required' $PROPFILE)
 db_ssl_verifyServerCertificate=$(get_prop 'db_ssl_verifyServerCertificate' $PROPFILE)
 KMS_MASTER_KEY_PASSWD=$(get_prop 'KMS_MASTER_KEY_PASSWD' $PROPFILE)
 unix_user=$(get_prop 'unix_user' $PROPFILE)
+unix_user_pwd=$(get_prop 'unix_user_pwd' $PROPFILE)
 unix_group=$(get_prop 'unix_group' $PROPFILE)
 POLICY_MGR_URL=$(get_prop 'POLICY_MGR_URL' $PROPFILE)
 REPOSITORY_NAME=$(get_prop 'REPOSITORY_NAME' $PROPFILE)
@@ -79,7 +73,6 @@ KMS_DIR=$(eval echo "$(get_prop 'KMS_DIR' $PROPFILE)")
 app_home=$(eval echo "$(get_prop 'app_home' $PROPFILE)")
 TMPFILE=$(eval echo "$(get_prop 'TMPFILE' $PROPFILE)")
 LOGFILE=$(eval echo "$(get_prop 'LOGFILE' $PROPFILE)")
-LOGFILES=$(eval echo "$(get_prop 'LOGFILES' $PROPFILE)")
 JAVA_BIN=$(get_prop 'JAVA_BIN' $PROPFILE)
 JAVA_VERSION_REQUIRED=$(get_prop 'JAVA_VERSION_REQUIRED' $PROPFILE)
 JAVA_ORACLE=$(get_prop 'JAVA_ORACLE' $PROPFILE)
@@ -188,13 +181,14 @@ updatePropertyToFilePy(){
     check_ret_status $? "Update property failed for: {'$1'}"
 }
 
-
-init_logfiles () {
-    for f in $LOGFILES; do
-        touch $f
-    done
+check_user_pwd(){
+    if [ -z "$1" ]; then
+        log "[E] The unix user password is empty. Please set user password.";
+        exit 1;
+    fi
 }
-password_validation() {
+
+password_validation(){
         if [ -z "$1" ]
         then
                 log "[I] Blank password is not allowed for" $2". Please enter valid password."
@@ -234,36 +228,11 @@ init_variables(){
 	fi
 	log "[I] DB_FLAVOR=${DB_FLAVOR}"
 	########## HSM Config ##########
-	       
-        propertyName=ranger.ks.hsm.enabled
-        HSM_ENABLED=`echo $HSM_ENABLED | tr '[:lower:]' '[:upper:]'`
-        password_validation "$KMS_MASTER_KEY_PASSWD" "KMS Master key"   
 
-	#getPropertyFromFile 'db_root_user' $PROPFILE db_root_user
-	#getPropertyFromFile 'db_root_password' $PROPFILE db_user
-	#getPropertyFromFile 'db_user' $PROPFILE db_user
-	#getPropertyFromFile 'db_password' $PROPFILE db_password
-	
-	#if [ -L ${CONF_FILE} ]
-   #     then
-   #             log "Deleting conf symlink"
-   #             rm -f ${CONF_FILE}
-   #     fi
+	propertyName=ranger.ks.hsm.enabled
+	HSM_ENABLED=`echo $HSM_ENABLED | tr '[:lower:]' '[:upper:]'`
+	password_validation "$KMS_MASTER_KEY_PASSWD" "KMS Master key"
 
-   #     if [ -f ${ETC_CONF_FILE} ]
-   #     then
-   #             log "Deleting /etc/ranger/kms/conf file"
-   #             rm -f ${ETC_CONF_FILE}
-   #     fi
-
-   #     if [ ! -d  ${ETC_CONF_FILE} ]
-   #     then
-   #             log "Creating /etc/ranger/kms/conf dir"
-   #             mkdir -p ${ETC_CONF_FILE}
-   #     fi
-
-   #     log "Create link of conf -> /etc/ranger/kms/conf"
-   #     ln -sf ${ETC_CONF_FILE} ${CONF_FILE}	
 	db_ssl_enabled=`echo $db_ssl_enabled | tr '[:upper:]' '[:lower:]'`
 	if [ "${db_ssl_enabled}" != "true" ]
 	then
@@ -333,8 +302,13 @@ check_java_version() {
 	version=$("$JAVA_BIN" -version 2>&1 | awk -F '"' '/version/ {print $2}')
 	major=`echo ${version} | cut -d. -f1`
 	minor=`echo ${version} | cut -d. -f2`
-	if [[ "${major}" == 1 && "${minor}" < 7 ]] ; then
-		log "[E] Java 1.7 is required, current java version is $version"
+	current_java_version="$major.$minor"
+	num_current_java_version=`echo $current_java_version|awk ' { printf("%3.2f\n", $0); } '`
+	JAVA_VERSION_REQUIRED=`echo $JAVA_VERSION_REQUIRED | awk '{gsub(/ /,"")}1'`
+	JAVA_VERSION_REQUIRED=`echo $JAVA_VERSION_REQUIRED | awk '{gsub(/'"'"'/,"")}1'`
+	num_required_java_version=`echo $JAVA_VERSION_REQUIRED|awk ' { printf("%3.2f\n", $0); } '`
+	if [ `echo "$num_current_java_version < $num_required_java_version" | bc` -eq 1 ];then
+		log "[E] The java version must be greater than or equal to $JAVA_VERSION_REQUIRED, the current java version is $version"
 		exit 1;
 	fi
 }
@@ -753,22 +727,43 @@ update_properties() {
 #=====================================================================
 
 setup_unix_user_group(){
-
 	log "[I] Setting up UNIX user : ${unix_user} and group: ${unix_group}";
-
-    groupadd ${unix_group}
-    check_ret_status_for_groupadd $? "Creating group ${unix_group} failed"
-
-	id -u ${unix_user} > /dev/null 2>&1
-
+	#create group if it does not exist
+	egrep "^$unix_group" /etc/group >& /dev/null
 	if [ $? -ne 0 ]
 	then
+		groupadd ${unix_group}
+		check_ret_status_for_groupadd $? "Creating group ${unix_group} failed"
+	fi
+
+	#create user if it does not exists
+	id -u ${unix_user} > /dev/null 2>&1
+	if [ $? -ne 0 ]
+	then
+		check_user_pwd ${unix_user_pwd}
 	    log "[I] Creating new user and adding to group";
         useradd ${unix_user} -g ${unix_group} -m
 		check_ret_status $? "useradd ${unix_user} failed"
+
+		passwdtmpfile=passwd.tmp
+		if [  -f "$passwdtmpfile" ]; then
+			rm -rf  ${passwdtmpfile}
+		fi
+		cat> ${passwdtmpfile} << EOF
+${unix_user}:${unix_user_pwd}
+EOF
+		chpasswd <  ${passwdtmpfile}
+		rm -rf  ${passwdtmpfile}
 	else
-	    log "[I] User already exists, adding it to group";
-	    usermod -g ${unix_group} ${unix_user}
+	    useringroup=`id ${unix_user}`
+        useringrouparr=(${useringroup// / })
+	    if [[  ${useringrouparr[1]} =~ "(${unix_group})" ]]
+		then
+			log "[I] the ${unix_user} user already exists and belongs to group ${unix_group}"
+		else
+			log "[I] User already exists, adding it to group ${unix_group}"
+			usermod -g ${unix_group} ${unix_user}
+		fi
 	fi
 
 	log "[I] Setting up UNIX user : ${unix_user} and group: ${unix_group} DONE";
@@ -878,13 +873,21 @@ setup_install_files(){
         echo "export RANGER_KMS_LOG_DIR=${RANGER_KMS_LOG_DIR}" > ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-kms-env-logdir.sh
     	chmod a+rx ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-kms-env-logdir.sh
 
+        if [ -z "${RANGER_KMS_PID_DIR_PATH}" ]
+		then
+			RANGER_KMS_PID_DIR_PATH=/var/run/ranger_kms
+		fi
         if [ ! -d ${RANGER_KMS_PID_DIR_PATH} ]; then
-                log "[I] Creating KMS PID folder: ${RANGER_KMS_PID_DIR_PATH}"
-                mkdir -p ${RANGER_KMS_PID_DIR_PATH}
+            log "[I] Creating KMS PID folder: ${RANGER_KMS_PID_DIR_PATH}"
+            mkdir -p ${RANGER_KMS_PID_DIR_PATH}
+            if [ ! $? = "0" ];then
+                log "Make $RANGER_KMS_PID_DIR_PATH failure....!!";
+                exit 1;
+            fi
         fi
-        if [ -d ${RANGER_KMS_PID_DIR_PATH} ]; then
-                chown -R ${unix_user} ${RANGER_KMS_PID_DIR_PATH}
-        fi
+
+        chown -R ${unix_user} ${RANGER_KMS_PID_DIR_PATH}
+
         echo "export RANGER_KMS_PID_DIR_PATH=${RANGER_KMS_PID_DIR_PATH}" > ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-kms-env-piddir.sh
         echo "export KMS_USER=${unix_user}" >> ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-kms-env-piddir.sh
         chmod a+rx ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-kms-env-piddir.sh
@@ -939,10 +942,8 @@ setup_install_files(){
 		chmod 755 /var/log/ranger/kms
         chown -R $unix_user:$unix_group /var/log/ranger/kms
 	fi
-
 }
 
-init_logfiles
 log " --------- Running Ranger KMS Application Install Script --------- "
 log "[I] uname=`uname`"
 log "[I] hostname=`hostname`"

@@ -53,7 +53,7 @@ public class HdfsClient extends BaseClient {
     for (Map.Entry<String, String> entry: connectionProperties.entrySet())  {
       String key = entry.getKey();
       String value = entry.getValue();
-      if (!rangerInternalPropertyKeys.contains(key)) {
+      if (!rangerInternalPropertyKeys.contains(key) && value != null) {
         conf.set(key, value);
       }
     }
@@ -80,17 +80,17 @@ public class HdfsClient extends BaseClient {
 				fs = FileSystem.get(conf);
 
 				Path basePath = new Path(baseDir);
-				FileStatus[] fileStats = fs.listStatus(basePath);
+				FileStatus[] fileStatus = fs.listStatus(basePath);
 
 				if(LOG.isDebugEnabled()) {
-					LOG.debug("<== HdfsClient fileStatus : " + fileStats.length + " PathList :" + pathList);
+					LOG.debug("<== HdfsClient fileStatus : " + fileStatus.length + " PathList :" + pathList);
 				}
 
-				if (fileStats != null) {
-					if (fs.exists(basePath) && ArrayUtils.isEmpty(fileStats))  {
+				if (fileStatus != null) {
+					if (fs.exists(basePath) && ArrayUtils.isEmpty(fileStatus))  {
 						fileList.add(basePath.toString());
 					} else {
-						for(FileStatus stat : fileStats) {
+						for(FileStatus stat : fileStatus) {
 								Path path = stat.getPath();
 								String pathComponent = path.getName();
 								String prefixedPath = dirPrefix + pathComponent;
@@ -198,11 +198,11 @@ public class HdfsClient extends BaseClient {
 		}
 	}
 
-	public static HashMap<String, Object> connectionTest(String serviceName,
+	public static Map<String, Object> connectionTest(String serviceName,
 			Map<String, String> configs) throws Exception {
 
-	LOG.info("===> HdfsClient.testConnection()" );
-    HashMap<String, Object> responseData = new HashMap<String, Object>();
+	LOG.info("===> HdfsClient.connectionTest()" );
+    Map<String, Object> responseData = new HashMap<String, Object>();
     boolean connectivityStatus = false;
 
     String validateConfigsMsg = null;
@@ -220,7 +220,7 @@ public class HdfsClient extends BaseClient {
 			try {
 				 testResult = connectionObj.listFiles("/", null,null);
 			} catch (HadoopException e) {
-				LOG.error("<== HdfsClient.testConnection() error " + e.getMessage(),e );
+				LOG.error("<== HdfsClient.connectionTest() error " + e.getMessage(),e );
 					throw e;
 			}
 
@@ -244,7 +244,7 @@ public class HdfsClient extends BaseClient {
 			generateResponseDataMap(connectivityStatus, testconnMsg, additionalMsg,
 					null, null, responseData);
 		}
-		LOG.info("<== HdfsClient.testConnection(): Status " + testconnMsg );
+		LOG.info("<== HdfsClient.connectionTest(): Status " + testconnMsg );
 		return responseData;
 	}
 
@@ -253,7 +253,7 @@ public class HdfsClient extends BaseClient {
 	  String lookupPrincipal=null;
 	  try{
 		  lookupPrincipal = SecureClientLogin.getPrincipal(configs.get("lookupprincipal"), java.net.InetAddress.getLocalHost().getCanonicalHostName());
-	  }catch(Exception e){	
+	  }catch(Exception e){
 		  //do nothing
 	  }
 	  String lookupKeytab = configs.get("lookupkeytab");
@@ -270,41 +270,70 @@ public class HdfsClient extends BaseClient {
 			  throw new IllegalArgumentException("Value for password not specified");
 		  }
 	  }
+	// hadoop.security.authentication
+	String authentication = configs.get("hadoop.security.authentication");
+	if ((authentication == null || authentication.isEmpty())) {
+		throw new IllegalArgumentException("Value for hadoop.security.authentication not specified");
+	}
 
-    // hadoop.security.authentication
-    String authentication = configs.get("hadoop.security.authentication");
-    if ((authentication == null || authentication.isEmpty()))  {
-      throw new IllegalArgumentException("Value for hadoop.security.authentication not specified");
-    }
-
-    String fsDefaultName = configs.get("fs.default.name");
-    fsDefaultName = (fsDefaultName == null) ? "" : fsDefaultName.trim();
-    if (fsDefaultName.isEmpty())  {
-      throw new IllegalArgumentException("Value for neither fs.default.name is specified");
-    }
+	String fsDefaultName = configs.get("fs.default.name");
+	fsDefaultName = (fsDefaultName == null) ? "" : fsDefaultName.trim();
+	if (fsDefaultName.isEmpty()) {
+		throw new IllegalArgumentException("Value for fs.default.name not specified");
+	} else {
+		String[] fsDefaultNameElements = fsDefaultName.split(",");
+		for (String fsDefaultNameElement : fsDefaultNameElements) {
+			if (fsDefaultNameElement.isEmpty()) {
+				throw new IllegalArgumentException(
+						"Value for " + "fs.default.name element" + fsDefaultNameElement + " not specified");
+			}
+		}
+		if (fsDefaultNameElements != null && fsDefaultNameElements.length >= 2) {
+			String cluster = "";
+			StringBuilder clusters = new StringBuilder();
+			configs.put("dfs.nameservices", "hdfscluster");
+			configs.put("fs.default.name", "hdfs://" + configs.get("dfs.nameservices"));
+			configs.put("dfs.client.failover.proxy.provider." + configs.get("dfs.nameservices"),
+					"org.apache.hadoop.hdfs.server.namenode.ha.ConfiguredFailoverProxyProvider");
+			for (int i = 0; i < fsDefaultNameElements.length; i++) {
+				cluster = "namenode" + (i + 1);
+				configs.put("dfs.namenode.rpc-address." + configs.get("dfs.nameservices") + "." + cluster,
+						fsDefaultNameElements[i]);
+				if (i == (fsDefaultNameElements.length - 1)) {
+					clusters.append(cluster);
+				} else {
+					clusters.append(cluster).append(",");
+				}
+			}
+			configs.put("dfs.ha.namenodes." + configs.get("dfs.nameservices"), clusters.toString());
+		}
+	}
 
     String dfsNameservices = configs.get("dfs.nameservices");
     dfsNameservices = (dfsNameservices == null) ? "" : dfsNameservices.trim();
     if (!dfsNameservices.isEmpty()) {
-      String proxyProvider = configs.get("dfs.client.failover.proxy.provider." + dfsNameservices);
-      proxyProvider =   (proxyProvider == null) ? "" : proxyProvider.trim();
-      if (proxyProvider.isEmpty())  {
-        throw new IllegalArgumentException("Value for " + "dfs.client.failover.proxy.provider." + dfsNameservices + " not specified");
-      }
+      String[] dfsNameserviceElements = dfsNameservices.split(",");
+      for (String dfsNameserviceElement : dfsNameserviceElements)  {
+        String proxyProvider = configs.get("dfs.client.failover.proxy.provider." + dfsNameserviceElement);
+        proxyProvider =   (proxyProvider == null) ? "" : proxyProvider.trim();
+        if (proxyProvider.isEmpty())  {
+          throw new IllegalArgumentException("Value for " + "dfs.client.failover.proxy.provider." + dfsNameserviceElement + " not specified");
+        }
 
-      String dfsNameNodes = configs.get("dfs.ha.namenodes." + dfsNameservices);
-      dfsNameNodes = (dfsNameNodes == null) ? "" : dfsNameNodes.trim();
-      if (dfsNameNodes.isEmpty())  {
-        throw new IllegalArgumentException("Value for " + "dfs.ha.namenodes." + proxyProvider + " not specified");
-      }
-      String[] dfsNameNodeElements = dfsNameNodes.split(",");
-      for (String dfsNameNodeElement : dfsNameNodeElements)  {
-        String nameNodeUrlKey = "dfs.namenode.rpc-address." +
-            dfsNameservices + "." + dfsNameNodeElement.trim();
-        String nameNodeUrl =  configs.get(nameNodeUrlKey);
-        nameNodeUrl = (nameNodeUrl == null) ? "" : nameNodeUrl.trim();
-        if (nameNodeUrl.isEmpty())  {
-          throw new IllegalArgumentException("Value for " + nameNodeUrlKey + " not specified");
+        String dfsNameNodes = configs.get("dfs.ha.namenodes." + dfsNameserviceElement);
+        dfsNameNodes = (dfsNameNodes == null) ? "" : dfsNameNodes.trim();
+        if (dfsNameNodes.isEmpty())  {
+          throw new IllegalArgumentException("Value for " + "dfs.ha.namenodes." + dfsNameserviceElement + " not specified");
+        }
+        String[] dfsNameNodeElements = dfsNameNodes.split(",");
+        for (String dfsNameNodeElement : dfsNameNodeElements)  {
+          String nameNodeUrlKey = "dfs.namenode.rpc-address." +
+              dfsNameserviceElement + "." + dfsNameNodeElement.trim();
+          String nameNodeUrl =  configs.get(nameNodeUrlKey);
+          nameNodeUrl = (nameNodeUrl == null) ? "" : nameNodeUrl.trim();
+          if (nameNodeUrl.isEmpty())  {
+            throw new IllegalArgumentException("Value for " + nameNodeUrlKey + " not specified");
+          }
         }
       }
     }

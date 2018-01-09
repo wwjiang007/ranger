@@ -34,25 +34,31 @@ import javax.persistence.metamodel.EntityType;
 import javax.persistence.metamodel.Metamodel;
 import javax.persistence.metamodel.SingularAttribute;
 
+import org.apache.commons.lang.StringUtils;
+import org.apache.ranger.common.AppConstants;
+import org.apache.ranger.common.ContextUtil;
 import org.apache.ranger.common.SearchCriteria;
 import org.apache.ranger.common.SearchField;
 import org.apache.ranger.common.SortField;
 import org.apache.ranger.common.SortField.SORT_ORDER;
-import org.apache.ranger.db.RangerDaoManager;
+import org.apache.ranger.common.UserSessionBase;
 import org.apache.ranger.entity.XXPortalUser;
+import org.apache.ranger.entity.XXPortalUserRole;
+import org.apache.ranger.entity.XXServiceDef;
 import org.apache.ranger.entity.XXTrxLog;
 import org.apache.ranger.entity.view.VXXTrxLog;
+import org.apache.ranger.plugin.store.EmbeddedServiceDefsUtil;
 import org.apache.ranger.view.VXTrxLog;
 import org.apache.ranger.view.VXTrxLogList;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
 
 @Service
 @Scope("singleton")
 public class XTrxLogService extends XTrxLogServiceBase<XXTrxLog, VXTrxLog> {
-	@Autowired
-	RangerDaoManager rangerDaoManager;
+	Long keyadminCount = 0L;
+
 	public XTrxLogService(){
 		searchFields.add(new SearchField("attributeName", "obj.attributeName",
 				SearchField.DATA_TYPE.STRING, SearchField.SEARCH_TYPE.PARTIAL));
@@ -79,233 +85,214 @@ public class XTrxLogService extends XTrxLogServiceBase<XXTrxLog, VXTrxLog> {
 	protected void validateForUpdate(VXTrxLog vObj, XXTrxLog mObj) {}
 
 	@Override
-	public VXTrxLogList searchXTrxLogs(SearchCriteria searchCriteria) {		
-			
-		EntityManager em = daoMgr.getEntityManager();
+	public VXTrxLogList searchXTrxLogs(SearchCriteria searchCriteria) {
+		EntityManager em = daoManager.getEntityManager();
 		CriteriaBuilder criteriaBuilder = em.getCriteriaBuilder();
-		Metamodel entityMetaModel = em.getMetamodel();
-		Class<VXXTrxLog> klass = VXXTrxLog.class;
-		EntityType<VXXTrxLog> entityType = entityMetaModel.entity(klass);
-		CriteriaQuery<VXXTrxLog> selectCQ = criteriaBuilder.createQuery(klass);
-		Root<VXXTrxLog> rootEntityType = selectCQ.from(klass);
-		Predicate predicate = criteriaBuilder.conjunction();
-		String fieldName=null;
-		String clientFieldName =null;
-		Object paramValue = null;
-		boolean isListValue = false;
-		SingularAttribute attr =null;
-		Collection<Number> intValueList = null;
-		Date fieldValue =null;
-		Predicate stringPredicate =null;		
-		Predicate intPredicate = null;		
-		Predicate datePredicate =null;
-		Map<String, Object> paramList = searchCriteria.getParamList();	
-		for(String key : paramList.keySet()){
-			for(SearchField searchField : searchFields){				
-				fieldName = searchField.getFieldName();
-				clientFieldName = searchField.getClientFieldName();				
-				paramValue = paramList.get(key);
-				isListValue = false;				
-				if (paramValue != null && paramValue instanceof Collection) {
-					isListValue = true;
-				}				
-				if(fieldName != null){
-					fieldName = fieldName.contains(".") ? fieldName.substring(fieldName.indexOf(".") + 1) : fieldName;
-				}				
-				if(key.equalsIgnoreCase(clientFieldName)){
-					// build where clause depending upon given parameters
-					if(searchField.getDataType() == SearchField.DATA_TYPE.STRING) {
-						// build where clause for String datatypes
-						attr = entityType.getSingularAttribute(fieldName);
-						if(attr != null){
-							stringPredicate = criteriaBuilder.equal(rootEntityType.get(attr), paramValue);
-							if (searchField.getSearchType().equals(SearchField.SEARCH_TYPE.PARTIAL)) {
-								String val = "%" + paramValue + "%";
-								stringPredicate = criteriaBuilder.like(rootEntityType.get(attr), val);
-							}
-							predicate = criteriaBuilder.and(predicate, stringPredicate);
-							
-						}	
-					} else if (searchField.getDataType() == SearchField.DATA_TYPE.INT_LIST ||
-							isListValue && searchField.getDataType() == SearchField.DATA_TYPE.INTEGER) {
-						// build where clause for integer lists or integers datatypes
-						intValueList = null;
-						if (paramValue != null && (paramValue instanceof Integer || paramValue instanceof Long)) {
-							intValueList = new ArrayList<Number>();
-							intValueList.add((Number) paramValue);
-						} else {
-							intValueList = (Collection<Number>) paramValue;
-						}
-						for(Number value : intValueList){
-							attr = entityType.getSingularAttribute(fieldName);
-							if(attr != null){
-								intPredicate = criteriaBuilder.equal(rootEntityType.get(attr), value);
-								predicate = criteriaBuilder.and(predicate, intPredicate);
-							}							
-						}
-						
-					} else if (searchField.getDataType() == SearchField.DATA_TYPE.DATE){
-						// build where clause for date datatypes
-						fieldValue = (Date) paramList.get(searchField
-								.getClientFieldName());
-						attr = entityType.getSingularAttribute(fieldName);
-						if (fieldValue != null) {
-							if (searchField.getCustomCondition() == null) {							
-								datePredicate = criteriaBuilder.equal(rootEntityType.get(attr), fieldValue);
-								if (searchField.getSearchType().equals(SearchField.SEARCH_TYPE.LESS_THAN)) {
-									datePredicate = criteriaBuilder.lessThan(rootEntityType.get(attr), fieldValue);
-								} else if (searchField.getSearchType().equals(SearchField.SEARCH_TYPE.LESS_EQUAL_THAN)) {
-									datePredicate = criteriaBuilder.lessThanOrEqualTo(rootEntityType.get(attr), fieldValue);
-								} else if (searchField.getSearchType().equals(SearchField.SEARCH_TYPE.GREATER_THAN)) {
-									datePredicate = criteriaBuilder.greaterThan(rootEntityType.get(attr), fieldValue);
-								} else if (searchField.getSearchType().equals(SearchField.SEARCH_TYPE.GREATER_EQUAL_THAN)) {
-									datePredicate = criteriaBuilder.greaterThanOrEqualTo(rootEntityType.get(attr), fieldValue);
-								} else {
-									datePredicate = criteriaBuilder.equal(rootEntityType.get(attr), fieldValue);
-								}
-								predicate = criteriaBuilder.and(predicate, datePredicate);
-							}
-						}
-						
-					}
-				}
-			}
-		}
-		
+		CriteriaQuery<VXXTrxLog> selectCQ = criteriaBuilder.createQuery(VXXTrxLog.class);
+		Root<VXXTrxLog> rootEntityType = selectCQ.from(VXXTrxLog.class);
+		Predicate predicate = generatePredicate(searchCriteria, em, criteriaBuilder, rootEntityType);
+
 		selectCQ.where(predicate);
-		if(searchCriteria.getSortType()!=null && searchCriteria.getSortType().equalsIgnoreCase("asc")){
+		if ("asc".equalsIgnoreCase(searchCriteria.getSortType())) {
 			selectCQ.orderBy(criteriaBuilder.asc(rootEntityType.get("createTime")));
-		}else{
+		} else {
 			selectCQ.orderBy(criteriaBuilder.desc(rootEntityType.get("createTime")));
 		}
 		int startIndex = searchCriteria.getStartIndex();
 		int pageSize = searchCriteria.getMaxRows();
-		List<VXXTrxLog> resultList = em.createQuery(selectCQ).setFirstResult(startIndex).setMaxResults(pageSize).getResultList();
-		VXTrxLogList vxTrxLogList = new VXTrxLogList();		
-		vxTrxLogList.setStartIndex(startIndex);
-		vxTrxLogList.setPageSize(pageSize);		
+		List<VXXTrxLog> resultList = em.createQuery(selectCQ).setFirstResult(startIndex).setMaxResults(pageSize)
+				.getResultList();
+
+		int maxRowSize = Integer.MAX_VALUE;
+		int minRowSize = 0;
+		XXServiceDef xxServiceDef = daoManager.getXXServiceDef()
+				.findByName(EmbeddedServiceDefsUtil.EMBEDDED_SERVICEDEF_KMS_NAME);
+		UserSessionBase session = ContextUtil.getCurrentUserSession();
+		if (session != null && session.isKeyAdmin()) {
+			resultList = em.createQuery(selectCQ).setFirstResult(minRowSize).setMaxResults(maxRowSize).getResultList();
+		}
+
 		List<VXTrxLog> trxLogList = new ArrayList<VXTrxLog>();
-		XXPortalUser xXPortalUser=null;
-		for(VXXTrxLog xTrxLog : resultList){
+		for (VXXTrxLog xTrxLog : resultList) {
 			VXTrxLog trxLog = mapCustomViewToViewObj(xTrxLog);
-			xXPortalUser=null;
-			if(trxLog.getUpdatedBy()!=null){
-				xXPortalUser= rangerDaoManager.getXXPortalUser().getById(
-						Long.parseLong(trxLog.getUpdatedBy()));
-			}			
-			if(xXPortalUser!=null){
-				trxLog.setOwner(xXPortalUser.getLoginId());
+
+			if (trxLog.getUpdatedBy() != null) {
+				XXPortalUser xXPortalUser = daoManager.getXXPortalUser().getById(Long.parseLong(trxLog.getUpdatedBy()));
+				if (xXPortalUser != null) {
+					trxLog.setOwner(xXPortalUser.getLoginId());
+				}
 			}
+
 			trxLogList.add(trxLog);
-		}			
-		//vxTrxLogList.setTotalCount(count);
-		vxTrxLogList.setVXTrxLogs(trxLogList);
-		return vxTrxLogList;
-	}
-	
-	public Long searchXTrxLogsCount(SearchCriteria searchCriteria) {		
-		
-		EntityManager em = daoMgr.getEntityManager();
-		CriteriaBuilder criteriaBuilder = em.getCriteriaBuilder();		
-		Class<VXXTrxLog> klass = VXXTrxLog.class;		
-		CriteriaQuery<VXXTrxLog> criteriaQuery = criteriaBuilder.createQuery(klass);
-		Root<VXXTrxLog> rootEntityType = criteriaQuery.from(klass);
-		Metamodel entityMetaModel = em.getMetamodel();
-		EntityType<VXXTrxLog> entityType = entityMetaModel.entity(klass);
-		Map<String, Object> paramList = searchCriteria.getParamList();
-		CriteriaQuery<Long> countCQ = criteriaBuilder.createQuery(Long.class);
-		Predicate predicate = criteriaBuilder.conjunction();		
-		String fieldName=null;
-		String clientFieldName =null;
-		Object paramValue = null;
-		boolean isListValue = false;
-		SingularAttribute attr =null;
-		Collection<Number> intValueList = null;
-		Date fieldValue =null;
-		Predicate stringPredicate =null;		
-		Predicate intPredicate = null;		
-		Predicate datePredicate =null;		
-		for(String key : paramList.keySet()){
-			for(SearchField searchField : searchFields){				
-				fieldName = searchField.getFieldName();
-				clientFieldName = searchField.getClientFieldName();				
-				paramValue = paramList.get(key);
-				isListValue = false;				
-				if (paramValue != null && paramValue instanceof Collection) {
-					isListValue = true;
-				}				
-				if(fieldName != null){
-					fieldName = fieldName.contains(".") ? fieldName.substring(fieldName.indexOf(".") + 1) : fieldName;
-				}				
-				if(key.equalsIgnoreCase(clientFieldName)){
-					// build where clause depending upon given parameters
-					if(searchField.getDataType() == SearchField.DATA_TYPE.STRING) {
-						// build where clause for String datatypes
-						attr = entityType.getSingularAttribute(fieldName);
-						if(attr != null){
-							stringPredicate = criteriaBuilder.equal(rootEntityType.get(attr), paramValue);
-							if (searchField.getSearchType().equals(SearchField.SEARCH_TYPE.PARTIAL)) {
-								String val = "%" + paramValue + "%";
-								stringPredicate = criteriaBuilder.like(rootEntityType.get(attr), val);
-							}
-							predicate = criteriaBuilder.and(predicate, stringPredicate);
-							
-						}	
-					} else if (searchField.getDataType() == SearchField.DATA_TYPE.INT_LIST ||
-							isListValue && searchField.getDataType() == SearchField.DATA_TYPE.INTEGER) {
-						// build where clause for integer lists or integers datatypes
-						intValueList = null;
-						if (paramValue != null && (paramValue instanceof Integer || paramValue instanceof Long)) {
-							intValueList = new ArrayList<Number>();
-							intValueList.add((Number) paramValue);
-						} else {
-							intValueList = (Collection<Number>) paramValue;
+		}
+
+		List<VXTrxLog> keyAdminTrxLogList = new ArrayList<VXTrxLog>();
+                if (session != null && session.isKeyAdmin() && xxServiceDef != null) {
+			List<VXTrxLog> vXTrxLogs = new ArrayList<VXTrxLog>();
+			for (VXTrxLog xTrxLog : trxLogList) {
+				int parentObjectClassType = xTrxLog.getParentObjectClassType();
+				Long parentObjectId = xTrxLog.getParentObjectId();
+				if (parentObjectClassType == AppConstants.CLASS_TYPE_XA_SERVICE_DEF
+                                                && parentObjectId.equals(xxServiceDef.getId())) {
+					vXTrxLogs.add(xTrxLog);
+				} else if (parentObjectClassType == AppConstants.CLASS_TYPE_XA_SERVICE
+                                                && !(parentObjectId.equals(xxServiceDef.getId()))) {
+					for (VXTrxLog vxTrxLog : trxLogList) {
+						if (parentObjectClassType == vxTrxLog.getObjectClassType()
+                                                                && parentObjectId.equals(vxTrxLog.getObjectId())
+                                                                && vxTrxLog.getParentObjectId().equals(xxServiceDef.getId())) {
+							vXTrxLogs.add(xTrxLog);
+							break;
 						}
-						for(Number value : intValueList){
-							attr = entityType.getSingularAttribute(fieldName);
-							if(attr != null){
-								intPredicate = criteriaBuilder.equal(rootEntityType.get(attr), value);
-								predicate = criteriaBuilder.and(predicate, intPredicate);
-							}							
+					}
+				} else if (xTrxLog.getObjectClassType() == AppConstants.CLASS_TYPE_XA_USER
+						|| xTrxLog.getObjectClassType() == AppConstants.CLASS_TYPE_RANGER_POLICY
+						|| xTrxLog.getObjectClassType() == AppConstants.HIST_OBJ_STATUS_UPDATED) {
+					XXPortalUser xxPortalUser = null;
+					if (xTrxLog.getUpdatedBy() != null) {
+						xxPortalUser = daoManager.getXXPortalUser()
+								.getById(Long.parseLong(xTrxLog.getUpdatedBy()));
+					}
+					if (xxPortalUser != null && xxPortalUser.getId() != null) {
+						List<XXPortalUserRole> xxPortalUserRole = daoManager.getXXPortalUserRole()
+								.findByUserId(xxPortalUser.getId());
+						if (xxPortalUserRole != null
+								&& xxPortalUserRole.get(0).getUserRole().equalsIgnoreCase("ROLE_KEY_ADMIN")) {
+							vXTrxLogs.add(xTrxLog);
 						}
-						
-					} else if (searchField.getDataType() == SearchField.DATA_TYPE.DATE){
-						// build where clause for date datatypes
-						fieldValue = (Date) paramList.get(searchField
-								.getClientFieldName());
-						attr = entityType.getSingularAttribute(fieldName);
-						if (fieldValue != null) {
-							if (searchField.getCustomCondition() == null) {							
-								datePredicate = criteriaBuilder.equal(rootEntityType.get(attr), fieldValue);
-								if (searchField.getSearchType().equals(SearchField.SEARCH_TYPE.LESS_THAN)) {
-									datePredicate = criteriaBuilder.lessThan(rootEntityType.get(attr), fieldValue);
-								} else if (searchField.getSearchType().equals(SearchField.SEARCH_TYPE.LESS_EQUAL_THAN)) {
-									datePredicate = criteriaBuilder.lessThanOrEqualTo(rootEntityType.get(attr), fieldValue);
-								} else if (searchField.getSearchType().equals(SearchField.SEARCH_TYPE.GREATER_THAN)) {
-									datePredicate = criteriaBuilder.greaterThan(rootEntityType.get(attr), fieldValue);
-								} else if (searchField.getSearchType().equals(SearchField.SEARCH_TYPE.GREATER_EQUAL_THAN)) {
-									datePredicate = criteriaBuilder.greaterThanOrEqualTo(rootEntityType.get(attr), fieldValue);
-								} else {
-									datePredicate = criteriaBuilder.equal(rootEntityType.get(attr), fieldValue);
-								}
-								predicate = criteriaBuilder.and(predicate, datePredicate);
-							}
-						}
-						
 					}
 				}
 			}
-		}		
-		countCQ.select(criteriaBuilder.count(rootEntityType)).where(predicate);		
-		List<Long> countList = em.createQuery(countCQ).getResultList();		
+			keyadminCount = (long) vXTrxLogs.size();
+			if (vXTrxLogs != null && !vXTrxLogs.isEmpty()) {
+				for (int k = startIndex; k <= pageSize; k++) {
+					if (k < vXTrxLogs.size()) {
+						keyAdminTrxLogList.add(vXTrxLogs.get(k));
+					}
+				}
+			}
+		}
+
+		VXTrxLogList vxTrxLogList = new VXTrxLogList();
+		vxTrxLogList.setStartIndex(startIndex);
+		vxTrxLogList.setPageSize(pageSize);
+		if (session != null && session.isKeyAdmin()) {
+			vxTrxLogList.setVXTrxLogs(keyAdminTrxLogList);
+		} else {
+			vxTrxLogList.setVXTrxLogs(trxLogList);
+		}
+		return vxTrxLogList;
+	}
+
+	public Long searchXTrxLogsCount(SearchCriteria searchCriteria) {
+		EntityManager em = daoManager.getEntityManager();
+		CriteriaBuilder criteriaBuilder = em.getCriteriaBuilder();
+		CriteriaQuery<VXXTrxLog> selectCQ = criteriaBuilder.createQuery(VXXTrxLog.class);
+		Root<VXXTrxLog> rootEntityType = selectCQ.from(VXXTrxLog.class);
+		Predicate predicate = generatePredicate(searchCriteria, em, criteriaBuilder, rootEntityType);
+
+		CriteriaQuery<Long> countCQ = criteriaBuilder.createQuery(Long.class);
+		countCQ.select(criteriaBuilder.count(rootEntityType)).where(predicate);
+		List<Long> countList = em.createQuery(countCQ).getResultList();
 		Long count = 0L;
-		if(countList != null && !countList.isEmpty()) {
+		if(!CollectionUtils.isEmpty(countList)) {
 			count = countList.get(0);
 			if(count == null) {
 				count = 0L;
 			}
-		}	
+		}
+		UserSessionBase session = ContextUtil.getCurrentUserSession();
+		if (session != null && session.isKeyAdmin()) {
+			count = keyadminCount;
+		}
 		return count;
+	}
+
+	private Predicate generatePredicate(SearchCriteria searchCriteria, EntityManager em,
+			CriteriaBuilder criteriaBuilder, Root<VXXTrxLog> rootEntityType) {
+		Predicate predicate = criteriaBuilder.conjunction();
+		Map<String, Object> paramList = searchCriteria.getParamList();
+		if (CollectionUtils.isEmpty(paramList)) {
+			return predicate;
+		}
+
+		Metamodel entityMetaModel = em.getMetamodel();
+		EntityType<VXXTrxLog> entityType = entityMetaModel.entity(VXXTrxLog.class);
+
+		for (Map.Entry<String, Object> entry : paramList.entrySet()) {
+			String key=entry.getKey();
+			for (SearchField searchField : searchFields) {
+				if (!key.equalsIgnoreCase(searchField.getClientFieldName())) {
+					continue;
+				}
+
+				String fieldName = searchField.getFieldName();
+				if (!StringUtils.isEmpty(fieldName)) {
+					fieldName = fieldName.contains(".") ? fieldName.substring(fieldName.indexOf(".") + 1) : fieldName;
+				}
+
+				Object paramValue = entry.getValue();
+				boolean isListValue = false;
+				if (paramValue != null && paramValue instanceof Collection) {
+					isListValue = true;
+				}
+
+				// build where clause depending upon given parameters
+				if (SearchField.DATA_TYPE.STRING.equals(searchField.getDataType())) {
+					// build where clause for String datatypes
+					SingularAttribute attr = entityType.getSingularAttribute(fieldName);
+					if (attr != null) {
+						Predicate stringPredicate = null;
+						if (SearchField.SEARCH_TYPE.PARTIAL.equals(searchField.getSearchType())) {
+							String val = "%" + paramValue + "%";
+							stringPredicate = criteriaBuilder.like(rootEntityType.get(attr), val);
+						} else {
+							stringPredicate = criteriaBuilder.equal(rootEntityType.get(attr), paramValue);
+						}
+						predicate = criteriaBuilder.and(predicate, stringPredicate);
+					}
+
+				} else if (SearchField.DATA_TYPE.INT_LIST.equals(searchField.getDataType()) || isListValue
+						&& SearchField.DATA_TYPE.INTEGER.equals(searchField.getDataType())) {
+					// build where clause for integer lists or integers datatypes
+					Collection<Number> intValueList = null;
+					if (paramValue != null && (paramValue instanceof Integer || paramValue instanceof Long)) {
+						intValueList = new ArrayList<Number>();
+						intValueList.add((Number) paramValue);
+					} else {
+						intValueList = (Collection<Number>) paramValue;
+					}
+					for (Number value : intValueList) {
+						SingularAttribute attr = entityType.getSingularAttribute(fieldName);
+						if (attr != null) {
+							Predicate intPredicate = criteriaBuilder.equal(rootEntityType.get(attr), value);
+							predicate = criteriaBuilder.and(predicate, intPredicate);
+						}
+					}
+
+				} else if (SearchField.DATA_TYPE.DATE.equals(searchField.getDataType())) {
+					// build where clause for date datatypes
+					Date fieldValue = (Date) paramList.get(searchField.getClientFieldName());
+					if (fieldValue != null && searchField.getCustomCondition() == null) {
+						SingularAttribute attr = entityType.getSingularAttribute(fieldName);
+						Predicate datePredicate = null;
+						if (SearchField.SEARCH_TYPE.LESS_THAN.equals(searchField.getSearchType())) {
+							datePredicate = criteriaBuilder.lessThan(rootEntityType.get(attr), fieldValue);
+						} else if (SearchField.SEARCH_TYPE.LESS_EQUAL_THAN.equals(searchField.getSearchType())) {
+							datePredicate = criteriaBuilder.lessThanOrEqualTo(rootEntityType.get(attr), fieldValue);
+						} else if (SearchField.SEARCH_TYPE.GREATER_THAN.equals(searchField.getSearchType())) {
+							datePredicate = criteriaBuilder.greaterThan(rootEntityType.get(attr), fieldValue);
+						} else if (SearchField.SEARCH_TYPE.GREATER_EQUAL_THAN.equals(searchField.getSearchType())) {
+							datePredicate = criteriaBuilder.greaterThanOrEqualTo(rootEntityType.get(attr), fieldValue);
+						} else {
+							datePredicate = criteriaBuilder.equal(rootEntityType.get(attr), fieldValue);
+						}
+						predicate = criteriaBuilder.and(predicate, datePredicate);
+					}
+				}
+			}
+		}
+		return predicate;
 	}
 	
 	private VXTrxLog mapCustomViewToViewObj(VXXTrxLog vXXTrxLog){
@@ -324,6 +311,7 @@ public class XTrxLogService extends XTrxLogServiceBase<XXTrxLog, VXTrxLog> {
 		}
 		//We will have to get this from XXUser
 		//vXTrxLog.setOwner(vXXTrxLog.getAddedByUserName());
+		vXTrxLog.setParentObjectId(vXXTrxLog.getParentObjectId());
 		vXTrxLog.setParentObjectClassType(vXXTrxLog.getParentObjectClassType());
 		vXTrxLog.setParentObjectName(vXXTrxLog.getParentObjectName());
 		vXTrxLog.setObjectClassType(vXXTrxLog.getObjectClassType());
@@ -340,7 +328,7 @@ public class XTrxLogService extends XTrxLogServiceBase<XXTrxLog, VXTrxLog> {
 			XXPortalUser xXPortalUser=null;
 			if(mObj.getAddedByUserId()==null || mObj.getAddedByUserId()==0){
 				if(!stringUtil.isEmpty(vObj.getOwner())){
-					xXPortalUser=rangerDaoManager.getXXPortalUser().findByLoginId(vObj.getOwner());	
+					xXPortalUser=daoManager.getXXPortalUser().findByLoginId(vObj.getOwner());
 					if(xXPortalUser!=null){
 						mObj.setAddedByUserId(xXPortalUser.getId());
 					}
@@ -348,7 +336,7 @@ public class XTrxLogService extends XTrxLogServiceBase<XXTrxLog, VXTrxLog> {
 			}
 			if(mObj.getUpdatedByUserId()==null || mObj.getUpdatedByUserId()==0){
 				if(!stringUtil.isEmpty(vObj.getUpdatedBy())){
-					xXPortalUser= rangerDaoManager.getXXPortalUser().findByLoginId(vObj.getUpdatedBy());			
+					xXPortalUser= daoManager.getXXPortalUser().findByLoginId(vObj.getUpdatedBy());
 					if(xXPortalUser!=null){
 						mObj.setUpdatedByUserId(xXPortalUser.getId());
 					}		
@@ -364,13 +352,13 @@ public class XTrxLogService extends XTrxLogServiceBase<XXTrxLog, VXTrxLog> {
             super.mapEntityToViewBean(vObj, mObj);
             XXPortalUser xXPortalUser=null;
             if(stringUtil.isEmpty(vObj.getOwner())){
-                xXPortalUser= rangerDaoManager.getXXPortalUser().getById(mObj.getAddedByUserId());
+                xXPortalUser= daoManager.getXXPortalUser().getById(mObj.getAddedByUserId());
                 if(xXPortalUser!=null){
                     vObj.setOwner(xXPortalUser.getLoginId());
                 }
             }
             if(stringUtil.isEmpty(vObj.getUpdatedBy())){
-                xXPortalUser= rangerDaoManager.getXXPortalUser().getById(mObj.getUpdatedByUserId());
+                xXPortalUser= daoManager.getXXPortalUser().getById(mObj.getUpdatedByUserId());
                 if(xXPortalUser!=null){
                     vObj.setUpdatedBy(xXPortalUser.getLoginId());
                 }

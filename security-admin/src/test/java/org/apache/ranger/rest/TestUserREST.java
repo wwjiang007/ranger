@@ -32,6 +32,7 @@ import org.apache.ranger.common.RangerConfigUtil;
 import org.apache.ranger.common.RangerConstants;
 import org.apache.ranger.common.SearchCriteria;
 import org.apache.ranger.common.SearchUtil;
+import org.apache.ranger.common.SortField;
 import org.apache.ranger.common.StringUtil;
 import org.apache.ranger.db.RangerDaoManager;
 import org.apache.ranger.db.XXPortalUserDao;
@@ -50,9 +51,10 @@ import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.junit.runners.MethodSorters;
 import org.mockito.InjectMocks;
+import org.mockito.Matchers;
 import org.mockito.Mock;
 import org.mockito.Mockito;
-import org.mockito.runners.MockitoJUnitRunner;
+import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 @FixMethodOrder(MethodSorters.NAME_ASCENDING)
@@ -110,7 +112,6 @@ public class TestUserREST {
 	String loginId = "xyzId";
 	String emailId = "abc@Example.com";
 
-	@SuppressWarnings("deprecation")
 	@Test
 	public void test1SearchUsers() {
 		SearchCriteria searchCriteria = new SearchCriteria();
@@ -119,10 +120,8 @@ public class TestUserREST {
 		List<Integer> status = new ArrayList<Integer>();
 		String publicScreenName = "nrp";
 		List<String> roles = new ArrayList<String>();
-		String[] approvedSortByParams = new String[] { "requestDate", "approvedDate", "activationDate", "emailAddress",
-				"firstName", "lastName" };
 
-		Mockito.when(searchUtil.extractCommonCriterias(request, approvedSortByParams)).thenReturn(searchCriteria);
+		Mockito.when(searchUtil.extractCommonCriterias(Matchers.eq(request), Matchers.anyListOf(SortField.class))).thenReturn(searchCriteria);
 		Mockito.when(searchUtil.extractLong(request, searchCriteria, "userId", "User Id")).thenReturn(userId);
 		Mockito.when(searchUtil.extractString(request, searchCriteria, "loginId", "Login Id", null))
 				.thenReturn(loginId);
@@ -147,7 +146,7 @@ public class TestUserREST {
 		Assert.assertEquals(vXPUserExpList, vXPUserListAct);
 		Assert.assertEquals(vXPUserExpList.getPageSize(), vXPUserListAct.getPageSize());
 
-		Mockito.verify(searchUtil).extractCommonCriterias(request, approvedSortByParams);
+		Mockito.verify(searchUtil).extractCommonCriterias(Matchers.eq(request), Matchers.anyListOf(SortField.class));
 		Mockito.verify(searchUtil).extractLong(request, searchCriteria, "userId", "User Id");
 		Mockito.verify(searchUtil).extractString(request, searchCriteria, "loginId", "Login Id", null);
 		Mockito.verify(searchUtil).extractString(request, searchCriteria, "emailAddress", "Email Address", null);
@@ -284,10 +283,9 @@ public class TestUserREST {
 		XXPortalUserDao xxPortalUserDao = Mockito.mock(XXPortalUserDao.class);
 
 		Mockito.when(daoManager.getXXPortalUser()).thenReturn(xxPortalUserDao);
-		Mockito.when(xxPortalUserDao.getById(Mockito.anyLong())).thenReturn(xxPUserExp);
 		Mockito.doNothing().when(userManager).checkAccess(xxPUserExp);
-		Mockito.when(restErrorUtil.createRESTException(Mockito.anyString(), (MessageEnums) Mockito.anyObject(),
-				Mockito.anyLong(), Mockito.anyString(), Mockito.anyString())).thenReturn(new WebApplicationException());
+		Mockito.when(restErrorUtil.createRESTException(Mockito.anyString(), (MessageEnums) Mockito.any(),
+				Mockito.nullable(Long.class), Mockito.nullable(String.class), Mockito.anyString())).thenReturn(new WebApplicationException());
 
 		thrown.expect(WebApplicationException.class);
 
@@ -296,7 +294,7 @@ public class TestUserREST {
 		Mockito.verify(daoManager).getXXPortalUser();
 		Mockito.verify(xxPortalUserDao).getById(Mockito.anyLong());
 		Mockito.verify(userManager).checkAccess(xxPUserExp);
-		Mockito.verify(restErrorUtil).createRESTException(Mockito.anyString(), (MessageEnums) Mockito.anyObject(),
+		Mockito.verify(restErrorUtil).createRESTException(Mockito.anyString(), (MessageEnums) Mockito.any(),
 				Mockito.anyLong(), Mockito.anyString(), Mockito.anyString());
 	}
 
@@ -351,15 +349,15 @@ public class TestUserREST {
 
 		Mockito.when(daoManager.getXXPortalUser()).thenReturn(xxPortalUserDao);
 		Mockito.when(xxPortalUserDao.getById(userId)).thenReturn(xxPUserExp);
-		Mockito.when(restErrorUtil.createRESTException(Mockito.anyString(), (MessageEnums) Mockito.anyObject(),
-				Mockito.anyLong(), Mockito.anyString(), Mockito.anyString())).thenReturn(new WebApplicationException());
+		Mockito.when(restErrorUtil.createRESTException(Mockito.anyString(), (MessageEnums) Mockito.any(),
+				Mockito.nullable(Long.class), Mockito.nullable(String.class), Mockito.anyString())).thenReturn(new WebApplicationException());
 		thrown.expect(WebApplicationException.class);
 
 		userREST.deactivateUser(userId);
 
 		Mockito.verify(daoManager).getXXPortalUser();
 		Mockito.verify(xxPortalUserDao).getById(userId);
-		Mockito.verify(restErrorUtil).createRESTException(Mockito.anyString(), (MessageEnums) Mockito.anyObject(),
+		Mockito.verify(restErrorUtil).createRESTException(Mockito.anyString(), (MessageEnums) Mockito.any(),
 				Mockito.anyLong(), Mockito.anyString(), Mockito.anyString());
 	}
 
@@ -395,10 +393,6 @@ public class TestUserREST {
 		XXPortalUserDao xxPortalUserDao = Mockito.mock(XXPortalUserDao.class);
 
 		Mockito.when(daoManager.getXXPortalUser()).thenReturn(xxPortalUserDao);
-		Mockito.when(xxPortalUserDao.getById(userId)).thenReturn(xxPUser);
-		Mockito.doNothing().when(userManager).checkAccessForUpdate(xxPUser);
-		Mockito.doNothing().when(changePassword).setId(userId);
-		Mockito.when(userManager.changePassword(changePassword)).thenReturn(vxResponseExp);
 		Mockito.when(restErrorUtil.createRESTException("serverMsg.userRestUser",MessageEnums.DATA_NOT_FOUND, null, null, changePassword.getLoginId())).thenThrow(new WebApplicationException());
 		thrown.expect(WebApplicationException.class);
 		VXResponse vxResponseAct = userREST.changePassword(userId, changePassword);
@@ -416,21 +410,18 @@ public class TestUserREST {
 
 	@Test
 	public void test17ChangePassword() {
-		XXPortalUser xxPUser = new XXPortalUser();
-		xxPUser = null;
 		XXPortalUserDao xxPortalUserDao = Mockito.mock(XXPortalUserDao.class);
 
 		Mockito.when(daoManager.getXXPortalUser()).thenReturn(xxPortalUserDao);
-		Mockito.when(xxPortalUserDao.getById(userId)).thenReturn(xxPUser);
-		Mockito.when(restErrorUtil.createRESTException(Mockito.anyString(), (MessageEnums) Mockito.anyObject(),
-				Mockito.anyLong(), Mockito.anyString(), Mockito.anyString())).thenReturn(new WebApplicationException());
+		Mockito.when(restErrorUtil.createRESTException(Mockito.anyString(), (MessageEnums) Mockito.any(),
+				Mockito.nullable(Long.class), Mockito.nullable(String.class), Mockito.nullable(String.class))).thenReturn(new WebApplicationException());
 		thrown.expect(WebApplicationException.class);
 
 		userREST.changePassword(userId, changePassword);
 
 		Mockito.verify(daoManager).getXXPortalUser();
 		Mockito.verify(xxPortalUserDao).getById(userId);
-		Mockito.verify(restErrorUtil).createRESTException(Mockito.anyString(), (MessageEnums) Mockito.anyObject(),
+		Mockito.verify(restErrorUtil).createRESTException(Mockito.anyString(), (MessageEnums) Mockito.any(),
 				Mockito.anyLong(), Mockito.anyString(), Mockito.anyString());
 	}
 
@@ -442,10 +433,6 @@ public class TestUserREST {
 		XXPortalUserDao xxPortalUserDao = Mockito.mock(XXPortalUserDao.class);
 
 		Mockito.when(daoManager.getXXPortalUser()).thenReturn(xxPortalUserDao);
-		Mockito.when(xxPortalUserDao.getById(userId)).thenReturn(xxPUser);
-		Mockito.doNothing().when(userManager).checkAccessForUpdate(xxPUser);
-		Mockito.doNothing().when(changePassword).setId(userId);
-		Mockito.when(userManager.changeEmailAddress(xxPUser, changePassword)).thenReturn(vxPUserExp);
 		Mockito.when(restErrorUtil.createRESTException("serverMsg.userRestUser",MessageEnums.DATA_NOT_FOUND, null, null, changePassword.getLoginId())).thenThrow(new WebApplicationException());
 		thrown.expect(WebApplicationException.class);
 		VXPortalUser vxPortalUserAct = userREST.changeEmailAddress(userId, changePassword);
@@ -464,21 +451,18 @@ public class TestUserREST {
 
 	@Test
 	public void test19ChangeEmailAddress() {
-		XXPortalUser xxPUser = new XXPortalUser();
-		xxPUser = null;
 		XXPortalUserDao xxPortalUserDao = Mockito.mock(XXPortalUserDao.class);
 
 		Mockito.when(daoManager.getXXPortalUser()).thenReturn(xxPortalUserDao);
-		Mockito.when(xxPortalUserDao.getById(userId)).thenReturn(xxPUser);
-		Mockito.when(restErrorUtil.createRESTException(Mockito.anyString(), (MessageEnums) Mockito.anyObject(),
-				Mockito.anyLong(), Mockito.anyString(), Mockito.anyString())).thenReturn(new WebApplicationException());
+		Mockito.when(restErrorUtil.createRESTException(Mockito.anyString(), (MessageEnums) Mockito.any(),
+				Mockito.nullable(Long.class), Mockito.nullable(String.class), Mockito.nullable(String.class))).thenReturn(new WebApplicationException());
 		thrown.expect(WebApplicationException.class);
 
 		userREST.changeEmailAddress(userId, changePassword);
 
 		Mockito.verify(daoManager).getXXPortalUser();
 		Mockito.verify(xxPortalUserDao).getById(userId);
-		Mockito.verify(restErrorUtil).createRESTException(Mockito.anyString(), (MessageEnums) Mockito.anyObject(),
+		Mockito.verify(restErrorUtil).createRESTException(Mockito.anyString(), (MessageEnums) Mockito.any(),
 				Mockito.anyLong(), Mockito.anyString(), Mockito.anyString());
 	}
 

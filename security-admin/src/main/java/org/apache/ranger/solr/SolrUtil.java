@@ -38,6 +38,7 @@ import org.apache.solr.client.solrj.SolrClient;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.SolrQuery.ORDER;
 import org.apache.solr.client.solrj.SolrRequest.METHOD;
+import org.apache.solr.client.solrj.request.QueryRequest;
 import org.apache.solr.client.solrj.response.QueryResponse;
 import org.apache.solr.client.solrj.util.ClientUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -63,22 +64,28 @@ public class SolrUtil {
 			try {
 				dateFormat.setTimeZone(TimeZone.getTimeZone(timeZone));
 			} catch (Throwable t) {
-				logger.error("Error setting timezone. timeZone=" + timeZone);
+                                logger.error("Error setting timezone. TimeZone = " + timeZone);
 			}
 		}
 	}
 
-	public QueryResponse runQuery(SolrClient solrClient, SolrQuery solrQuery) {
-		if (solrQuery != null) {
-			QueryResponse response;
-			try {
-				response = solrClient.query(solrQuery, METHOD.POST);
-				return response;
-			} catch (Throwable e) {
-				logger.error("Error from Solr server.", e);
-			}
-		}
-		return null;
+	public QueryResponse runQuery(SolrClient solrClient, SolrQuery solrQuery) throws Throwable {
+	    if (solrQuery != null) {
+	        try {
+	            QueryRequest req = new QueryRequest(solrQuery, METHOD.POST);
+	            String username = PropertiesUtil.getProperty("ranger.solr.audit.user");
+	            String password = PropertiesUtil.getProperty("ranger.solr.audit.user.password");
+	            if (username != null && password != null) {
+	                req.setBasicAuthCredentials(username, password);
+	            }
+
+	            return req.process(solrClient);
+	        } catch (Throwable e) {
+	            logger.error("Error from Solr server. ", e);
+	            throw e;
+	        }
+	    }
+	    return null;
 	}
 
 	public QueryResponse searchResources(SearchCriteria searchCriteria,
@@ -95,8 +102,7 @@ public class SolrUtil {
 			String dateFieldName = null;
 
 			for (SearchField searchField : searchFields) {
-				Object paramValue = searchCriteria.getParamValue(searchField
-						.getClientFieldName());
+				Object paramValue = searchCriteria.getParamValue(searchField.getClientFieldName());
 				if (paramValue == null || paramValue.toString().isEmpty()) {
 					continue;
 				}
@@ -108,7 +114,7 @@ public class SolrUtil {
 					}
 				} else if (searchField.getDataType() == SearchField.DATA_TYPE.DATE) {
 					if (!(paramValue instanceof Date)) {
-						logger.error("Search field is not a Java Date Object, paramValue=" + paramValue);
+                                                logger.error("Search field is not a Java Date Object, paramValue = " + paramValue);
 					} else {
 						if (searchField.getSearchType() == SEARCH_TYPE.GREATER_EQUAL_THAN
 								|| searchField.getSearchType() == SEARCH_TYPE.GREATER_THAN) {
@@ -152,14 +158,23 @@ public class SolrUtil {
 		// Fields to get
 		// query.setFields("myClassType", "id", "score", "globalId");
 		if (logger.isDebugEnabled()) {
-			logger.debug("SOLR QUERY=" + query);
+                        logger.debug("SOLR QUERY = " + query);
+                }
+                QueryResponse response = null;
+                try {
+                        response = runQuery(solrClient, query);
+                } catch (Throwable e) {
+                        logger.error("Error running solr query. Query = " + query
+                                        + ", response = " + response);
+                        throw restErrorUtil.createRESTException(
+                                        "Error running solr query, please check solr configs. "
+                                                        + e.getMessage(), MessageEnums.ERROR_SYSTEM);
 		}
-		QueryResponse response = runQuery(solrClient, query);
-
 		if (response == null || response.getStatus() != 0) {
-			logger.error("Error running query. query=" + query
-					+ ", response=" + response);
-			throw restErrorUtil.createRESTException("Error running query",
+                        logger.error("Error running solr query. Query = " + query
+                                        + ", response = " + response);
+                        throw restErrorUtil.createRESTException(
+                                        "Unable to connect to Audit store !!",
 					MessageEnums.ERROR_SYSTEM);
 		}
 		return response;
@@ -276,7 +291,7 @@ public class SolrUtil {
 			// Add sort type
 			String sortType = searchCriteria.getSortType();
 			ORDER order = ORDER.asc;
-			if (sortType != null && sortType.equalsIgnoreCase("desc")) {
+			if (sortType != null && "desc".equalsIgnoreCase(sortType)) {
 				order = ORDER.desc;
 
 			}
@@ -298,7 +313,7 @@ public class SolrUtil {
 		try {
 			return Integer.valueOf(value.toString());
 		} catch (Throwable t) {
-			logger.error("Error converting value to integer. value=" + value, t);
+                        logger.error("Error converting value to integer. Value = " + value, t);
 		}
 		return 0;
 	}
@@ -316,7 +331,7 @@ public class SolrUtil {
 		try {
 			return Long.valueOf(value.toString());
 		} catch (Throwable t) {
-			logger.error("Error converting value to long. value=" + value, t);
+                        logger.error("Error converting value to long. Value = " + value, t);
 		}
 		return 0;
 	}
@@ -332,7 +347,7 @@ public class SolrUtil {
 			// TODO: Do proper parsing based on Solr response value
 			return new Date(value.toString());
 		} catch (Throwable t) {
-			logger.error("Error converting value to date. value=" + value, t);
+                        logger.error("Error converting value to date. Value = " + value, t);
 		}
 		return null;
 	}

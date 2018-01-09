@@ -56,15 +56,30 @@ then
         RANGER_KMS_LOG_DIR=${RANGER_KMS_EWS_DIR}/logs
 fi
 
+if [ -z "${RANGER_KMS_PID_NAME}" ]
+then
+        RANGER_KMS_PID_NAME=rangerkms.pid
+fi
+
 if [ -z "${RANGER_KMS_PID_DIR_PATH}" ]
 then
-        RANGER_KMS_PID_DIR_PATH=/var/run/ranger_kms
+	RANGER_KMS_PID_DIR_PATH=/var/run/ranger_kms
 fi
-pidf=${RANGER_KMS_PID_DIR_PATH}/rangerkms.pid
+if [ ! -d "${RANGER_KMS_PID_DIR_PATH}" ]
+then
+	mkdir -p  $RANGER_KMS_PID_DIR_PATH
+	chmod 660 $RANGER_KMS_PID_DIR_PATH
+fi
+# User can set their own pid path using RANGER_KMS_PID_DIR_PATH and
+# RANGER_KMS_PID_NAME variable before calling the script. The user can modify
+# the value of the RANGER_KMS_PID_DIR_PATH in ranger-kms-env-piddir.sh to
+# change pid path and set the value of RANGER_KMS_PID_NAME to change the
+# pid file.
+pidf=${RANGER_KMS_PID_DIR_PATH}/${RANGER_KMS_PID_NAME}
 
 if [ -z "${KMS_USER}" ]
 then
-        KMS_USER=kms
+	KMS_USER=kms
 fi
 
 PROC_NAME=proc_rangerkms
@@ -89,7 +104,7 @@ fi
 
 KMS_CONF_DIR=${RANGER_KMS_EWS_DIR}/webapp/WEB-INF/classes/conf
 SERVER_NAME=rangerkms
-JAVA_OPTS="${JAVA_OPTS} -Dservername=${SERVER_NAME} -Dcatalina.base=${RANGER_KMS_EWS_DIR} -Dkms.config.dir=${KMS_CONF_DIR} -Dkms.log.dir=${TOMCAT_LOG_DIR} -cp ${RANGER_KMS_EWS_CONF_DIR}:${RANGER_KMS_EWS_LIB_DIR}/*:${RANGER_KMS_EWS_DIR}/webapp/lib/*:${JAVA_HOME}/lib/*:${RANGER_HADOOP_CONF_DIR}/*:$CLASSPATH "
+JAVA_OPTS="${JAVA_OPTS} -Duser=${USER} -Dhostname=${HOSTNAME} -Dservername=${SERVER_NAME} -Dcatalina.base=${RANGER_KMS_EWS_DIR} -Dkms.config.dir=${KMS_CONF_DIR} -Dkms.log.dir=${TOMCAT_LOG_DIR} -cp ${RANGER_KMS_EWS_CONF_DIR}:${RANGER_KMS_EWS_LIB_DIR}/*:${RANGER_KMS_EWS_DIR}/webapp/lib/*:${JAVA_HOME}/lib/*:${RANGER_HADOOP_CONF_DIR}/*:$CLASSPATH "
 createRangerKMSPid () {
 	SLEEP_TIME_AFTER_START=5
 	nohup java -D${PROC_NAME} ${JAVA_OPTS} ${START_CLASS_NAME} ${KMS_CONFIG_FILENAME} > ${TOMCAT_LOG_FILE} 2>&1 &

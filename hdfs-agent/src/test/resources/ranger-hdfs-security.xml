@@ -20,7 +20,7 @@
 
 	<property>
 		<name>ranger.plugin.hdfs.service.name</name>
-		<value>HDFSTest</value>
+		<value>cl1_hadoop</value>
 		<description>
 			Name of the Ranger service containing policies for this SampleApp instance
 		</description>
@@ -39,6 +39,14 @@
 		<value>${project.build.directory}</value>
 		<description>
 			Directory where Ranger policies are cached after successful retrieval from the source
+		</description>
+	</property>
+
+	<property>
+		<name>ranger.optimize-subaccess-authorization</name>
+		<value>true</value>
+		<description>
+			Enable skipping subdirectories if proper policy exists for getContentSummary and delete commands
 		</description>
 	</property>
 

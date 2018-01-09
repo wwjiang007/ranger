@@ -58,11 +58,16 @@ import kafka.utils.ZkUtils;
  * CustomAuthorizer that enforces some authorization rules:
  * 
  *  - The "IT" group can do anything
- *  - The "public" group can only "read/describe" on the "test" topic, not "write".
+ *  - The "public" group can "read/describe/write" on the "test" topic.
+ *  - The "public" group can only "read/describe" on the "dev" topic, but not write.
+ *
+ * In addition we have a TAG based policy, which grants "read/describe" access to the "public" group to the "messages" topic (which is associated
+ * with the tag called "MessagesTag". A "kafka_topic" entity was created in Apache Atlas + then associated with the "MessagesTag". This was
+ * then imported into Ranger using the TagSyncService. The policies were then downloaded locally and saved for testing off-line.
  * 
  * Policies available from admin via:
  * 
- * http://localhost:6080/service/plugins/policies/download/KafkaTest
+ * http://localhost:6080/service/plugins/policies/download/cl1_kafka
  */
 public class KafkaRangerAuthorizerTest {
     
@@ -260,7 +265,7 @@ public class KafkaRangerAuthorizerTest {
         producer.close();
     }
     
-    // The "public" group can't write to "test" or "dev"
+    // The "public" group can write to "test" but not "dev"
     @Test
     public void testUnauthorizedWrite() throws Exception {
         // Create the Producer
@@ -280,19 +285,13 @@ public class KafkaRangerAuthorizerTest {
         final Producer<String, String> producer = new KafkaProducer<>(producerProps);
         
         // Send a message
-        try {
-            Future<RecordMetadata> record = 
-                producer.send(new ProducerRecord<String, String>("test", "somekey", "somevalue"));
-            producer.flush();
-            record.get();
-            Assert.fail("Authorization failure expected");
-        } catch (Exception ex) {
-            Assert.assertTrue(ex.getMessage().contains("Not authorized to access topics"));
-        }
+        Future<RecordMetadata> record =
+            producer.send(new ProducerRecord<String, String>("test", "somekey", "somevalue"));
+        producer.flush();
+        record.get();
         
         try {
-            Future<RecordMetadata> record = 
-                producer.send(new ProducerRecord<String, String>("dev", "somekey", "somevalue"));
+            record = producer.send(new ProducerRecord<String, String>("dev", "somekey", "somevalue"));
             producer.flush();
             record.get();
             Assert.fail("Authorization failure expected");
@@ -302,4 +301,68 @@ public class KafkaRangerAuthorizerTest {
         
         producer.close();
     }
+
+    // The "public" group can read from "messages"
+    @Test
+    public void testAuthorizedReadUsingTagPolicy() throws Exception {
+        // Create the Producer
+        Properties producerProps = new Properties();
+        producerProps.put("bootstrap.servers", "localhost:" + port);
+        producerProps.put("acks", "all");
+        producerProps.put("key.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+        producerProps.put("value.serializer", "org.apache.kafka.common.serialization.StringSerializer");
+        producerProps.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "SSL");
+        producerProps.put(SslConfigs.SSL_KEYSTORE_TYPE_CONFIG, "JKS");
+        producerProps.put(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, serviceKeystorePath);
+        producerProps.put(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, "sspass");
+        producerProps.put(SslConfigs.SSL_KEY_PASSWORD_CONFIG, "skpass");
+        producerProps.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, truststorePath);
+        producerProps.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, "security");
+
+        final Producer<String, String> producer = new KafkaProducer<>(producerProps);
+
+        // Create the Consumer
+        Properties consumerProps = new Properties();
+        consumerProps.put("bootstrap.servers", "localhost:" + port);
+        consumerProps.put("group.id", "test");
+        consumerProps.put("enable.auto.commit", "true");
+        consumerProps.put("auto.offset.reset", "earliest");
+        consumerProps.put("auto.commit.interval.ms", "1000");
+        consumerProps.put("session.timeout.ms", "30000");
+        consumerProps.put("key.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        consumerProps.put("value.deserializer", "org.apache.kafka.common.serialization.StringDeserializer");
+        consumerProps.put(CommonClientConfigs.SECURITY_PROTOCOL_CONFIG, "SSL");
+        consumerProps.put(SslConfigs.SSL_KEYSTORE_TYPE_CONFIG, "JKS");
+        consumerProps.put(SslConfigs.SSL_KEYSTORE_LOCATION_CONFIG, clientKeystorePath);
+        consumerProps.put(SslConfigs.SSL_KEYSTORE_PASSWORD_CONFIG, "cspass");
+        consumerProps.put(SslConfigs.SSL_KEY_PASSWORD_CONFIG, "ckpass");
+        consumerProps.put(SslConfigs.SSL_TRUSTSTORE_LOCATION_CONFIG, truststorePath);
+        consumerProps.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, "security");
+
+        final KafkaConsumer<String, String> consumer = new KafkaConsumer<>(consumerProps);
+        consumer.subscribe(Arrays.asList("messages"));
+
+        // Send a message
+        producer.send(new ProducerRecord<String, String>("messages", "somekey", "somevalue"));
+        producer.flush();
+
+        // Poll until we consume it
+
+        ConsumerRecord<String, String> record = null;
+        for (int i = 0; i < 1000; i++) {
+            ConsumerRecords<String, String> records = consumer.poll(100);
+            if (records.count() > 0) {
+                record = records.iterator().next();
+                break;
+            }
+            Thread.sleep(1000);
+        }
+
+        Assert.assertNotNull(record);
+        Assert.assertEquals("somevalue", record.value());
+
+        producer.close();
+        consumer.close();
+    }
+
 }

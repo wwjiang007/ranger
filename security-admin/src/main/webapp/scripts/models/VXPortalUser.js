@@ -36,8 +36,7 @@ define(function(require){
 
 		schema : function(){
 			var attrs = _.omit(this.serverSchema, 'id', 'createDate', 'updateDate', "version",
-					"createDate", "updateDate", "displayOption",
-					"permList", "forUserId", "status", "priGrpId",
+					"displayOption", "permList", "forUserId", "status", "priGrpId",
 					 "updatedBy","isSystem");
 
 			_.each(attrs, function(o){
@@ -47,7 +46,7 @@ define(function(require){
 			// Overwrite your schema definition here
 			return _.extend(attrs,{
 				firstName : {
-					type		: 'TextFiledWithIcon',
+					type		: 'TextFieldWithIcon',
 					title		: localization.tt("lbl.firstName")+' *',
                                         validators  : ['required',{type:'regexp',regexp:/^([a-zA-Z0-9_]|[\u00C0-\u017F])([a-zA-Z0-9\s_. -@]|[\u00C0-\u017F])+$/i,message :'Invalid first name.'}],
 					editorAttrs : { 'placeholder' : localization.tt("lbl.firstName")},
@@ -55,7 +54,7 @@ define(function(require){
 					
 				},
 				lastName : {
-					type		: 'TextFiledWithIcon',
+					type		: 'TextFieldWithIcon',
 					title		: localization.tt("lbl.lastName"),
                                         validators  : ['required',{type:'regexp',regexp:/^([a-zA-Z0-9_]|[\u00C0-\u017F])([a-zA-Z0-9\s_. -@]|[\u00C0-\u017F])+$/i,message :'Invalid last name.'}],
 					editorAttrs : { 'placeholder' : localization.tt("lbl.lastName")},

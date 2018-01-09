@@ -31,6 +31,7 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.ranger.admin.client.datatype.RESTResponse;
 import org.apache.ranger.audit.provider.MiscUtil;
 import org.apache.ranger.authorization.hadoop.config.RangerConfiguration;
+import org.apache.ranger.authorization.utils.StringUtil;
 import org.apache.ranger.plugin.util.GrantRevokeRequest;
 import org.apache.ranger.plugin.util.RangerRESTClient;
 import org.apache.ranger.plugin.util.RangerRESTUtils;
@@ -49,11 +50,9 @@ public class RangerAdminRESTClient implements RangerAdminClient {
 
 	private String           serviceName;
 	private String           pluginId;
+	private String clusterName;
 	private RangerRESTClient restClient;
 	private RangerRESTUtils restUtils   = new RangerRESTUtils();
-
-	public RangerAdminRESTClient() {
-	}
 
 	public static <T> GenericType<List<T>> getGenericType(final T clazz) {
 
@@ -79,10 +78,18 @@ public class RangerAdminRESTClient implements RangerAdminClient {
 		this.serviceName = serviceName;
 		this.pluginId    = restUtils.getPluginId(serviceName, appId);
 
-		String url               		= RangerConfiguration.getInstance().get(propertyPrefix + ".policy.rest.url");
+		String url                      = "";
+		String tmpUrl                   = RangerConfiguration.getInstance().get(propertyPrefix + ".policy.rest.url");
 		String sslConfigFileName 		= RangerConfiguration.getInstance().get(propertyPrefix + ".policy.rest.ssl.config.file");
+		clusterName       				= RangerConfiguration.getInstance().get(propertyPrefix + ".ambari.cluster.name", "");
 		int	 restClientConnTimeOutMs	= RangerConfiguration.getInstance().getInt(propertyPrefix + ".policy.rest.client.connection.timeoutMs", 120 * 1000);
 		int	 restClientReadTimeOutMs	= RangerConfiguration.getInstance().getInt(propertyPrefix + ".policy.rest.client.read.timeoutMs", 30 * 1000);
+        if (!StringUtil.isEmpty(tmpUrl)) {
+            url = tmpUrl.trim();
+        }
+        if (url.endsWith("/")) {
+            url = url.substring(0, url.length() - 1);
+        }
 
 		init(url, sslConfigFileName, restClientConnTimeOutMs , restClientReadTimeOutMs);
 	}
@@ -96,7 +103,6 @@ public class RangerAdminRESTClient implements RangerAdminClient {
 		ServicePolicies ret = null;
 		UserGroupInformation user = MiscUtil.getUGILoginUser();
 		boolean isSecureMode = user != null && UserGroupInformation.isSecurityEnabled();
-
 		ClientResponse response = null;
 		if (isSecureMode) {
 			if (LOG.isDebugEnabled()) {
@@ -107,7 +113,8 @@ public class RangerAdminRESTClient implements RangerAdminClient {
 					WebResource secureWebResource = createWebResource(RangerRESTUtils.REST_URL_POLICY_GET_FOR_SECURE_SERVICE_IF_UPDATED + serviceName)
 							.queryParam(RangerRESTUtils.REST_PARAM_LAST_KNOWN_POLICY_VERSION, Long.toString(lastKnownVersion))
 							.queryParam(RangerRESTUtils.REST_PARAM_LAST_ACTIVATION_TIME, Long.toString(lastActivationTimeInMillis))
-							.queryParam(RangerRESTUtils.REST_PARAM_PLUGIN_ID, pluginId);
+							.queryParam(RangerRESTUtils.REST_PARAM_PLUGIN_ID, pluginId)
+							.queryParam(RangerRESTUtils.REST_PARAM_CLUSTER_NAME, clusterName);
 					return secureWebResource.accept(RangerRESTUtils.REST_MIME_TYPE_JSON).get(ClientResponse.class);
 				}
 			};
@@ -119,7 +126,8 @@ public class RangerAdminRESTClient implements RangerAdminClient {
 			WebResource webResource = createWebResource(RangerRESTUtils.REST_URL_POLICY_GET_FOR_SERVICE_IF_UPDATED + serviceName)
 					.queryParam(RangerRESTUtils.REST_PARAM_LAST_KNOWN_POLICY_VERSION, Long.toString(lastKnownVersion))
 					.queryParam(RangerRESTUtils.REST_PARAM_LAST_ACTIVATION_TIME, Long.toString(lastActivationTimeInMillis))
-					.queryParam(RangerRESTUtils.REST_PARAM_PLUGIN_ID, pluginId);
+					.queryParam(RangerRESTUtils.REST_PARAM_PLUGIN_ID, pluginId)
+					.queryParam(RangerRESTUtils.REST_PARAM_CLUSTER_NAME, clusterName);
 			response = webResource.accept(RangerRESTUtils.REST_MIME_TYPE_JSON).get(ClientResponse.class);
 		}
 
@@ -185,11 +193,11 @@ public class RangerAdminRESTClient implements RangerAdminClient {
                                                                                 .queryParam(RangerRESTUtils.REST_PARAM_PLUGIN_ID, pluginId);
 			response = webResource.accept(RangerRESTUtils.REST_EXPECTED_MIME_TYPE).type(RangerRESTUtils.REST_EXPECTED_MIME_TYPE).post(ClientResponse.class, restClient.toJson(request));
 		}
-		if(response != null && response.getStatus() != 200) {
+		if(response != null && response.getStatus() != HttpServletResponse.SC_OK) {
 			RESTResponse resp = RESTResponse.fromClientResponse(response);
 			LOG.error("grantAccess() failed: HTTP status=" + response.getStatus() + ", message=" + resp.getMessage() + ", isSecure=" + isSecureMode + (isSecureMode ? (", user=" + user) : ""));
 
-			if(response.getStatus() == 401) {
+			if(response.getStatus()==HttpServletResponse.SC_UNAUTHORIZED) {
 				throw new AccessControlException();
 			}
 
@@ -231,11 +239,11 @@ public class RangerAdminRESTClient implements RangerAdminClient {
 			response = webResource.accept(RangerRESTUtils.REST_EXPECTED_MIME_TYPE).type(RangerRESTUtils.REST_EXPECTED_MIME_TYPE).post(ClientResponse.class, restClient.toJson(request));
 		}
 
-		if(response != null && response.getStatus() != 200) {
+		if(response != null && response.getStatus() != HttpServletResponse.SC_OK) {
 			RESTResponse resp = RESTResponse.fromClientResponse(response);
 			LOG.error("revokeAccess() failed: HTTP status=" + response.getStatus() + ", message=" + resp.getMessage() + ", isSecure=" + isSecureMode + (isSecureMode ? (", user=" + user) : ""));
 
-			if(response.getStatus() == 401) {
+			if(response.getStatus() == HttpServletResponse.SC_UNAUTHORIZED) {
 				throw new AccessControlException();
 			}
 
@@ -371,7 +379,7 @@ public class RangerAdminRESTClient implements RangerAdminClient {
 			response = webResource.accept(RangerRESTUtils.REST_MIME_TYPE_JSON).get(ClientResponse.class);
 		}
 
-		if(response != null && response.getStatus() == 200) {
+		if(response != null && response.getStatus() == HttpServletResponse.SC_OK) {
 			ret = response.getEntity(getGenericType(emptyString));
 		} else {
 			RESTResponse resp = RESTResponse.fromClientResponse(response);

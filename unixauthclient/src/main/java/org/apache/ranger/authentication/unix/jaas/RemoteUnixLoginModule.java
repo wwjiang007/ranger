@@ -133,94 +133,11 @@ public class RemoteUnixLoginModule implements LoginModule {
 			this.callbackHandler = new ConsolePromptCallbackHandler();
 		}
 
-		/*
-		Properties config = null;
-
-		String val = (String) options.get(REMOTE_UNIX_AUTHENICATION_CONFIG_FILE_PARAM);
-		log("Remote Unix Auth Configuration file [" + val + "]");
-		if (val != null) {
-			InputStream in = null;
-			try {
-				in = getFileInputStream(val);
-				if (in != null) {
-					try {
-						config = new Properties();
-						// config.load(in);
-						DocumentBuilderFactory xmlDocumentBuilderFactory = DocumentBuilderFactory
-								.newInstance();
-						xmlDocumentBuilderFactory.setIgnoringComments(true);
-						xmlDocumentBuilderFactory.setNamespaceAware(true);
-						DocumentBuilder xmlDocumentBuilder = xmlDocumentBuilderFactory
-								.newDocumentBuilder();
-						Document xmlDocument = xmlDocumentBuilder.parse(in);
-						xmlDocument.getDocumentElement().normalize();
-
-						NodeList nList = xmlDocument
-								.getElementsByTagName("property");
-
-						for (int temp = 0; temp < nList.getLength(); temp++) {
-
-							Node nNode = nList.item(temp);
-
-							if (nNode.getNodeType() == Node.ELEMENT_NODE) {
-
-								Element eElement = (Element) nNode;
-
-								String propertyName = "";
-								String propertyValue = "";
-								if (eElement.getElementsByTagName("name").item(
-										0) != null) {
-									propertyName = eElement
-											.getElementsByTagName("name")
-											.item(0).getTextContent().trim();
-								}
-								if (eElement.getElementsByTagName("value")
-										.item(0) != null) {
-									propertyValue = eElement
-											.getElementsByTagName("value")
-											.item(0).getTextContent().trim();
-								}
-
-								config.put(propertyName, propertyValue);
-
-							}
-							logError("ranger site properties loaded successfully.");
-						}
-					} catch (Exception e) {
-						logError("Error loading : " + e);
-
-					}
-					finally {
-						try {
-							in.close();
-						}
-						catch(IOException ioe) {
-							// Ignore IOException when closing streams
-						}
-					}
-				}
-				
-			}
-			catch(Throwable t) {
-				logError("Unable to load REMOTE_UNIX_AUTHENICATION_CONFIG_FILE_PARAM [" + val + "]");
-			}
-		}
-		
-		if (config == null) {
-			logError("Remote Unix Auth Configuration is being loaded from XML configuration - not Properties");
-			config = new Properties();
-			config.putAll(options);
-		}
-		
-		*/
-		
 		Properties config = new Properties();
 		config.putAll(options);
 		initParams(config);
 		
 	}
-	
-	
 	
 	public void initParams(Properties  options) {
 		
@@ -229,7 +146,7 @@ public class RemoteUnixLoginModule implements LoginModule {
 		if (val != null) {
 			remoteLoginEnabled = val.trim().equalsIgnoreCase("true");
 			if (! remoteLoginEnabled) {
-				System.err.println("Skipping RemoteLogin - [" + JAAS_ENABLED_PARAM + "] => [" + val + "]");
+				log("Skipping RemoteLogin - [" + JAAS_ENABLED_PARAM + "] => [" + val + "]");
 				return;
 			}
 		}
@@ -282,7 +199,7 @@ public class RemoteUnixLoginModule implements LoginModule {
 			}
 			
 			String certValidationFlag = (String) options.get(SERVER_CERT_VALIDATION_PARAM);
-			serverCertValidation = (! (certValidationFlag != null && ("false".equalsIgnoreCase(certValidationFlag.trim().toLowerCase()))));
+			serverCertValidation = (! (certValidationFlag != null && ("false".equalsIgnoreCase(certValidationFlag.trim()))));
 			log("Server Cert Validation : " + serverCertValidation);
 		}
 

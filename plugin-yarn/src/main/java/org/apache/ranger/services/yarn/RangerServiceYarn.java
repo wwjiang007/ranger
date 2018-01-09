@@ -22,8 +22,11 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import org.apache.ranger.authorization.yarn.authorizer.RangerYarnAuthorizer;
+import org.apache.ranger.plugin.model.RangerPolicy;
 import org.apache.ranger.plugin.model.RangerService;
 import org.apache.ranger.plugin.model.RangerServiceDef;
+import org.apache.ranger.plugin.resourcematcher.RangerAbstractResourceMatcher;
 import org.apache.ranger.plugin.service.RangerBaseService;
 import org.apache.ranger.plugin.service.ResourceLookupContext;
 import org.apache.ranger.services.yarn.client.YarnResourceMgr;
@@ -44,8 +47,8 @@ public class RangerServiceYarn extends RangerBaseService {
 	}
 
 	@Override
-	public HashMap<String,Object> validateConfig() throws Exception {
-		HashMap<String, Object> ret = new HashMap<String, Object>();
+	public Map<String,Object> validateConfig() throws Exception {
+		Map<String, Object> ret = new HashMap<String, Object>();
 		String 	serviceName  	    = getServiceName();
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("==> RangerServiceYarn.validateConfig Service: (" + serviceName + " )");
@@ -83,6 +86,42 @@ public class RangerServiceYarn extends RangerBaseService {
 		}
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("<== RangerServiceYarn.lookupResource Response: (" + ret + ")");
+		}
+		return ret;
+	}
+
+	public List<RangerPolicy> getDefaultRangerPolicies() throws Exception {
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("==> RangerServiceYarn.getDefaultRangerPolicies() ");
+		}
+
+		List<RangerPolicy> ret = super.getDefaultRangerPolicies();
+
+		String queueResourceName = RangerYarnAuthorizer.KEY_RESOURCE_QUEUE;
+
+		for (RangerPolicy defaultPolicy : ret) {
+			RangerPolicy.RangerPolicyResource queuePolicyResource = defaultPolicy.getResources().get(queueResourceName);
+			if (queuePolicyResource != null) {
+				List<RangerServiceDef.RangerResourceDef> resourceDefs = serviceDef.getResources();
+				RangerServiceDef.RangerResourceDef queueResourceDef = null;
+				for (RangerServiceDef.RangerResourceDef resourceDef : resourceDefs) {
+					if (resourceDef.getName().equals(queueResourceName)) {
+						queueResourceDef = resourceDef;
+						break;
+					}
+				}
+				if (queueResourceDef != null) {
+					queuePolicyResource.setValue(RangerAbstractResourceMatcher.WILDCARD_ASTERISK);
+				} else {
+					LOG.warn("No resourceDef found in YARN service-definition for '" + queueResourceName + "'");
+				}
+			} else {
+				LOG.warn("No '" + queueResourceName + "' found in default policy");
+			}
+		}
+
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("<== RangerServiceYarn.getDefaultRangerPolicies() : " + ret);
 		}
 		return ret;
 	}

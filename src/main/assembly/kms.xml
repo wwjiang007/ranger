@@ -137,11 +137,13 @@
                 <outputDirectory>/ews/webapp/WEB-INF/classes/lib</outputDirectory>
                 <includes>
                     <include>org.apache.tomcat.embed:tomcat-embed*</include>
+                    <include>org.apache.tomcat:tomcat-annotations-api*</include>
                     <include>org.eclipse.jdt.core.compiler:ecj:jar:P20140317-1600</include>
                     <include>com.google.protobuf:protobuf-java:jar:${protobuf-java.version}</include>
 		    		<include>org.apache.hadoop:hadoop-hdfs:jar:${hadoop.version}</include>
 		    		<include>org.apache.htrace:htrace-core:jar:${htrace-core.version}</include>
 		    		<include>org.apache.solr:solr-solrj</include>
+				<include>org.apache.ranger:ranger-plugins-common</include>
                 </includes>
                 <unpack>false</unpack>
             </dependencySet>
@@ -164,7 +166,6 @@
                 <outputDirectory>/jisql/lib</outputDirectory>
                 <unpack>false</unpack>
 				<includes>
-                    <include>net.sourceforge.javacsv:javacsv</include>
                     <include>net.sf.jopt-simple:jopt-simple</include>
 				</includes>
             </dependencySet>
@@ -355,7 +356,7 @@
     <!-- version file -->
     <fileSet>
         <outputDirectory>/</outputDirectory>
-        <directory>${project.build.outputDirectory}</directory>
+        <directory>${project.build.directory}</directory>
         <includes>
             <include>version</include>
         </includes>

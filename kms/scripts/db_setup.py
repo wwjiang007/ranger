@@ -34,12 +34,9 @@ is_unix = os_name == "LINUX" or os_name == "DARWIN"
 
 jisql_debug=True
 
-if is_unix:
-	RANGER_KMS_HOME = os.getenv("RANGER_KMS_HOME")
-	if RANGER_KMS_HOME is None:
-		RANGER_KMS_HOME = os.getcwd()
-elif os_name == "WINDOWS":
-	RANGER_KMS_HOME = os.getenv("RANGER_KMS_HOME")
+RANGER_KMS_HOME = os.getenv("RANGER_KMS_HOME")
+if RANGER_KMS_HOME is None:
+	RANGER_KMS_HOME = os.getcwd()
 
 def check_output(query):
 	if is_unix:
@@ -70,9 +67,13 @@ def populate_global_dict():
 	library_path = os.path.join(RANGER_KMS_HOME,"cred","lib","*")
 
 	for each_line in read_config_file.read().split('\n') :
-		if len(each_line) == 0 : continue
+		each_line = each_line.strip();
+		if len(each_line) == 0:
+			continue
+		elif each_line[0] == "#":
+			continue
 		if re.search('=', each_line):
-			key , value = each_line.strip().split("=",1)
+			key , value = each_line.split("=",1)
 			key = key.strip()
 			if 'PASSWORD' in key:
 				value = ''

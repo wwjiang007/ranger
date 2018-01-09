@@ -58,6 +58,10 @@ if [ -z "${RANGER_PID_DIR_PATH}" ]
 then
         RANGER_PID_DIR_PATH=/var/run/ranger
 fi
+if [ -z "${RANGER_ADMIN_PID_NAME}" ]
+then
+        RANGER_ADMIN_PID_NAME=rangeradmin.pid
+fi
 
 if [ ! -d "${RANGER_PID_DIR_PATH}" ]
 then  
@@ -65,7 +69,11 @@ then
 	chmod 660 $RANGER_PID_DIR_PATH
 fi
 
-pidf=${RANGER_PID_DIR_PATH}/rangeradmin.pid
+# User can set their own pid path using RANGER_PID_DIR_PATH and
+# RANGER_ADMIN_PID_NAME variable before calling the script. The user can modify
+# the value of the RANGER_PID_DIR_PATH in ranger-admin-env-piddir.sh to change
+# pid path and set the value of RANGER_ADMIN_PID_NAME to change the pid file.
+pidf=${RANGER_PID_DIR_PATH}/${RANGER_ADMIN_PID_NAME}
 
 if [ -z "${RANGER_USER}" ]
 then
@@ -74,7 +82,7 @@ fi
 SERVER_NAME=rangeradmin
 start() {
 	SLEEP_TIME_AFTER_START=5
-	nohup  java -Dproc_rangeradmin ${JAVA_OPTS} ${DB_SSL_PARAM} -Dservername=${SERVER_NAME} -Dlogdir=${RANGER_ADMIN_LOG_DIR} -Dcatalina.base=${XAPOLICYMGR_EWS_DIR} -cp "${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/conf:${XAPOLICYMGR_EWS_DIR}/lib/*:${RANGER_JAAS_LIB_DIR}/*:${RANGER_JAAS_CONF_DIR}:${JAVA_HOME}/lib/*:${RANGER_HADOOP_CONF_DIR}/*:$CLASSPATH" org.apache.ranger.server.tomcat.EmbeddedServer > ${RANGER_ADMIN_LOG_DIR}/catalina.out 2>&1 &
+	nohup  java -Dproc_rangeradmin ${JAVA_OPTS} -Duser=${USER} -Dhostname=${HOSTNAME} ${DB_SSL_PARAM} -Dservername=${SERVER_NAME} -Dlogdir=${RANGER_ADMIN_LOG_DIR} -Dcatalina.base=${XAPOLICYMGR_EWS_DIR} -cp "${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/conf:${XAPOLICYMGR_EWS_DIR}/lib/*:${RANGER_JAAS_LIB_DIR}/*:${RANGER_JAAS_CONF_DIR}:${JAVA_HOME}/lib/*:${RANGER_HADOOP_CONF_DIR}/*:$CLASSPATH" org.apache.ranger.server.tomcat.EmbeddedServer > ${RANGER_ADMIN_LOG_DIR}/catalina.out 2>&1 &
 	VALUE_OF_PID=$!
 	echo "Starting Apache Ranger Admin Service"
 	sleep $SLEEP_TIME_AFTER_START
@@ -108,7 +116,7 @@ stop(){
 	fi
 
 	echo "Found Apache Ranger Admin Service with pid $pid, Stopping it..."
-	nohup java ${JAVA_OPTS} -Dlogdir=${RANGER_ADMIN_LOG_DIR} -Dcatalina.base=${XAPOLICYMGR_EWS_DIR} -cp "${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/conf:${XAPOLICYMGR_EWS_DIR}/lib/*:${RANGER_JAAS_LIB_DIR}/*:${RANGER_JAAS_CONF_DIR}:${RANGER_HADOOP_CONF_DIR}/*:$CLASSPATH" org.apache.ranger.server.tomcat.StopEmbeddedServer > ${RANGER_ADMIN_LOG_DIR}/catalina.out 2>&1
+	nohup java ${JAVA_OPTS} -Duser=${USER} -Dhostname=${HOSTNAME} -Dlogdir=${RANGER_ADMIN_LOG_DIR} -Dcatalina.base=${XAPOLICYMGR_EWS_DIR} -cp "${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/conf:${XAPOLICYMGR_EWS_DIR}/lib/*:${RANGER_JAAS_LIB_DIR}/*:${RANGER_JAAS_CONF_DIR}:${RANGER_HADOOP_CONF_DIR}/*:$CLASSPATH" org.apache.ranger.server.tomcat.StopEmbeddedServer > ${RANGER_ADMIN_LOG_DIR}/catalina.out 2>&1
 	for ((i=0; i<$NR_ITER_FOR_SHUTDOWN_CHECK; i++))
 	do
 		sleep $WAIT_TIME_FOR_SHUTDOWN
@@ -137,7 +145,7 @@ stop(){
 }
 
 metric(){
-	java ${JAVA_OPTS} -Dlogdir=${RANGER_ADMIN_LOG_DIR} -cp "${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/conf:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/lib/*:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/META-INF:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/lib/*:${XAPOLICYMGR_EWS_DIR}/webapp/META-INF:${XAPOLICYMGR_EWS_DIR}/lib/*:${RANGER_JAAS_LIB_DIR}/*:${RANGER_JAAS_CONF_DIR}:${JAVA_HOME}/lib/*:${RANGER_HADOOP_CONF_DIR}/*:$CLASSPATH" org.apache.ranger.patch.cliutil.MetricUtil ${arg2} ${arg3} 2>/dev/null
+	java ${JAVA_OPTS} -Duser=${USER} -Dhostname=${HOSTNAME} -Dlogdir=${RANGER_ADMIN_LOG_DIR} -cp "${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/conf:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/lib/*:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/META-INF:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/lib/*:${XAPOLICYMGR_EWS_DIR}/webapp/META-INF:${XAPOLICYMGR_EWS_DIR}/lib/*:${RANGER_JAAS_LIB_DIR}/*:${RANGER_JAAS_CONF_DIR}:${JAVA_HOME}/lib/*:${RANGER_HADOOP_CONF_DIR}/*:$CLASSPATH" org.apache.ranger.patch.cliutil.MetricUtil ${arg2} ${arg3} 2>/dev/null
 }
 
 if [ "${action}" == "START" ]; then

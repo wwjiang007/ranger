@@ -61,53 +61,6 @@ public class SearchUtil {
 		defaultDateFormat = PropertiesUtil.getProperty("ranger.ui.defaultDateformat", defaultDateFormat);
 	}
 
-	@Deprecated
-	public SearchCriteria extractCommonCriterias(HttpServletRequest request,
-			String[] approvedSortByParams) {
-		SearchCriteria searchCriteria = new SearchCriteria();
-
-		int startIndex = restErrorUtil.parseInt(
-				request.getParameter("startIndex"), 0,
-				"Invalid value for parameter startIndex",
-				MessageEnums.INVALID_INPUT_DATA, null, "startIndex");
-		startIndex = startIndex < 0 ? 0 : startIndex;
-		searchCriteria.setStartIndex(startIndex);
-
-		int pageSize = restErrorUtil.parseInt(request.getParameter("pageSize"),
-				configUtil.getDefaultMaxRows(),
-				"Invalid value for parameter pageSize",
-				MessageEnums.INVALID_INPUT_DATA, null, "pageSize");
-		searchCriteria.setMaxRows(pageSize);
-
-		String sortBy = restErrorUtil.validateString(
-				request.getParameter("sortBy"), StringUtil.VALIDATION_ALPHA,
-				"Invalid value for parameter sortBy",
-				MessageEnums.INVALID_INPUT_DATA, null, "sortBy");
-
-		boolean sortSet = false;
-		for (int i = 0; approvedSortByParams != null
-				&& i < approvedSortByParams.length; i++) {
-
-			if (approvedSortByParams[i].equalsIgnoreCase(sortBy)) {
-				searchCriteria.setSortBy(approvedSortByParams[i]);
-				String sortType = restErrorUtil.validateString(
-						request.getParameter("sortType"),
-						StringUtil.VALIDATION_ALPHA,
-						"Invalid value for parameter sortType",
-						MessageEnums.INVALID_INPUT_DATA, null, "sortType");
-				searchCriteria.setSortType(sortType);
-				sortSet = true;
-				break;
-			}
-		}
-		if (!sortSet && !stringUtil.isEmpty(sortBy)) {
-			logger.info("Invalid or unsupported sortBy field passed. sortBy="
-					+ sortBy, new Throwable());
-		}
-
-		return searchCriteria;
-	}
-
 	/**
 	 * @param request
 	 * @param sortFields
@@ -224,7 +177,7 @@ public class SearchUtil {
 			dateFormat = defaultDateFormat;
 		}
 		value = restErrorUtil.parseDate(request.getParameter(paramName),
-				"Invalid value for" + userFriendlyParamName,
+                                "Invalid value for " + userFriendlyParamName,
 				MessageEnums.INVALID_INPUT_DATA, null, paramName, dateFormat);
 		if (value != null) {
 			searchCriteria.getParamList().put(paramName, value);
@@ -395,8 +348,8 @@ public class SearchUtil {
 			String sortType = searchCriteria.getSortType();
 			String querySortType = "asc";
 			if (sortType != null) {
-				if (sortType.equalsIgnoreCase("asc")
-						|| sortType.equalsIgnoreCase("desc")) {
+				if ("asc".equalsIgnoreCase(sortType)
+						|| "desc".equalsIgnoreCase(sortType)) {
 					querySortType = sortType;
 				} else {
 					logger.error("Invalid sortType. sortType=" + sortType);
@@ -589,17 +542,13 @@ public class SearchUtil {
 					if (searchField.getCustomCondition() == null) {
 						whereClause.append(" and ").append(
 								searchField.getFieldName());
-						if (searchField.getSearchType().equals(
-								SearchField.SEARCH_TYPE.LESS_THAN)) {
+						if (SearchField.SEARCH_TYPE.LESS_THAN.equals(searchField.getSearchType())) {
 							whereClause.append("< :");
-						} else if (searchField.getSearchType().equals(
-								SearchField.SEARCH_TYPE.LESS_EQUAL_THAN)) {
+						} else if (SearchField.SEARCH_TYPE.LESS_EQUAL_THAN.equals(searchField.getSearchType())) {
 							whereClause.append("<= :");
-						} else if (searchField.getSearchType().equals(
-								SearchField.SEARCH_TYPE.GREATER_THAN)) {
+						} else if (SearchField.SEARCH_TYPE.GREATER_THAN.equals(searchField.getSearchType())) {
 							whereClause.append("> :");
-						} else if (searchField.getSearchType().equals(
-								SearchField.SEARCH_TYPE.GREATER_EQUAL_THAN)) {
+						} else if (SearchField.SEARCH_TYPE.GREATER_EQUAL_THAN.equals(searchField.getSearchType())) {
 							whereClause.append(">= :");
 						}
 						whereClause.append(searchField.getClientFieldName());

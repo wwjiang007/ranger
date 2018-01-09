@@ -88,9 +88,6 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 	public List<SortField> sortFields = new ArrayList<SortField>();
 	public List<SearchField> searchFields = new ArrayList<SearchField>();
 
-	@Autowired
-	RangerDaoManager daoManager;
-
 	protected static final HashMap<Class<?>, String> tEntityValueMap = new HashMap<Class<?>, String>();
 	static {
 		tEntityValueMap.put(XXAuthSession.class, "Auth Session");
@@ -103,7 +100,7 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 	StringUtil stringUtil;
 
 	@Autowired
-	protected RangerDaoManager daoMgr;
+	protected RangerDaoManager daoManager;
 
 	@Autowired
 	protected SearchUtil searchUtil;
@@ -172,7 +169,7 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 	@SuppressWarnings("unchecked")
 	protected BaseDao<T> getDao() {
 		if (entityDao == null) {
-			entityDao = (BaseDao<T>) daoMgr.getDaoForClassName(tEntityClass
+			entityDao = (BaseDao<T>) daoManager.getDaoForClassName(tEntityClass
 					.getSimpleName());
 
 		}
@@ -499,18 +496,15 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 			if (tUser != null) {
 				if (tUser.getPublicScreenName() != null
 						&& !tUser.getPublicScreenName().trim().isEmpty()
-						&& !tUser.getPublicScreenName().trim()
-								.equalsIgnoreCase("null")) {
+						&& !"null".equalsIgnoreCase(tUser.getPublicScreenName().trim())) {
 					viewBean.setOwner(tUser.getPublicScreenName());
 				} else {
 					if (tUser.getFirstName() != null
 							&& !tUser.getFirstName().trim().isEmpty()
-							&& !tUser.getFirstName().trim()
-									.equalsIgnoreCase("null")) {
+							&& !"null".equalsIgnoreCase(tUser.getFirstName().trim())) {
 						if (tUser.getLastName() != null
 								&& !tUser.getLastName().trim().isEmpty()
-								&& !tUser.getLastName().trim()
-										.equalsIgnoreCase("null")) {
+								&& !"null".equalsIgnoreCase(tUser.getLastName().trim())) {
 							viewBean.setOwner(tUser.getFirstName() + " "
 									+ tUser.getLastName());
 						} else {
@@ -528,18 +522,15 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 			if (tUser != null) {
 				if (tUser.getPublicScreenName() != null
 						&& !tUser.getPublicScreenName().trim().isEmpty()
-						&& !tUser.getPublicScreenName().trim()
-								.equalsIgnoreCase("null")) {
+						&& !"null".equalsIgnoreCase(tUser.getPublicScreenName().trim())) {
 					viewBean.setUpdatedBy(tUser.getPublicScreenName());
 				} else {
 					if (tUser.getFirstName() != null
 							&& !tUser.getFirstName().trim().isEmpty()
-							&& !tUser.getFirstName().trim()
-									.equalsIgnoreCase("null")) {
+							&& !"null".equalsIgnoreCase(tUser.getFirstName().trim())) {
 						if (tUser.getLastName() != null
 								&& !tUser.getLastName().trim().isEmpty()
-								&& !tUser.getLastName().trim()
-										.equalsIgnoreCase("null")) {
+								&& !"null".equalsIgnoreCase(tUser.getLastName().trim())) {
 							viewBean.setUpdatedBy(tUser.getFirstName() + " "
 									+ tUser.getLastName());
 						} else {
@@ -860,7 +851,7 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 
 			// Add sort type
 			String sortType = searchCriteria.getSortType();
-			if (sortType != null && sortType.equalsIgnoreCase("desc")) {
+			if (sortType != null && "desc".equalsIgnoreCase(sortType)) {
 				criteria.orderBy(criteriaBuilder.desc(from.get(sortByField)));
 			} else {
 				criteria.orderBy(criteriaBuilder.asc(from.get(sortByField)));

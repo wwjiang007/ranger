@@ -32,7 +32,6 @@ import org.apache.ranger.common.SearchField;
 import org.apache.ranger.common.SortField;
 import org.apache.ranger.common.StringUtil;
 import org.apache.ranger.common.view.VTrxLogAttr;
-import org.apache.ranger.db.RangerDaoManager;
 import org.apache.ranger.entity.XXAsset;
 import org.apache.ranger.entity.XXGroup;
 import org.apache.ranger.entity.XXPortalUser;
@@ -49,9 +48,6 @@ import org.springframework.util.CollectionUtils;
 public class XGroupService extends XGroupServiceBase<XXGroup, VXGroup> {
 
 	private final Long createdByUserId;
-	
-	@Autowired
-	RangerDaoManager rangerDaoManager;
 	
 	@Autowired
 	RangerEnumUtil xaEnumUtil;
@@ -81,7 +77,7 @@ public class XGroupService extends XGroupServiceBase<XXGroup, VXGroup> {
 
 	@Override
 	protected void validateForCreate(VXGroup vObj) {
-		XXGroup xxGroup = rangerDaoManager.getXXGroup().findByGroupName(
+		XXGroup xxGroup = daoManager.getXXGroup().findByGroupName(
 				vObj.getName());
 		if (xxGroup != null) {
 			throw restErrorUtil.createRESTException("XGroup already exists",
@@ -98,7 +94,7 @@ public class XGroupService extends XGroupServiceBase<XXGroup, VXGroup> {
 	}
 
 	public VXGroup getGroupByGroupName(String groupName) {
-		XXGroup xxGroup = rangerDaoManager.getXXGroup().findByGroupName(groupName);
+		XXGroup xxGroup = daoManager.getXXGroup().findByGroupName(groupName);
 
 		if (xxGroup == null) {
 			throw restErrorUtil.createRESTException(
@@ -108,7 +104,7 @@ public class XGroupService extends XGroupServiceBase<XXGroup, VXGroup> {
 	}
 	
 	public VXGroup createXGroupWithOutLogin(VXGroup vxGroup) {
-		XXGroup xxGroup = rangerDaoManager.getXXGroup().findByGroupName(
+		XXGroup xxGroup = daoManager.getXXGroup().findByGroupName(
 				vxGroup.getName());
 		boolean groupExists = true;
 
@@ -118,7 +114,7 @@ public class XGroupService extends XGroupServiceBase<XXGroup, VXGroup> {
 		}
 
 		xxGroup = mapViewToEntityBean(vxGroup, xxGroup, 0);
-		XXPortalUser xXPortalUser = rangerDaoManager.getXXPortalUser().getById(createdByUserId);
+		XXPortalUser xXPortalUser = daoManager.getXXPortalUser().getById(createdByUserId);
 		if (xXPortalUser != null) {
 			xxGroup.setAddedByUserId(createdByUserId);
 			xxGroup.setUpdatedByUserId(createdByUserId);
@@ -153,7 +149,7 @@ public class XGroupService extends XGroupServiceBase<XXGroup, VXGroup> {
 	}
 
 	public List<XXTrxLog> getTransactionLog(VXGroup vObj, XXGroup mObj, String action){
-		if(vObj == null || action == null || (action.equalsIgnoreCase("update") && mObj == null)){
+		if(vObj == null || action == null || ("update".equalsIgnoreCase(action) && mObj == null)){
 			return null;
 		}
 		
@@ -187,14 +183,14 @@ public class XGroupService extends XGroupServiceBase<XXGroup, VXGroup> {
 					value = ""+field.get(vObj);
 				}
 				
-				if(action.equalsIgnoreCase("create")){
+				if("create".equalsIgnoreCase(action)){
 					if(stringUtil.isEmpty(value)){
 						continue;
 					}
 					xTrxLog.setNewValue(value);
-				} else if(action.equalsIgnoreCase("delete")){
+				} else if("delete".equalsIgnoreCase(action)){
 					xTrxLog.setPreviousValue(value);
-				} else if(action.equalsIgnoreCase("update")){
+				} else if("update".equalsIgnoreCase(action)){
 					String oldValue = null;
 					Field[] mFields = mObj.getClass().getDeclaredFields();
 					for(Field mField : mFields){
@@ -226,13 +222,13 @@ public class XGroupService extends XGroupServiceBase<XXGroup, VXGroup> {
 				
 			}
 		} catch (IllegalArgumentException e) {
-			e.printStackTrace();
+			logger.error("Transaction log failure.", e);
 		} catch (IllegalAccessException e) {
-			e.printStackTrace();
+			logger.error("Transaction log failure.", e);
 		} catch (NoSuchFieldException e) {
-			e.printStackTrace();
+			logger.error("Transaction log failure.", e);
 		} catch (SecurityException e) {
-			e.printStackTrace();
+			logger.error("Transaction log failure.", e);
 		}
 		
 		return trxLogList;
@@ -260,7 +256,7 @@ public class XGroupService extends XGroupServiceBase<XXGroup, VXGroup> {
         public Map<Long, XXGroup> getXXGroupIdXXGroupMap(){
                 Map<Long, XXGroup> xXGroupMap=new HashMap<Long, XXGroup>();
                 try{
-                        List<XXGroup> xXGroupList=rangerDaoManager.getXXGroup().getAll();
+                        List<XXGroup> xXGroupList=daoManager.getXXGroup().getAll();
                         if(!CollectionUtils.isEmpty(xXGroupList)){
                                 for(XXGroup xXGroup:xXGroupList){
                                         xXGroupMap.put(xXGroup.getId(), xXGroup);

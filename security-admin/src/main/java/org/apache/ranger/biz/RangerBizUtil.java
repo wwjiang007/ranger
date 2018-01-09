@@ -20,6 +20,7 @@
 package org.apache.ranger.biz;
 
 import java.io.File;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -27,7 +28,6 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.Set;
 
 import org.apache.commons.io.FilenameUtils;
@@ -97,7 +97,7 @@ public class RangerBizUtil {
 	int maxDisplayNameLength = 150;
 	public final String EMPTY_CONTENT_DISPLAY_NAME = "...";
 	boolean enableResourceAccessControl;
-	private Random random;
+        private SecureRandom random;
 	private static final String PATH_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrst0123456789-_.";
 	private static char[] PATH_CHAR_SET = PATH_CHARS.toCharArray();
 	private static int PATH_CHAR_SET_LEN = PATH_CHAR_SET.length;
@@ -120,7 +120,7 @@ public class RangerBizUtil {
 				auditDBType).toLowerCase();
 		logger.info("java.library.path is " + System.getProperty("java.library.path"));
 		logger.info("Audit datasource is " + auditDBType);
-		random = new Random();
+                random = new SecureRandom();
 	}
 
 	public <T extends XXDBBase> List<? extends XXDBBase> getParentObjects(
@@ -172,12 +172,12 @@ public class RangerBizUtil {
 	 * @return
 	 */
 	public int getMimeTypeInt(String contentType) {
-		if (contentType.equalsIgnoreCase("JPEG")
-				|| contentType.equalsIgnoreCase("JPG")
+		if ("JPEG".equalsIgnoreCase(contentType)
+				|| "JPG".equalsIgnoreCase(contentType)
 				|| contentType.endsWith("jpg") || contentType.endsWith("jpeg")) {
 			return RangerConstants.MIME_JPEG;
 		}
-		if (contentType.equalsIgnoreCase("PNG") || contentType.endsWith("png")) {
+		if ("PNG".equalsIgnoreCase(contentType) || contentType.endsWith("png")) {
 			return RangerConstants.MIME_PNG;
 		}
 		return RangerConstants.MIME_UNKNOWN;
@@ -693,8 +693,7 @@ public class RangerBizUtil {
 			String[] xTables = stringUtil.isEmpty(xResource.getTables()) ? null
 					: stringUtil.split(xResource.getTables(), ",");
 
-			boolean matchFound = (xTables == null || xTables.length == 0) ? true
-					: matchPath(tblName, xTables);
+			boolean matchFound = (xTables == null || xTables.length == 0) || matchPath(tblName, xTables);
 
 			if (matchFound) {
 				// 2. does the policy match the column?
@@ -702,8 +701,8 @@ public class RangerBizUtil {
 						.getColumnFamilies()) ? null : stringUtil.split(
 						xResource.getColumnFamilies(), ",");
 
-				matchFound = (xColumnFamilies == null || xColumnFamilies.length == 0) ? true
-						: matchPath(colFamName, xColumnFamilies);
+				matchFound = (xColumnFamilies == null || xColumnFamilies.length == 0)
+						|| matchPath(colFamName, xColumnFamilies);
 
 				if (matchFound) {
 					// 3. does the policy match the columnFamily?
@@ -711,8 +710,8 @@ public class RangerBizUtil {
 							.getColumns()) ? null : stringUtil.split(
 							xResource.getColumns(), ",");
 
-					matchFound = (xColumns == null || xColumns.length == 0) ? true
-							: matchPath(colName, xColumns);
+					matchFound = (xColumns == null || xColumns.length == 0)
+							|| matchPath(colName, xColumns);
 				}
 			}
 
@@ -783,8 +782,8 @@ public class RangerBizUtil {
 			String[] xDatabases = stringUtil.isEmpty(xResource.getDatabases()) ? null
 					: stringUtil.split(xResource.getDatabases(), ",");
 
-			boolean matchFound = (xDatabases == null || xDatabases.length == 0) ? true
-					: matchPath(dbName, xDatabases);
+			boolean matchFound = (xDatabases == null || xDatabases.length == 0)
+					|| matchPath(dbName, xDatabases);
 
 			if (!matchFound) {
 				continue;
@@ -812,8 +811,8 @@ public class RangerBizUtil {
 				String[] xTables = stringUtil.isEmpty(xResource.getTables()) ? null
 						: stringUtil.split(xResource.getTables(), ",");
 
-				matchFound = (xTables == null || xTables.length == 0) ? true
-						: matchPath(tblName, xTables);
+				matchFound = (xTables == null || xTables.length == 0)
+						|| matchPath(tblName, xTables);
 
 				if (xResource.getTableType() == AppConstants.POLICY_EXCLUSION) {
 					matchFound = !matchFound;
@@ -827,8 +826,8 @@ public class RangerBizUtil {
 				String[] xColumns = stringUtil.isEmpty(xResource.getColumns()) ? null
 						: stringUtil.split(xResource.getColumns(), ",");
 
-				matchFound = (xColumns == null || xColumns.length == 0) ? true
-						: matchPath(colName, xColumns);
+				matchFound = (xColumns == null || xColumns.length == 0)
+						|| matchPath(colName, xColumns);
 
 				if (xResource.getColumnType() == AppConstants.POLICY_EXCLUSION) {
 					matchFound = !matchFound;
@@ -880,11 +879,11 @@ public class RangerBizUtil {
 			// if permission is enabled then load Topologies,services list from
 			// resource
 			if (hasPermission) {
-				String[] xTopologies = (xResource.getTopologies() == null || xResource
-						.getTopologies().equalsIgnoreCase("")) ? null
+				String[] xTopologies = (xResource.getTopologies() == null || "".equalsIgnoreCase(xResource
+						.getTopologies())) ? null
 						: stringUtil.split(xResource.getTopologies(), ",");
-				String[] xServices = (xResource.getServices() == null || xResource
-						.getServices().equalsIgnoreCase("")) ? null
+				String[] xServices = (xResource.getServices() == null || "".equalsIgnoreCase(xResource
+						.getServices())) ? null
 						: stringUtil.split(xResource.getServices(), ",");
 
 				boolean matchFound = false;
@@ -967,8 +966,8 @@ public class RangerBizUtil {
 			// if permission is enabled then load Topologies,services list from
 			// resource
 			if (hasPermission) {
-				String[] xTopologies = (xResource.getTopologies() == null || xResource
-						.getTopologies().equalsIgnoreCase("")) ? null
+				String[] xTopologies = (xResource.getTopologies() == null || "".equalsIgnoreCase(xResource
+						.getTopologies())) ? null
 						: stringUtil.split(xResource.getTopologies(), ",");
 				/*
 				 * String[] xServices = (xResource.getServices() == null ||
@@ -1453,9 +1452,9 @@ public class RangerBizUtil {
 				return false;
 			}
 
-			if (isKeyAdmin && implClass.equals(EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME)) {
+			if (isKeyAdmin && EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME.equals(implClass)) {
 				return true;
-			} else if ((isSysAdmin || isUser) && !implClass.equals(EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME)) {
+			} else if ((isSysAdmin || isUser) && !EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME.equals(implClass)) {
 				return true;
 			}
 		}
@@ -1475,9 +1474,9 @@ public class RangerBizUtil {
 				return false;
 			}
 
-			if (isKeyAdmin && implClass.equals(EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME)) {
+			if (isKeyAdmin && EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME.equals(implClass)) {
 				return true;
-			} else if (isUser && !implClass.equals(EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME)) {
+			} else if (isUser && !EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME.equals(implClass)) {
 				return true;
 			}
 			// else if ((isSysAdmin || isUser) && !implClass.equals(EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME)) {
@@ -1506,7 +1505,7 @@ public class RangerBizUtil {
 	public void hasKMSPermissions(String objType, String implClassName) {
 		UserSessionBase session = ContextUtil.getCurrentUserSession();
 
-		if (session.isKeyAdmin() && !implClassName.equals(EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME)) {
+		if (session.isKeyAdmin() && !EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME.equals(implClassName)) {
 			throw restErrorUtil.createRESTException("KeyAdmin can create/update/delete only KMS " + objType,
 					MessageEnums.OPER_NO_PERMISSION);
 		}
@@ -1514,7 +1513,7 @@ public class RangerBizUtil {
 		// TODO: As of now we are allowing SYS_ADMIN to create/update/read/delete all the
 		// services including KMS
 
-		if (objType.equalsIgnoreCase("Service-Def") && session.isUserAdmin() && implClassName.equals(EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME)) {
+		if ("Service-Def".equalsIgnoreCase(objType) && session.isUserAdmin() && EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME.equals(implClassName)) {
 			throw restErrorUtil.createRESTException("System Admin cannot create/update/delete KMS " + objType,
 					MessageEnums.OPER_NO_PERMISSION);
 		}
@@ -1557,7 +1556,7 @@ public class RangerBizUtil {
 			String[] userList = userNames.split(",");
 			if(userList != null){
 				for (String u : userList) {
-					if (u.equals("*") || (user != null && u.equalsIgnoreCase(user))) {
+					if ("*".equals(u) || (user != null && u.equalsIgnoreCase(user))) {
 						return true;
 					}
 				}
@@ -1575,7 +1574,7 @@ public class RangerBizUtil {
 			String[] userList = userNames.split(",");
 			if (userList != null) {
 				for (String u : userList) {
-					if (u.equals("*") || (userName != null && u.equalsIgnoreCase(userName))) {
+					if ("*".equals(u) || (userName != null && u.equalsIgnoreCase(userName))) {
 						return true;
 					}
 				}
