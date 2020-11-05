@@ -46,6 +46,35 @@
 		<description></description>
 	</property>
 	<property>
+		<name>ranger.audit.elasticsearch.urls</name>
+		<value>127.0.0.1</value>
+		<description></description>
+	</property>
+	<property>
+		<name>ranger.audit.elasticsearch.port</name>
+		<value>9200</value>
+		<description></description>
+	</property>
+	<property>
+		<name>ranger.audit.elasticsearch.user</name>
+		<value></value>
+		<description></description>
+	</property>
+	<property>
+		<name>ranger.audit.elasticsearch.password</name>
+		<value></value>
+		<description></description>
+	</property>
+	<property>
+		<name>ranger.audit.elasticsearch.index</name>
+		<value></value>
+		<description></description>
+	</property>
+	<property>
+		<name>ranger.audit.elasticsearch.bootstrap.enabled</name>
+		<value>true</value>
+	</property>
+	<property>
 		<name>ranger.audit.solr.urls</name>
 		<value>http://##solr_host##:6083/solr/ranger_audits</value>
 		<description></description>
@@ -281,6 +310,16 @@
         <value>hive</value>
     </property>
     <property>
+        <name>ranger.kms.service.user.hbase</name>
+        <value>hbase</value>
+    </property>
+
+    <property>
+        <name>ranger.audit.hive.query.visibility</name>
+        <value>true</value>
+        <description></description>
+    </property>
+    <property>
 		<name>ranger.service.https.attrib.keystore.credential.alias</name>
 		<value>keyStoreCredentialAlias</value>
 	</property>
@@ -288,4 +327,42 @@
 		<name>ranger.tomcat.ciphers</name>
 		<value></value>
 	</property>
+                <!-- Solr related porps -->
+        <property>
+                <name>ranger.audit.solr.collection.name</name>
+                <value></value>
+        </property>
+        <property>
+                <name>ranger.audit.solr.config.name</name>
+                <value></value>
+        </property>
+        <property>
+                <name>ranger.audit.solr.no.shards</name>
+                <value></value>
+        </property>
+        <property>
+                <name>ranger.audit.solr.max.shards.per.node</name>
+                <value></value>
+        </property>
+        <property>
+                <name>ranger.audit.solr.no.replica</name>
+                <value></value>
+        </property>
+        <property>
+                <name>ranger.audit.solr.acl.user.list.sasl</name>
+                <value></value>
+        </property>
+        <property>
+                <name>ranger.audit.solr.bootstrap.enabled</name>
+                <value></value>
+        </property>
+        <property>
+				<name>ranger.audit.solr.max.retry</name>
+				<value></value>
+				<description>Maximum no. of retry to setup solr</description>
+		</property>
+		<property>
+			<name>ranger.admin.cookie.name</name>
+			<value>RANGERADMINSESSIONID</value>
+		</property>
 </configuration>

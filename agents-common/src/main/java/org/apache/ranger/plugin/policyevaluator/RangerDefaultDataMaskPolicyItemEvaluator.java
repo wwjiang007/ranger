@@ -18,13 +18,13 @@
  */
 package org.apache.ranger.plugin.policyevaluator;
 
-
-
 import org.apache.ranger.plugin.model.RangerPolicy;
 import org.apache.ranger.plugin.model.RangerServiceDef;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerDataMaskPolicyItem;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerPolicyItemDataMaskInfo;
+import org.apache.ranger.plugin.policyengine.RangerAccessResult;
 import org.apache.ranger.plugin.policyengine.RangerPolicyEngineOptions;
+import org.apache.ranger.plugin.policyresourcematcher.RangerPolicyResourceMatcher;
 
 
 public class RangerDefaultDataMaskPolicyItemEvaluator extends RangerDefaultPolicyItemEvaluator implements RangerDataMaskPolicyItemEvaluator {
@@ -40,4 +40,17 @@ public class RangerDefaultDataMaskPolicyItemEvaluator extends RangerDefaultPolic
 	public RangerPolicyItemDataMaskInfo getDataMaskInfo() {
 		return dataMaskPolicyItem == null ? null : dataMaskPolicyItem.getDataMaskInfo();
 	}
+
+	@Override
+	public void updateAccessResult(RangerPolicyEvaluator policyEvaluator, RangerAccessResult result, RangerPolicyResourceMatcher.MatchType matchType) {
+		RangerPolicyItemDataMaskInfo dataMaskInfo = getDataMaskInfo();
+
+		if (result.getMaskType() == null && dataMaskInfo != null) {
+			result.setMaskType(dataMaskInfo.getDataMaskType());
+			result.setMaskCondition(dataMaskInfo.getConditionExpr());
+			result.setMaskedValue(dataMaskInfo.getValueExpr());
+			policyEvaluator.updateAccessResult(result, matchType, true, getComments());
+		}
+	}
+
 }

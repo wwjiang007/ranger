@@ -19,8 +19,13 @@
 
 package org.apache.ranger.authorization.atlas.authorizer;
 
-import org.apache.atlas.authorize.AtlasAccessRequest;
+import org.apache.atlas.authorize.AtlasAdminAccessRequest;
+import org.apache.atlas.authorize.AtlasEntityAccessRequest;
+import org.apache.atlas.authorize.AtlasSearchResultScrubRequest;
+import org.apache.atlas.authorize.AtlasRelationshipAccessRequest;
+import org.apache.atlas.authorize.AtlasTypeAccessRequest;
 import org.apache.atlas.authorize.AtlasAuthorizationException;
+import org.apache.atlas.authorize.AtlasTypesDefFilterRequest;
 import org.apache.atlas.authorize.AtlasAuthorizer;
 import org.apache.ranger.plugin.classloader.RangerPluginClassLoader;
 import org.slf4j.Logger;
@@ -73,7 +78,7 @@ public class RangerAtlasAuthorizer implements AtlasAuthorizer {
 	@Override
     public void init() {
 		 if (isDebugEnabled) {
-            LOG.debug("gautam init <===");
+            LOG.debug("==> RangerAtlasAuthorizer.init");
         }
 
         try {
@@ -85,45 +90,157 @@ public class RangerAtlasAuthorizer implements AtlasAuthorizer {
 		}
 
         if (isDebugEnabled) {
-            LOG.debug("gautam init ===> " );
+            LOG.debug("<== RangerAtlasAuthorizer.init()");
         }
 
 	}
 
-    @Override
-    public boolean isAccessAllowed(AtlasAccessRequest request) throws AtlasAuthorizationException {
-        boolean isAccessAllowed = false;
-        if (isDebugEnabled) {
-            LOG.debug("isAccessAllowed <===");
-        }
-
-        try {
-			activatePluginClassLoader();
-
-			isAccessAllowed = rangerAtlasAuthorizerImpl.isAccessAllowed(request);
-		} finally {
-			deactivatePluginClassLoader();
+	@Override
+	public void cleanUp() {
+		if (isDebugEnabled) {
+			LOG.debug("cleanUp <===");
 		}
-
-        if (isDebugEnabled) {
-            LOG.debug("isAccessAllowed ===> Returning value :: " + isAccessAllowed);
-        }
-        return isAccessAllowed;
-    }
-
-    @Override
-    public void cleanUp() {
-       if (isDebugEnabled) {
-        LOG.debug("cleanUp <===");
-       }
-       try {
+		try {
 			activatePluginClassLoader();
 			rangerAtlasAuthorizerImpl.cleanUp();
 		} finally {
 			deactivatePluginClassLoader();
 		}
 
-    }
+	}
+
+	@Override
+	public boolean isAccessAllowed(AtlasAdminAccessRequest request) throws AtlasAuthorizationException {
+		if (isDebugEnabled) {
+			LOG.debug("==> isAccessAllowed(AtlasAdminAccessRequest)");
+		}
+
+		final boolean ret;
+
+		try {
+			activatePluginClassLoader();
+
+			ret = rangerAtlasAuthorizerImpl.isAccessAllowed(request);
+		} finally {
+			deactivatePluginClassLoader();
+		}
+
+		if (isDebugEnabled) {
+			LOG.debug("<== isAccessAllowed(AtlasAdminAccessRequest): " + ret);
+		}
+
+		return ret;
+	}
+
+	@Override
+	public boolean isAccessAllowed(AtlasEntityAccessRequest request) throws AtlasAuthorizationException {
+		if (isDebugEnabled) {
+			LOG.debug("==> isAccessAllowed(AtlasEntityAccessRequest)");
+		}
+
+		final boolean ret;
+
+		try {
+			activatePluginClassLoader();
+
+			ret = rangerAtlasAuthorizerImpl.isAccessAllowed(request);
+		} finally {
+			deactivatePluginClassLoader();
+		}
+
+		if (isDebugEnabled) {
+			LOG.debug("<== isAccessAllowed(AtlasEntityAccessRequest): " + ret);
+		}
+
+		return ret;
+	}
+
+	@Override
+	public boolean isAccessAllowed(AtlasTypeAccessRequest request) throws AtlasAuthorizationException {
+		if (isDebugEnabled) {
+			LOG.debug("==> isAccessAllowed(AtlasTypeAccessRequest)");
+		}
+
+		final boolean ret;
+
+		try {
+			activatePluginClassLoader();
+
+			ret = rangerAtlasAuthorizerImpl.isAccessAllowed(request);
+		} finally {
+			deactivatePluginClassLoader();
+		}
+
+		if (isDebugEnabled) {
+			LOG.debug("<== isAccessAllowed(AtlasTypeAccessRequest): " + ret);
+		}
+
+		return ret;
+	}
+
+
+	@Override
+	public boolean isAccessAllowed(AtlasRelationshipAccessRequest request) throws AtlasAuthorizationException {
+		if (isDebugEnabled) {
+			LOG.debug("==> isAccessAllowed(AtlasTypeAccessRequest)");
+		}
+
+		final boolean ret;
+
+		try {
+			activatePluginClassLoader();
+
+			ret = rangerAtlasAuthorizerImpl.isAccessAllowed(request);
+		} finally {
+			deactivatePluginClassLoader();
+		}
+
+		if (isDebugEnabled) {
+			LOG.debug("<== isAccessAllowed(AtlasTypeAccessRequest): " + ret);
+		}
+
+		return ret;
+	}
+
+	@Override
+	public void scrubSearchResults(AtlasSearchResultScrubRequest request) throws AtlasAuthorizationException {
+		if (isDebugEnabled) {
+			LOG.debug("==> scrubSearchResults(" + request + ")");
+		}
+
+		try {
+			activatePluginClassLoader();
+
+			rangerAtlasAuthorizerImpl.scrubSearchResults(request);
+		} finally {
+			deactivatePluginClassLoader();
+		}
+
+		if (isDebugEnabled) {
+			LOG.debug("<== scrubSearchResults(): " + request);
+		}
+	}
+
+	@Override
+	public void filterTypesDef(AtlasTypesDefFilterRequest request) throws AtlasAuthorizationException {
+
+		if (isDebugEnabled) {
+			LOG.debug("==> filterTypesDef(" + request + ")");
+		}
+
+		try {
+			activatePluginClassLoader();
+
+			rangerAtlasAuthorizerImpl.filterTypesDef(request);
+		} finally {
+			deactivatePluginClassLoader();
+		}
+
+		if (isDebugEnabled) {
+			LOG.debug("<== filterTypesDef(): " + request);
+		}
+
+	}
 
     private void activatePluginClassLoader() {
 		if(rangerPluginClassLoader != null) {
@@ -136,4 +253,7 @@ public class RangerAtlasAuthorizer implements AtlasAuthorizer {
 			rangerPluginClassLoader.deactivate();
 		}
 	}
+
+
+
 }

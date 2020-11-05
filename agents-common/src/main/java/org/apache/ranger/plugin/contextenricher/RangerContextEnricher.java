@@ -37,6 +37,8 @@ public interface RangerContextEnricher {
 
 	void enrich(RangerAccessRequest request);
 
+	void enrich(RangerAccessRequest request, Object dataStore);
+
 	boolean preCleanup();
 
 	void cleanup();

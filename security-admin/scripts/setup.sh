@@ -20,32 +20,32 @@
 # This script will install policymanager webapplication under tomcat and also, initialize the database with ranger users/tables.
 
 usage() {
-  [ "$*" ] && echo "$0: $*"
-  sed -n '/^##/,/^$/s/^## \{0,1\}//p' "$0"
-  exit 2
+        [ "$*" ] && echo "$0: $*"
+        sed -n '/^##/,/^$/s/^## \{0,1\}//p' "$0"
+        exit 2
 } 2>/dev/null
 
 log() {
-   local prefix="$(date +%Y-%m-%d\ %H:%M:%S,%3N) "
-   echo "${prefix} $@" >> $LOGFILE
-   echo "${prefix} $@"
+        local prefix="$(date +%Y-%m-%d\ %H:%M:%S,%3N) "
+        echo "${prefix} $@" >> $LOGFILE
+        echo "${prefix} $@"
 }
 get_prop(){
 	validateProperty=$(sed '/^\#/d' $2 | grep "^$1\s*="  | tail -n 1) # for validation
 	if  test -z "$validateProperty" ; then log "[E] '$1' not found in $2 file while getting....!!"; exit 1; fi
 	value=$(echo $validateProperty | cut -d "=" -f2-)
 	if [[ $1 == *password* ]]
-        then
-                echo $value
-        else
-                echo $value | tr -d \'\"
-        fi
+                then
+                        echo $value
+                else
+                        echo $value | tr -d \'\"
+                fi
 }
 
 PROPFILE=${RANGER_ADMIN_CONF:-$PWD}/install.properties
 if [ ! -f "${PROPFILE}" ]; then
-    echo "$PROPFILE file not found....!!"
-    exit 1;
+        echo "$PROPFILE file not found....!!"
+        exit 1;
 fi
 
 LOGFILE=$(eval echo " $(get_prop 'LOGFILE' $PROPFILE)")
@@ -62,11 +62,22 @@ db_password=$(get_prop 'db_password' $PROPFILE)
 db_ssl_enabled=$(get_prop 'db_ssl_enabled' $PROPFILE)
 db_ssl_required=$(get_prop 'db_ssl_required' $PROPFILE)
 db_ssl_verifyServerCertificate=$(get_prop 'db_ssl_verifyServerCertificate' $PROPFILE)
+db_ssl_auth_type=$(get_prop 'db_ssl_auth_type' $PROPFILE)
+rangerAdmin_password=$(get_prop 'rangerAdmin_password' $PROPFILE)
+rangerTagsync_password=$(get_prop 'rangerTagsync_password' $PROPFILE)
+rangerUsersync_password=$(get_prop 'rangerUsersync_password' $PROPFILE)
+keyadmin_password=$(get_prop 'keyadmin_password' $PROPFILE)
 javax_net_ssl_keyStore=$(get_prop 'javax_net_ssl_keyStore' $PROPFILE)
 javax_net_ssl_keyStorePassword=$(get_prop 'javax_net_ssl_keyStorePassword' $PROPFILE)
 javax_net_ssl_trustStore=$(get_prop 'javax_net_ssl_trustStore' $PROPFILE)
 javax_net_ssl_trustStorePassword=$(get_prop 'javax_net_ssl_trustStorePassword' $PROPFILE)
 audit_store=$(get_prop 'audit_store' $PROPFILE)
+audit_elasticsearch_urls=$(get_prop 'audit_elasticsearch_urls' $PROPFILE)
+audit_elasticsearch_port=$(get_prop 'audit_elasticsearch_port' $PROPFILE)
+audit_elasticsearch_user=$(get_prop 'audit_elasticsearch_user' $PROPFILE)
+audit_elasticsearch_password=$(get_prop 'audit_elasticsearch_password' $PROPFILE)
+audit_elasticsearch_index=$(get_prop 'audit_elasticsearch_index' $PROPFILE)
+audit_elasticsearch_bootstrap_enabled=$(get_prop 'audit_elasticsearch_bootstrap_enabled' $PROPFILE)
 audit_solr_urls=$(get_prop 'audit_solr_urls' $PROPFILE)
 audit_solr_user=$(get_prop 'audit_solr_user' $PROPFILE)
 audit_solr_password=$(get_prop 'audit_solr_password' $PROPFILE)
@@ -139,6 +150,13 @@ admin_keytab=$(get_prop 'admin_keytab' $PROPFILE)
 lookup_principal=$(get_prop 'lookup_principal' $PROPFILE)
 lookup_keytab=$(get_prop 'lookup_keytab' $PROPFILE)
 hadoop_conf=$(get_prop 'hadoop_conf' $PROPFILE)
+audit_solr_collection_name=$(get_prop 'audit_solr_collection_name' $PROPFILE)
+audit_solr_config_name=$(get_prop 'audit_solr_config_name' $PROPFILE)
+audit_solr_no_shards=$(get_prop 'audit_solr_no_shards' $PROPFILE)
+audit_solr_no_replica=$(get_prop 'audit_solr_no_replica' $PROPFILE)
+audit_solr_max_shards_per_node=$(get_prop 'audit_solr_max_shards_per_node' $PROPFILE)
+audit_solr_acl_user_list_sasl=$(get_prop 'audit_solr_acl_user_list_sasl' $PROPFILE)
+audit_solr_bootstrap_enabled=$(get_prop 'audit_solr_bootstrap_enabled' $PROPFILE)
 
 DB_HOST="${db_host}"
 
@@ -151,31 +169,31 @@ check_ret_status(){
 
 check_ret_status_for_groupadd(){
 # 9 is the response if the group exists
-    if [ $1 -ne 0 ] && [ $1 -ne 9 ]; then
-        log "[E] $2";
-        exit 1;
-    fi
+        if [ $1 -ne 0 ] && [ $1 -ne 9 ]; then
+                log "[E] $2";
+                exit 1;
+        fi
 }
 
 check_user_pwd(){
-    if [ -z "$1" ]; then
-        log "[E] The unix user password is empty. Please set user password.";
-        exit 1;
-    fi
+        if [ -z "$1" ]; then
+                log "[E] The unix user password is empty. Please set user password.";
+                exit 1;
+        fi
 }
 
 is_command () {
-    log "[I] check if command $1 exists"
-    type "$1" >/dev/null
+        log "[I] check if command $1 exists"
+        type "$1" >/dev/null
 }
 
 get_distro(){
 	log "[I] Checking distribution name.."
 	ver=$(cat /etc/*{issues,release,version} 2> /dev/null)
 	if [[ $(echo $ver | grep DISTRIB_ID) ]]; then
-	    DIST_NAME=$(lsb_release -si)
+                DIST_NAME=$(lsb_release -si)
 	else
-	    DIST_NAME=$(echo $ver | cut -d ' ' -f 1 | sort -u | head -1)
+                DIST_NAME=$(echo $ver | cut -d ' ' -f 1 | sort -u | head -1)
 	fi
 	export $DIST_NAME
 	log "[I] Found distribution : $DIST_NAME"
@@ -188,9 +206,9 @@ getPropertyFromFileNoExit(){
 	if  test -z "$validateProperty" ; then 
 		log "[E] '$1' not found in $2 file while getting....!!";
 		if [ $4 == "true" ] ; then
-		    exit 1;
+                        exit 1;
 		else
-		    value=""
+                        value=""
 		fi
 	else
 		value=$(echo $validateProperty | cut -d "=" -f2-)
@@ -209,8 +227,8 @@ getPropertyFromFile(){
 #Update Properties to File
 #$1 -> propertyName $2 -> newPropertyValue $3 -> fileName
 updatePropertyToFilePy(){
-    python update_property.py $1 $2 $3
-    check_ret_status $? "Update property failed for: " $1
+    $PYTHON_COMMAND_INVOKER update_property.py $1 "${2}" $3
+        check_ret_status $? "Update property failed for: " $1
 }
 
 init_variables(){
@@ -235,6 +253,16 @@ init_variables(){
 			exit 1
 		fi
 	fi
+	if [ "${audit_store}" == "elasticsearch" ] ;then
+		if [ "${audit_elasticsearch_urls}" == "" ] ;then
+			log "[I] Please provide valid URL for 'elasticsearch' audit store!"
+			exit 1
+		fi
+		if [ "${audit_elasticsearch_port}" == "" ] ;then
+			log "[I] Please provide valid port for 'elasticsearch' audit store!"
+			exit 1
+		fi
+	fi
 
 	db_ssl_enabled=`echo $db_ssl_enabled | tr '[:upper:]' '[:lower:]'`
 	if [ "${db_ssl_enabled}" != "true" ]
@@ -242,11 +270,13 @@ init_variables(){
 		db_ssl_enabled="false"
 		db_ssl_required="false"
 		db_ssl_verifyServerCertificate="false"
+		db_ssl_auth_type="2-way"
 	fi
 	if [ "${db_ssl_enabled}" == "true" ]
 	then
 		db_ssl_required=`echo $db_ssl_required | tr '[:upper:]' '[:lower:]'`
 		db_ssl_verifyServerCertificate=`echo $db_ssl_verifyServerCertificate | tr '[:upper:]' '[:lower:]'`
+		db_ssl_auth_type=`echo $db_ssl_auth_type | tr '[:upper:]' '[:lower:]'`
 		if [ "${db_ssl_required}" != "true" ]
 		then
 			db_ssl_required="false"
@@ -254,6 +284,10 @@ init_variables(){
 		if [ "${db_ssl_verifyServerCertificate}" != "true" ]
 		then
 			db_ssl_verifyServerCertificate="false"
+		fi
+		if [ "${db_ssl_auth_type}" != "1-way" ]
+		then
+			db_ssl_auth_type="2-way"
 		fi
 	fi
 }
@@ -273,8 +307,11 @@ run_dba_steps(){
 		log "[I] Setup mode is set to SeparateDBA. Not Running DBA steps. Please run dba_script.py before running setup..!";
 	else
 		log "[I] Setup mode is not set. Running DBA steps..";
-                python dba_script.py -q
+                $PYTHON_COMMAND_INVOKER dba_script.py -q
         fi
+}
+check_ranger_version(){
+        $PYTHON_COMMAND_INVOKER db_setup.py -checkupgrade
 }
 check_db_connector() {
 	log "[I] Checking ${DB_FLAVOR} CONNECTOR FILE : ${SQL_CONNECTOR_JAR}"
@@ -296,8 +333,8 @@ check_java_version() {
 	if is_command ${JAVA_BIN} ; then
 		log "[I] '${JAVA_BIN}' command found"
 	else
-        log "[E] '${JAVA_BIN}' command not found"
-        exit 1;
+                log "[E] '${JAVA_BIN}' command not found"
+                exit 1;
 	fi
 
 	version=$("$JAVA_BIN" -version 2>&1 | awk -F '"' '/version/ {print $2}')
@@ -320,9 +357,9 @@ sanity_check_files() {
 		log "[I] $app_home folder found"
 	else
 		log "[E] $app_home does not exists" ; exit 1;
-    fi
+        fi
 	if [ "${DB_FLAVOR}" == "MYSQL" ]
-    then
+        then
 		if test -f $mysql_core_file; then
 			log "[I] $mysql_core_file file found"
 		else
@@ -330,29 +367,29 @@ sanity_check_files() {
 		fi
 	fi
 	if [ "${DB_FLAVOR}" == "ORACLE" ]
-    then
-        if test -f ${oracle_core_file}; then
+        then
+                if test -f ${oracle_core_file}; then
 			log "[I] ${oracle_core_file} file found"
-        else
-            log "[E] ${oracle_core_file} does not exists" ; exit 1;
+                else
+                        log "[E] ${oracle_core_file} does not exists" ; exit 1;
+                fi
         fi
-    fi
-    if [ "${DB_FLAVOR}" == "POSTGRES" ]
-    then
-        if test -f ${postgres_core_file}; then
+        if [ "${DB_FLAVOR}" == "POSTGRES" ]
+        then
+                if test -f ${postgres_core_file}; then
 			log "[I] ${postgres_core_file} file found"
-        else
-            log "[E] ${postgres_core_file} does not exists" ; exit 1;
+                else
+                        log "[E] ${postgres_core_file} does not exists" ; exit 1;
+                fi
         fi
-    fi
-    if [ "${DB_FLAVOR}" == "MSSQL" ]
-    then
-        if test -f ${sqlserver_core_file}; then
+        if [ "${DB_FLAVOR}" == "MSSQL" ]
+        then
+                if test -f ${sqlserver_core_file}; then
 			log "[I] ${sqlserver_core_file} file found"
-        else
-            log "[E] ${sqlserver_core_file} does not exists" ; exit 1;
+                else
+                        log "[E] ${sqlserver_core_file} does not exists" ; exit 1;
+                fi
         fi
-    fi
 	if [ "${DB_FLAVOR}" == "SQLA" ]
 	then
 		if [ "${LD_LIBRARY_PATH}" == "" ]
@@ -369,15 +406,15 @@ sanity_check_files() {
 }
 
 create_rollback_point() {
-    DATE=`date`
-    BAK_FILE=$APP-$VERSION.$DATE.bak
-    log "Creating backup file : $BAK_FILE"
-    cp "$APP" "$BAK_FILE"
+        DATE=`date`
+        BAK_FILE=$APP-$VERSION.$DATE.bak
+        log "Creating backup file : $BAK_FILE"
+        cp "$APP" "$BAK_FILE"
 }
 
 copy_db_connector(){
 	log "[I] Copying ${DB_FLAVOR} Connector to $app_home/WEB-INF/lib ";
-    cp -f $SQL_CONNECTOR_JAR $app_home/WEB-INF/lib
+        cp -f $SQL_CONNECTOR_JAR $app_home/WEB-INF/lib
 	check_ret_status $? "Copying ${DB_FLAVOR} Connector to $app_home/WEB-INF/lib failed"
 	log "[I] Copying ${DB_FLAVOR} Connector to $app_home/WEB-INF/lib DONE";
 }
@@ -392,76 +429,120 @@ update_properties() {
 		log "[I] $to_file_ranger file found"
 	else
 		log "[E] $to_file_ranger does not exists" ; exit 1;
-    fi
+        fi
 
 	to_file_default=$app_home/WEB-INF/classes/conf/ranger-admin-default-site.xml
 	if test -f $to_file_default; then
 		log "[I] $to_file_default file found"
 	else
 		log "[E] $to_file_default does not exists" ; exit 1;
-    fi
+        fi
 
 	if [ "${spnego_principal}" != "" ]
 	then
-               propertyName=ranger.spnego.kerberos.principal
-               newPropertyValue="${spnego_principal}"
-               updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+                propertyName=ranger.spnego.kerberos.principal
+                newPropertyValue="${spnego_principal}"
+                updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
 	fi
 	
+        if [ "${audit_solr_collection_name}" != "" ]
+        then
+               propertyName=ranger.audit.solr.collection.name
+               newPropertyValue="${audit_solr_collection_name}"
+               updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+        fi
+
+        if [ "${audit_solr_config_name}" != "" ]
+        then
+               propertyName=ranger.audit.solr.config.name
+               newPropertyValue="${audit_solr_config_name}"
+               updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+        fi
+
+        if [ "${audit_solr_no_shards}" != "" ]
+        then
+               propertyName=ranger.audit.solr.no.shards
+               newPropertyValue="${audit_solr_no_shards}"
+               updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+        fi
+
+
+        if [ "${audit_solr_max_shards_per_node}" != "" ]
+        then
+               propertyName=ranger.audit.solr.max.shards.per.node
+               newPropertyValue="${audit_solr_max_shards_per_node}"
+               updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+        fi
+
+        if [ "${audit_solr_no_replica}" != "" ]
+        then
+               propertyName=ranger.audit.solr.no.replica
+               newPropertyValue="${audit_solr_no_replica}"
+               updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+        fi
+	
+	if [ "${audit_solr_acl_user_list_sasl}" != "" ]
+        then
+               propertyName=ranger.audit.solr.acl.user.list.sasl
+               newPropertyValue="${audit_solr_acl_user_list_sasl}"
+               updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+        fi
+
+
 	if [ "${spnego_keytab}" != "" ]
 	then
-               propertyName=ranger.spnego.kerberos.keytab
-               newPropertyValue="${spnego_keytab}"
-               updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+                propertyName=ranger.spnego.kerberos.keytab
+                newPropertyValue="${spnego_keytab}"
+                updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
 	fi
 
 	if [ "${token_valid}" != "" ]
 	then
-               propertyName=ranger.admin.kerberos.token.valid.seconds
-               newPropertyValue="${token_valid}"
-               updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+                propertyName=ranger.admin.kerberos.token.valid.seconds
+                newPropertyValue="${token_valid}"
+                updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
 	fi
 	
 	if [ "${cookie_domain}" != "" ]
 	then
-               propertyName=ranger.admin.kerberos.cookie.domain
-               newPropertyValue="${cookie_domain}"
-               updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+                propertyName=ranger.admin.kerberos.cookie.domain
+                newPropertyValue="${cookie_domain}"
+                updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
 	fi
 
 	if [ "${cookie_path}" != "" ]
 	then
-               propertyName=ranger.admin.kerberos.cookie.path
-               newPropertyValue="${cookie_path}"
-               updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+                propertyName=ranger.admin.kerberos.cookie.path
+                newPropertyValue="${cookie_path}"
+                updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
 	fi
 
 	if [ "${admin_principal}" != "" ]
 	then
-               propertyName=ranger.admin.kerberos.principal
-               newPropertyValue="${admin_principal}"
-               updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+                propertyName=ranger.admin.kerberos.principal
+                newPropertyValue="${admin_principal}"
+                updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
 	fi
 	
 	if [ "${admin_keytab}" != "" ]
 	then
-               propertyName=ranger.admin.kerberos.keytab
-               newPropertyValue="${admin_keytab}"
-               updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+                propertyName=ranger.admin.kerberos.keytab
+                newPropertyValue="${admin_keytab}"
+                updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
 	fi
 
 	if [ "${lookup_principal}" != "" ]
-	then            
-               propertyName=ranger.lookup.kerberos.principal
-               newPropertyValue="${lookup_principal}"
-               updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+        then
+                propertyName=ranger.lookup.kerberos.principal
+                newPropertyValue="${lookup_principal}"
+                updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
 	fi
 
 	if [ "${lookup_keytab}" != "" ]
 	then
-               propertyName=ranger.lookup.kerberos.keytab
-               newPropertyValue="${lookup_keytab}"
-               updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+                propertyName=ranger.lookup.kerberos.keytab
+                newPropertyValue="${lookup_keytab}"
+                updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
 	fi
 
 	if [ "${db_ssl_enabled}" != "" ]
@@ -476,6 +557,10 @@ update_properties() {
 
 		propertyName=ranger.db.ssl.verifyServerCertificate
 		newPropertyValue="${db_ssl_verifyServerCertificate}"
+		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
+
+		propertyName=ranger.db.ssl.auth.type
+		newPropertyValue="${db_ssl_auth_type}"
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
 	fi
 
@@ -500,6 +585,10 @@ update_properties() {
 		propertyName=ranger.jpa.audit.jdbc.driver
 		newPropertyValue="net.sf.log4jdbc.DriverSpy"
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
+
+		propertyName=ranger.jpa.jdbc.preferredtestquery
+		newPropertyValue="select 1;"
+		updatePropertyToFilePy $propertyName "${newPropertyValue}" $to_file_default
 	fi
 	if [ "${DB_FLAVOR}" == "ORACLE" ]
 	then
@@ -530,6 +619,10 @@ update_properties() {
 		propertyName=ranger.jpa.audit.jdbc.driver
 		newPropertyValue="oracle.jdbc.OracleDriver"
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
+
+		propertyName=ranger.jpa.jdbc.preferredtestquery
+		newPropertyValue="select 1 from dual;"
+		updatePropertyToFilePy $propertyName "${newPropertyValue}" $to_file_default
 	fi
 	if [ "${DB_FLAVOR}" == "POSTGRES" ]
 	then
@@ -555,6 +648,10 @@ update_properties() {
 		propertyName=ranger.jpa.audit.jdbc.driver
 		newPropertyValue="org.postgresql.Driver"
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
+
+		propertyName=ranger.jpa.jdbc.preferredtestquery
+		newPropertyValue="select 1;"
+		updatePropertyToFilePy $propertyName "${newPropertyValue}" $to_file_default
 	fi
 
 	if [ "${DB_FLAVOR}" == "MSSQL" ]
@@ -578,6 +675,10 @@ update_properties() {
 		propertyName=ranger.jpa.audit.jdbc.driver
 		newPropertyValue="com.microsoft.sqlserver.jdbc.SQLServerDriver"
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
+
+		propertyName=ranger.jpa.jdbc.preferredtestquery
+		newPropertyValue="select 1;"
+		updatePropertyToFilePy $propertyName "${newPropertyValue}" $to_file_default
 	fi
 
 	if [ "${DB_FLAVOR}" == "SQLA" ]
@@ -601,6 +702,10 @@ update_properties() {
 		propertyName=ranger.jpa.audit.jdbc.driver
 		newPropertyValue="sap.jdbc4.sqlanywhere.IDriver"
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
+
+		propertyName=ranger.jpa.jdbc.preferredtestquery
+		newPropertyValue="select 1;"
+		updatePropertyToFilePy $propertyName "${newPropertyValue}" $to_file_default
 	fi
 
 	if [ "${audit_store}" == "solr" ]
@@ -608,6 +713,38 @@ update_properties() {
 		propertyName=ranger.audit.solr.urls
 		newPropertyValue=${audit_solr_urls}
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+
+		propertyName=ranger.audit.solr.bootstrap.enabled
+		newPropertyValue=${audit_solr_bootstrap_enabled}
+		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+	fi
+
+	if [ "${audit_store}" == "elasticsearch" ]
+	then
+		propertyName=ranger.audit.elasticsearch.urls
+		newPropertyValue=${audit_elasticsearch_urls}
+		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+
+		propertyName=ranger.audit.elasticsearch.port
+		newPropertyValue=${audit_elasticsearch_port}
+		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+
+		propertyName=ranger.audit.elasticsearch.user
+		newPropertyValue=${audit_elasticsearch_user}
+		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+
+		propertyName=ranger.audit.elasticsearch.password
+		newPropertyValue=${audit_elasticsearch_password}
+		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+
+		propertyName=ranger.audit.elasticsearch.index
+		newPropertyValue=${audit_elasticsearch_index}
+		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+
+		propertyName=ranger.audit.elasticsearch.bootstrap.enabled
+		newPropertyValue=${audit_elasticsearch_bootstrap_enabled}
+		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+
 	fi
 
 	if [ "${audit_store}" != "" ]
@@ -661,16 +798,16 @@ update_properties() {
 		propertyName=ranger.jpa.jdbc.password
 		newPropertyValue="_"
 		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
-	else
-		propertyName=ranger.jpa.jdbc.password
-		newPropertyValue="${db_password}"
-		updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
-	fi
 
-	if test -f $keystore; then
-		#echo "$keystore found."
-		chown -R ${unix_user}:${unix_group} ${keystore}
-		chmod 640 ${keystore}
+		if test -f "${keystore}"; then
+			#echo "$keystore found."
+			chown -R ${unix_user}:${unix_group} ${keystore}
+			chmod 640 ${keystore}
+		else
+			propertyName=ranger.jpa.jdbc.password
+			newPropertyValue="${db_password}"
+			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+		fi
 	else
 		propertyName=ranger.jpa.jdbc.password
 		newPropertyValue="${db_password}"
@@ -707,14 +844,14 @@ update_properties() {
 				propertyName=ranger.solr.audit.user.password
 				newPropertyValue="_"
 				updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
-			else
-				propertyName=ranger.solr.audit.user.password
-				newPropertyValue="${audit_solr_password}"
-				updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
-			fi
 
-			if test -f $keystore; then
-				chown -R ${unix_user}:${unix_group} ${keystore}
+				if test -f "${keystore}"; then
+					chown -R ${unix_user}:${unix_group} ${keystore}
+				else
+					propertyName=ranger.solr.audit.user.password
+					newPropertyValue="${audit_solr_password}"
+					updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+				fi
 			else
 				propertyName=ranger.solr.audit.user.password
 				newPropertyValue="${audit_solr_password}"
@@ -774,14 +911,14 @@ update_properties() {
 			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
 
 			$PYTHON_COMMAND_INVOKER ranger_credential_helper.py -l "cred/lib/*" -f "$keystore" -k "$javax_net_ssl_keyStoreAlias" -v "$javax_net_ssl_keyStorePassword" -c 1
-		else
-			propertyName=ranger.keystore.password
-			newPropertyValue="${javax_net_ssl_keyStorePassword}"
-			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
-		fi
 
-		if test -f $keystore; then
-			chown -R ${unix_user}:${unix_group} ${keystore}
+			if test -f "${keystore}"; then
+				chown -R ${unix_user}:${unix_group} ${keystore}
+			else
+				propertyName=ranger.keystore.password
+				newPropertyValue="${javax_net_ssl_keyStorePassword}"
+				updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
+			fi
 		else
 			propertyName=ranger.keystore.password
 			newPropertyValue="${javax_net_ssl_keyStorePassword}"
@@ -807,13 +944,14 @@ update_properties() {
 			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
 
 			$PYTHON_COMMAND_INVOKER ranger_credential_helper.py -l "cred/lib/*" -f "$keystore" -k "$javax_net_ssl_trustStoreAlias" -v "$javax_net_ssl_trustStorePassword" -c 1
-		else
-			propertyName=ranger.truststore.password
-			newPropertyValue="${javax_net_ssl_trustStorePassword}"
-			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
-		fi
-		if test -f $keystore; then
-			chown -R ${unix_user}:${unix_group} ${keystore}
+
+			if test -f "${keystore}"; then
+				chown -R ${unix_user}:${unix_group} ${keystore}
+			else
+				propertyName=ranger.truststore.password
+				newPropertyValue="${javax_net_ssl_trustStorePassword}"
+				updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
+			fi
 		else
 			propertyName=ranger.truststore.password
 			newPropertyValue="${javax_net_ssl_trustStorePassword}"
@@ -856,13 +994,14 @@ update_properties() {
 				newPropertyValue="_"
 				updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
 				$PYTHON_COMMAND_INVOKER ranger_credential_helper.py -l "cred/lib/*" -f "$keystore" -k "$policymgr_https_keystore_credential_alias" -v "$policymgr_https_keystore_password" -c 1
-			else
-				propertyName=ranger.service.https.attrib.keystore.pass
-				newPropertyValue="${policymgr_https_keystore_password}"
-				updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
-			fi
-			if test -f $keystore; then
-				chown -R ${unix_user}:${unix_group} ${keystore}
+
+				if test -f "${keystore}"; then
+					chown -R ${unix_user}:${unix_group} ${keystore}
+				else
+					propertyName=ranger.service.https.attrib.keystore.pass
+					newPropertyValue="${policymgr_https_keystore_password}"
+					updatePropertyToFilePy $propertyName $newPropertyValue $to_file_ranger
+				fi
 			else
 				propertyName=ranger.service.https.attrib.keystore.pass
 				newPropertyValue="${policymgr_https_keystore_password}"
@@ -887,13 +1026,14 @@ update_properties() {
 			newPropertyValue="_"
 			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
 			$PYTHON_COMMAND_INVOKER ranger_credential_helper.py -l "cred/lib/*" -f "$keystore" -k "$ranger_unixauth_keystore_alias" -v "$ranger_unixauth_keystore_password" -c 1
-		else
-			propertyName=ranger.unixauth.keystore.password
-			newPropertyValue="${ranger_unixauth_keystore_password}"
-			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
-		fi
-		if test -f $keystore; then
-			chown -R ${unix_user}:${unix_group} ${keystore}
+
+			if test -f "${keystore}"; then
+				chown -R ${unix_user}:${unix_group} ${keystore}
+			else
+				propertyName=ranger.unixauth.keystore.password
+				newPropertyValue="${ranger_unixauth_keystore_password}"
+				updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
+			fi
 		else
 			propertyName=ranger.unixauth.keystore.password
 			newPropertyValue="${ranger_unixauth_keystore_password}"
@@ -918,13 +1058,14 @@ update_properties() {
 			newPropertyValue="_"
 			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
 			$PYTHON_COMMAND_INVOKER ranger_credential_helper.py -l "cred/lib/*" -f "$keystore" -k "$ranger_unixauth_truststore_alias" -v "$ranger_unixauth_truststore_password" -c 1
-		else
-			propertyName=ranger.unixauth.truststore.password
-			newPropertyValue="${ranger_unixauth_truststore_password}"
-			updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
-		fi
-		if test -f $keystore; then
-			chown -R ${unix_user}:${unix_group} ${keystore}
+
+			if test -f $keystore; then
+				chown -R ${unix_user}:${unix_group} ${keystore}
+			else
+				propertyName=ranger.unixauth.truststore.password
+				newPropertyValue="${ranger_unixauth_truststore_password}"
+				updatePropertyToFilePy $propertyName $newPropertyValue $to_file_default
+			fi
 		else
 			propertyName=ranger.unixauth.truststore.password
 			newPropertyValue="${ranger_unixauth_truststore_password}"
@@ -936,25 +1077,25 @@ update_properties() {
 
 do_unixauth_setup() {
 
-    ldap_file=$app_home/WEB-INF/classes/conf/ranger-admin-site.xml
-    if test -f $ldap_file; then
-	log "[I] $ldap_file file found"
-	
-        propertyName=ranger.authentication.method
-        newPropertyValue="${authentication_method}"
-        updatePropertyToFilePy $propertyName $newPropertyValue $ldap_file
+        ldap_file=$app_home/WEB-INF/classes/conf/ranger-admin-site.xml
+        if test -f $ldap_file; then
+                log "[I] $ldap_file file found"
 
-        propertyName=ranger.unixauth.remote.login.enabled
-        newPropertyValue="${remoteLoginEnabled}"
-        updatePropertyToFilePy $propertyName $newPropertyValue $ldap_file
+                propertyName=ranger.authentication.method
+                newPropertyValue="${authentication_method}"
+                updatePropertyToFilePy $propertyName $newPropertyValue $ldap_file
 
-        propertyName=ranger.unixauth.service.hostname
-        newPropertyValue="${authServiceHostName}"
-        updatePropertyToFilePy $propertyName $newPropertyValue $ldap_file
+                propertyName=ranger.unixauth.remote.login.enabled
+                newPropertyValue="${remoteLoginEnabled}"
+                updatePropertyToFilePy $propertyName $newPropertyValue $ldap_file
 
-        propertyName=ranger.unixauth.service.port
-        newPropertyValue="${authServicePort}"
-        updatePropertyToFilePy $propertyName $newPropertyValue $ldap_file
+                propertyName=ranger.unixauth.service.hostname
+                newPropertyValue="${authServiceHostName}"
+                updatePropertyToFilePy $propertyName $newPropertyValue $ldap_file
+
+                propertyName=ranger.unixauth.service.port
+                newPropertyValue="${authServicePort}"
+                updatePropertyToFilePy $propertyName $newPropertyValue $ldap_file
 	else
 		log "[E] $ldap_file does not exists" ; exit 1;
 	fi
@@ -964,7 +1105,7 @@ do_authentication_setup(){
 	log "[I] Starting setup based on user authentication method=$authentication_method";
 	./setup_authentication.sh $authentication_method $app_home
 
-    if [ $authentication_method = "LDAP" ] ; then
+        if [ $authentication_method = "LDAP" ] ; then
 	log "[I] Loading LDAP attributes and properties";
 		newPropertyValue=''
 		ldap_file=$app_home/WEB-INF/classes/conf/ranger-admin-site.xml
@@ -1044,15 +1185,16 @@ do_authentication_setup(){
 					else
 						log "[E] $to_file_default does not exists" ; exit 1;
 					fi
-				else
-					propertyName=ranger.ldap.bind.password
-					newPropertyValue="${xa_ldap_bind_password}"
-					updatePropertyToFilePy $propertyName $newPropertyValue $ldap_file
-				fi
-				if test -f $keystore; then
-					#echo "$keystore found."
-					chown -R ${unix_user}:${unix_group} ${keystore}
-					chmod 640 ${keystore}
+
+					if test -f $keystore; then
+						#echo "$keystore found."
+						chown -R ${unix_user}:${unix_group} ${keystore}
+						chmod 640 ${keystore}
+					else
+						propertyName=ranger.ldap.bind.password
+						newPropertyValue="${xa_ldap_bind_password}"
+						updatePropertyToFilePy $propertyName $newPropertyValue $ldap_file
+					fi
 				else
 					propertyName=ranger.ldap.bind.password
 					newPropertyValue="${xa_ldap_bind_password}"
@@ -1061,10 +1203,9 @@ do_authentication_setup(){
 			fi
 		else
 			log "[E] $ldap_file does not exists" ; exit 1;
-
+                fi
 	fi
-    fi
-    if [ $authentication_method = "ACTIVE_DIRECTORY" ] ; then
+        if [ $authentication_method = "ACTIVE_DIRECTORY" ] ; then
 	log "[I] Loading ACTIVE DIRECTORY attributes and properties";
 		newPropertyValue=''
 		ldap_file=$app_home/WEB-INF/classes/conf/ranger-admin-site.xml
@@ -1131,15 +1272,16 @@ do_authentication_setup(){
 					else
 						log "[E] $to_file_default does not exists" ; exit 1;
 					fi
-				else
-					propertyName=ranger.ldap.ad.bind.password
-					newPropertyValue="${xa_ldap_ad_bind_password}"
-					updatePropertyToFilePy $propertyName $newPropertyValue $ldap_file
-				fi
-				if test -f $keystore; then
-					#echo "$keystore found."
-					chown -R ${unix_user}:${unix_group} ${keystore}
-					chmod 640 ${keystore}
+
+					if test -f $keystore; then
+						#echo "$keystore found."
+						chown -R ${unix_user}:${unix_group} ${keystore}
+						chmod 640 ${keystore}
+					else
+						propertyName=ranger.ldap.ad.bind.password
+						newPropertyValue="${xa_ldap_ad_bind_password}"
+						updatePropertyToFilePy $propertyName $newPropertyValue $ldap_file
+					fi
 				else
 					propertyName=ranger.ldap.ad.bind.password
 					newPropertyValue="${xa_ldap_ad_bind_password}"
@@ -1149,22 +1291,22 @@ do_authentication_setup(){
 		else
 			log "[E] $ldap_file does not exists" ; exit 1;
 		fi
-    fi
-    if [ $authentication_method = "UNIX" ] ; then
-        do_unixauth_setup
-    fi
+        fi
+        if [ $authentication_method = "UNIX" ] ; then
+                do_unixauth_setup
+        fi
 
-    if [ $authentication_method = "NONE" ] ; then
-         newPropertyValue='NONE'
-         ldap_file=$app_home/WEB-INF/classes/conf/ranger-admin-site.xml
-         if test -f $ldap_file; then
-                 propertyName=ranger.authentication.method
-                 newPropertyValue="${authentication_method}"
-                 updatePropertyToFilePy $propertyName $newPropertyValue $ldap_file
-         fi
-    fi	
+        if [ $authentication_method = "NONE" ] ; then
+                newPropertyValue='NONE'
+                ldap_file=$app_home/WEB-INF/classes/conf/ranger-admin-site.xml
+                if test -f $ldap_file; then
+                        propertyName=ranger.authentication.method
+                        newPropertyValue="${authentication_method}"
+                        updatePropertyToFilePy $propertyName $newPropertyValue $ldap_file
+                fi
+        fi
 	
-    log "[I] Finished setup based on user authentication method=$authentication_method";
+        log "[I] Finished setup based on user authentication method=$authentication_method";
 }
 #=====================================================================
 setup_unix_user_group(){
@@ -1183,8 +1325,8 @@ setup_unix_user_group(){
 	if [ $? -ne 0 ]
 	then
 		check_user_pwd ${unix_user_pwd}
-	    log "[I] Creating new user and adding to group"
-        useradd ${unix_user} -g ${unix_group} -m
+                log "[I] Creating new user and adding to group"
+                useradd ${unix_user} -g ${unix_group} -m
 		check_ret_status $? "useradd ${unix_user} failed"
 
 		passwdtmpfile=passwd.tmp
@@ -1197,9 +1339,9 @@ EOF
 		chpasswd <  ${passwdtmpfile}
 		rm -rf  ${passwdtmpfile}
 	else
-	    useringroup=`id ${unix_user}`
-        useringrouparr=(${useringroup// / })
-	    if [[  ${useringrouparr[1]} =~ "(${unix_group})" ]]
+                useringroup=`id ${unix_user}`
+                useringrouparr=(${useringroup// / })
+                if [[  ${useringrouparr[1]} =~ "(${unix_group})" ]]
 		then
 			log "[I] the ${unix_user} user already exists and belongs to group ${unix_group}"
 		else
@@ -1213,9 +1355,9 @@ EOF
 setup_install_files(){
 	log "[I] Setting up installation files and directory";
 	if [ ! -d ${WEBAPP_ROOT}/WEB-INF/classes/conf ]; then
-	    log "[I] Copying ${WEBAPP_ROOT}/WEB-INF/classes/conf.dist ${WEBAPP_ROOT}/WEB-INF/classes/conf"
-	    mkdir -p ${WEBAPP_ROOT}/WEB-INF/classes/conf
-	    cp ${WEBAPP_ROOT}/WEB-INF/classes/conf.dist/* ${WEBAPP_ROOT}/WEB-INF/classes/conf
+                log "[I] Copying ${WEBAPP_ROOT}/WEB-INF/classes/conf.dist ${WEBAPP_ROOT}/WEB-INF/classes/conf"
+                mkdir -p ${WEBAPP_ROOT}/WEB-INF/classes/conf
+                cp ${WEBAPP_ROOT}/WEB-INF/classes/conf.dist/* ${WEBAPP_ROOT}/WEB-INF/classes/conf
 	fi
 
         echo "export RANGER_HADOOP_CONF_DIR=${hadoop_conf}" > ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-admin-env-hadoopconfdir.sh
@@ -1241,53 +1383,54 @@ setup_install_files(){
 	fi
 
 	if [ ! -d ${WEBAPP_ROOT}/WEB-INF/classes/lib ]; then
-	    log "[I] Creating ${WEBAPP_ROOT}/WEB-INF/classes/lib"
-	    mkdir -p ${WEBAPP_ROOT}/WEB-INF/classes/lib
+                log "[I] Creating ${WEBAPP_ROOT}/WEB-INF/classes/lib"
+                mkdir -p ${WEBAPP_ROOT}/WEB-INF/classes/lib
 	fi
 	if [ -d ${WEBAPP_ROOT}/WEB-INF/classes/lib ]; then
 		chown -R ${unix_user} ${WEBAPP_ROOT}/WEB-INF/classes/lib
 	fi
 
 	if [ -d /etc/init.d ]; then
-	    log "[I] Setting up init.d"
-	    cp ${INSTALL_DIR}/ews/${RANGER_ADMIN_INITD} /etc/init.d/${RANGER_ADMIN}
-	    chmod ug+rx /etc/init.d/${RANGER_ADMIN}
+                log "[I] Setting up init.d"
+                cp ${INSTALL_DIR}/ews/${RANGER_ADMIN_INITD} /etc/init.d/${RANGER_ADMIN}
+                chmod ug+rx /etc/init.d/${RANGER_ADMIN}
 
-	    if [ -d /etc/rc2.d ]
-	    then
+                if [ -d /etc/rc2.d ]
+                then
 		RC_DIR=/etc/rc2.d
 		log "[I] Creating script S88${RANGER_ADMIN}/K90${RANGER_ADMIN} in $RC_DIR directory .... "
 		rm -f $RC_DIR/S88${RANGER_ADMIN}  $RC_DIR/K90${RANGER_ADMIN}
 		ln -s /etc/init.d/${RANGER_ADMIN} $RC_DIR/S88${RANGER_ADMIN}
 		ln -s /etc/init.d/${RANGER_ADMIN} $RC_DIR/K90${RANGER_ADMIN}
-	    fi
+                fi
 
-	    if [ -d /etc/rc3.d ]
-	    then
+                if [ -d /etc/rc3.d ]
+                then
 		RC_DIR=/etc/rc3.d
 		log "[I] Creating script S88${RANGER_ADMIN}/K90${RANGER_ADMIN} in $RC_DIR directory .... "
 		rm -f $RC_DIR/S88${RANGER_ADMIN}  $RC_DIR/K90${RANGER_ADMIN}
 		ln -s /etc/init.d/${RANGER_ADMIN} $RC_DIR/S88${RANGER_ADMIN}
 		ln -s /etc/init.d/${RANGER_ADMIN} $RC_DIR/K90${RANGER_ADMIN}
-	    fi
+                fi
 
-	    # SUSE has rc2.d and rc3.d under /etc/rc.d
-	    if [ -d /etc/rc.d/rc2.d ]
-	    then
+                # SUSE has rc2.d and rc3.d under /etc/rc.d
+                if [ -d /etc/rc.d/rc2.d ]
+                then
 		RC_DIR=/etc/rc.d/rc2.d
 		log "[I] Creating script S88${RANGER_ADMIN}/K90${RANGER_ADMIN} in $RC_DIR directory .... "
 		rm -f $RC_DIR/S88${RANGER_ADMIN}  $RC_DIR/K90${RANGER_ADMIN}
 		ln -s /etc/init.d/${RANGER_ADMIN} $RC_DIR/S88${RANGER_ADMIN}
 		ln -s /etc/init.d/${RANGER_ADMIN} $RC_DIR/K90${RANGER_ADMIN}
-	    fi
-	    if [ -d /etc/rc.d/rc3.d ]
-	    then
+                fi
+
+                if [ -d /etc/rc.d/rc3.d ]
+                then
 		RC_DIR=/etc/rc.d/rc3.d
 		log "[I] Creating script S88${RANGER_ADMIN}/K90${RANGER_ADMIN} in $RC_DIR directory .... "
 		rm -f $RC_DIR/S88${RANGER_ADMIN}  $RC_DIR/K90${RANGER_ADMIN}
 		ln -s /etc/init.d/${RANGER_ADMIN} $RC_DIR/S88${RANGER_ADMIN}
 		ln -s /etc/init.d/${RANGER_ADMIN} $RC_DIR/K90${RANGER_ADMIN}
-	    fi
+                fi
 	fi
 	if [  -f /etc/init.d/${RANGER_ADMIN} ]; then
 		if [ "${unix_user}" != "" ]; then
@@ -1297,28 +1440,32 @@ setup_install_files(){
 
 	if [ -z "${RANGER_ADMIN_LOG_DIR}" ] || [ ${RANGER_ADMIN_LOG_DIR} == ${XAPOLICYMGR_DIR} ]; then 
                 RANGER_ADMIN_LOG_DIR=${XAPOLICYMGR_DIR}/ews/logs;
-        fi              
+        fi
+
         if [ ! -d ${RANGER_ADMIN_LOG_DIR} ]; then
-            log "[I] ${RANGER_ADMIN_LOG_DIR} Ranger Log folder"
-            mkdir -p ${RANGER_ADMIN_LOG_DIR}
+                log "[I] ${RANGER_ADMIN_LOG_DIR} Ranger Log folder"
+                mkdir -p ${RANGER_ADMIN_LOG_DIR}
         fi
+
         if [ -d ${RANGER_ADMIN_LOG_DIR} ]; then
-            chown -R ${unix_user} ${RANGER_ADMIN_LOG_DIR}
+                chown -R ${unix_user} ${RANGER_ADMIN_LOG_DIR}
         fi
+
         echo "export RANGER_ADMIN_LOG_DIR=${RANGER_ADMIN_LOG_DIR}" > ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-admin-env-logdir.sh
         chmod a+rx ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-admin-env-logdir.sh
 		
-		if [ -z "${RANGER_PID_DIR_PATH}" ]
-		then
-			RANGER_PID_DIR_PATH=/var/run/ranger
-		fi
+        if [ -z "${RANGER_PID_DIR_PATH}" ]
+        then
+                RANGER_PID_DIR_PATH=/var/run/ranger
+        fi
+
         if [ ! -d ${RANGER_PID_DIR_PATH} ]; then
-			log "[I]Creating Ranger PID folder: ${RANGER_PID_DIR_PATH}"
-			mkdir -p ${RANGER_PID_DIR_PATH}
-			if [ ! $? = "0" ];then
-				log "Make $RANGER_PID_DIR_PATH failure....!!";
-				exit 1;
-			fi
+                log "[I]Creating Ranger PID folder: ${RANGER_PID_DIR_PATH}"
+                mkdir -p ${RANGER_PID_DIR_PATH}
+                if [ ! $? = "0" ];then
+                        log "Make $RANGER_PID_DIR_PATH failure....!!";
+                        exit 1;
+		fi
         fi
 		
         chown -R ${unix_user} ${RANGER_PID_DIR_PATH}
@@ -1329,9 +1476,14 @@ setup_install_files(){
 
 	if [ "${db_ssl_verifyServerCertificate}" == "true" ]
 	then
-		DB_SSL_PARAM="' -Djavax.net.ssl.keyStore=${javax_net_ssl_keyStore} -Djavax.net.ssl.keyStorePassword=${javax_net_ssl_keyStorePassword} -Djavax.net.ssl.trustStore=${javax_net_ssl_trustStore} -Djavax.net.ssl.trustStorePassword=${javax_net_ssl_trustStorePassword} '"
+		if [ "${db_ssl_auth_type}" == "1-way" ]
+		then
+			DB_SSL_PARAM="' -Djavax.net.ssl.trustStore=${javax_net_ssl_trustStore} -Djavax.net.ssl.trustStorePassword=${javax_net_ssl_trustStorePassword} '"
+		else
+			DB_SSL_PARAM="' -Djavax.net.ssl.keyStore=${javax_net_ssl_keyStore} -Djavax.net.ssl.keyStorePassword=${javax_net_ssl_keyStorePassword} -Djavax.net.ssl.trustStore=${javax_net_ssl_trustStore} -Djavax.net.ssl.trustStorePassword=${javax_net_ssl_trustStorePassword} '"
+		fi
 		echo "export DB_SSL_PARAM=${DB_SSL_PARAM}" > ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-admin-env-dbsslparam.sh
-        chmod a+rx ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-admin-env-dbsslparam.sh
+                chmod a+rx ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-admin-env-dbsslparam.sh
 	else
 		if [ -f ${WEBAPP_ROOT}/WEB-INF/classes/conf/ranger-admin-env-dbsslparam.sh ]; then
 			DB_SSL_PARAM=""
@@ -1342,11 +1494,11 @@ setup_install_files(){
 	log "[I] Setting up installation files and directory DONE";
 
 	if [ ! -f ${INSTALL_DIR}/rpm ]; then
-	    if [ -d ${INSTALL_DIR} ]
-	    then
+                if [ -d ${INSTALL_DIR} ]
+                then
 		chown -R ${unix_user}:${unix_group} ${INSTALL_DIR}
 		chown -R ${unix_user}:${unix_group} ${INSTALL_DIR}/*
-	    fi
+                fi
 	fi
 
 	# Copy ranger-admin-services to /usr/bin
@@ -1356,7 +1508,64 @@ setup_install_files(){
 		chmod ug+rx /usr/bin/ranger-admin	
 	fi
 }
+python_command_for_change_password(){
+        $PYTHON_COMMAND_INVOKER db_setup.py -changepassword -pair "${1}" "${2}" "${3}" -pair "${4}" "${5}" "${6}" -pair "${7}" "${8}" "${9}" -pair "${10}" "${11}" "${12}"
+}
+validateDefaultUsersPassword(){
+        if [ "${2}" == "" ]
+        then
+                log "[E] validatePassword(). Password for ${1} user cannot be blank"
+                exit 1
+        elif ! [[ ${#2} -ge 8 && "$2" =~ [A-Za-z] && "$2" =~ [0-9] ]] || [[ "${2}" =~ [\"\`\\"'"] ]]
+        then
+                log "[E] validatePassword(). ${1} password change failed. Password should be minimum 8 characters with minimum one alphabet and one numeric. Unsupported special characters are \\\`'\""
+                exit 1
+        fi
+}
 
+change_default_users_password(){
+	if [ "${rangerAdmin_password}" != "admin" ] && [ "${rangerTagsync_password}" != "rangertagsync" ] && [ "${rangerUsersync_password}" != "rangerusersync" ] && [ "${keyadmin_password}" != "keyadmin" ]
+	then
+		python_command_for_change_password  'admin' 'admin' "${rangerAdmin_password}" 'rangertagsync' 'rangertagsync' "${rangerTagsync_password}" 'rangerusersync' 'rangerusersync' "${rangerUsersync_password}" 'keyadmin' 'keyadmin' "${keyadmin_password}"
+		if [ "$?" != "0" ]
+		then
+			exit 1
+		fi
+	else
+		if [ "${rangerAdmin_password}" != "admin" ]
+		then
+			python_command_for_change_password  'admin' 'admin' "${rangerAdmin_password}"
+			if [ "$?" != "0" ]
+			then
+				exit 1
+			fi
+		fi
+		if [ "${rangerTagsync_password}" != "rangertagsync" ]
+		then
+			python_command_for_change_password 'rangertagsync' 'rangertagsync' "${rangerTagsync_password}"
+			if [ "$?" != "0" ]
+			then
+				exit 1
+			fi
+		fi
+		if [ "${rangerUsersync_password}" != "rangerusersync" ]
+		then
+			python_command_for_change_password 'rangerusersync' 'rangerusersync' "${rangerUsersync_password}"
+			if [ "$?" != "0" ]
+			then
+				exit 1
+			fi
+		fi
+		if [ "${keyadmin_password}" != "keyadmin" ]
+		then
+			python_command_for_change_password 'keyadmin' 'keyadmin' "${keyadmin_password}"
+			if [ "$?" != "0" ]
+			then
+				exit 1
+			fi
+		fi
+	fi
+}
 log " --------- Running Ranger PolicyManager Web Application Install Script --------- "
 log "[I] uname=`uname`"
 log "[I] hostname=`hostname`"
@@ -1369,6 +1578,14 @@ setup_install_files
 sanity_check_files
 copy_db_connector
 check_python_command
+check_ranger_version
+if [ "$?" != "0" ]
+then
+	validateDefaultUsersPassword 'admin' "${rangerAdmin_password}"
+	validateDefaultUsersPassword 'rangertagsync' "${rangerTagsync_password}"
+	validateDefaultUsersPassword 'rangerusersync' "${rangerUsersync_password}"
+	validateDefaultUsersPassword 'keyadmin' "${keyadmin_password}"
+fi
 run_dba_steps
 if [ "$?" == "0" ]
 then
@@ -1391,6 +1608,10 @@ then
 	if [ "$?" == "0" ]
 	then
 		$PYTHON_COMMAND_INVOKER db_setup.py -javapatch
+		if [ "$?" == "0" ]
+		then
+			change_default_users_password
+		fi
 	else
 		exit 1
 	fi

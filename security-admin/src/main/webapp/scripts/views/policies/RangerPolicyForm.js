@@ -33,8 +33,11 @@ define(function(require){
 	var VXAuditMapList	= require('collections/VXAuditMapList');
 	var VXUserList		= require('collections/VXUserList');
 	var PermissionList 	= require('views/policies/PermissionList');
+    var vPolicyTimeList 	= require('views/policies/PolicyTimeList');
 	var RangerPolicyResource		= require('models/RangerPolicyResource');
 	var BackboneFormDataType	= require('models/BackboneFormDataType');
+    var App             = require('App');
+    var vPolicyCondition = require('views/policies/RangerPolicyConditions');
 
 	require('backbone-forms.list');
 	require('backbone-forms.templates');
@@ -63,7 +66,14 @@ define(function(require){
 			}
 			return { 'id' : this.model.id,
 					'policyType' : policyType.label,
-					'conditionType' : conditionType
+					'conditionType' : conditionType,
+					'policyTimeBtnLabel': (this.model.has('validitySchedules') && this.model.get('validitySchedules').length > 0) ? localization.tt('lbl.editValidityPeriod')
+						: localization.tt('lbl.addValidityPeriod'),
+					'policyConditionHideShow' : (this.rangerServiceDefModel.has('policyConditions') && !_.isEmpty(this.rangerServiceDefModel.get('policyConditions'))) ?
+					true : false,
+					'policyConditionIconClass': (this.model.has('conditions') && this.model.get('conditions').length > 0) ? "fa fa-pencil" : "fa fa-plus",
+					'conditionsData': (this.model.has('conditions') && this.model.get('conditions').length > 0) ?
+						XAUtil.getPolicyConditionDetails(this.model.get('conditions'), this.rangerServiceDefModel) : [],
 				};
 		},
 		initialize: function(options) {
@@ -101,6 +111,10 @@ define(function(require){
 		ui : {
 			'denyConditionItems' : '[data-js="denyConditionItems"]',
 			'allowExcludePerm' : '[data-js="allowExcludePerm"]',
+      		'policyTimeBtn'      : '[data-js="policyTimeBtn"]',
+			'policyConditions' : '[data-js="customPolicyConditions"]',
+            'conditionData' : '[data-id="conditionData"]',
+            'isDenyAllElse' : '[data-js="isDenyAllElse"]',
 		},
 		/** fields for the form
 		*/
@@ -110,45 +124,159 @@ define(function(require){
 		},
 		getSchema : function(){
 			var attrs = {},that = this;
-			var basicSchema = ['name','isEnabled'];
+                        var basicSchema = ['name','isEnabled','policyPriority','policyLabels'];
 			var schemaNames = this.getPolicyBaseFieldNames();
-			
+
 			var formDataType = new BackboneFormDataType();
 			attrs = formDataType.getFormElements(this.rangerServiceDefModel.get('resources'),this.rangerServiceDefModel.get('enums'), attrs, this, true);
-			
-			var attr1 = _.pick(_.result(this.model,'schemaBase'),basicSchema);
-			var attr2 = _.pick(_.result(this.model,'schemaBase'),schemaNames);
-			return _.extend(attr1,_.extend(attrs,attr2));
+                        if(this.model.schemaBase){
+                                var attr1 = _.pick(_.result(this.model,'schemaBase'),basicSchema);
+                                var attr2 = _.pick(_.result(this.model,'schemaBase'),schemaNames);
+                                return _.extend(attr1,_.extend(attrs,attr2));
+                        }
 		},
 		/** on render callback */
 		render: function(options) {
-			var that = this;
-			
+            var that = this;
 			Backbone.Form.prototype.render.call(this, options);
 			//initialize path plugin for hdfs component : resourcePath
-			if(!_.isUndefined(this.initilializePathPlugin) && this.initilializePathPlugin){ 
+                        if(!_.isUndefined(this.initilializePathPlugin) && this.initilializePathPlugin){
 				this.initializePathPlugins(this.pathPluginOpts);
 			}
-			this.renderCustomFields();
+			if(XAUtil.isAccessPolicy(this.model.get('policyType'))){
+				this.evdenyAccessChange();
+			}
 			if(!this.model.isNew()){
 				this.setUpSwitches();
 			}
+			this.renderCustomFields();
 			//checkParent
 			this.renderParentChildHideShow();
-			
+
 			//to show error msg on below the field(only for policy name)
-			this.fields.isEnabled.$el.find('.control-label').removeClass();
-			this.fields.name.$el.find('.help-inline').removeClass('help-inline').addClass('help-block margin-left-5')
-			this.initializePlugins();
-		},
+            if(this.fields.isEnabled){
+                    this.fields.isEnabled.$el.find('.control-label').removeClass();
+            }
+            if(this.fields.name){
+                    this.fields.name.$el.find('.help-inline').removeClass('help-inline').addClass('help-block margin-left-5');
+            }
+            this.initializePlugins();
+            this.setPolicyValidityTime();
+            this.setPolicyCondition();
+        },
+            setPolicyValidityTime : function(){
+              var that = this;
+              this.$el.find(this.ui.policyTimeBtn).on('click', function(e){
+                  var policyDirtyField = that.model.has('validitySchedules') ? new Backbone.Collection(that.model.get('validitySchedules')) : new Backbone.Collection();
+                  policyDirtyField.on('change',function(){
+                      that.$el.find('[data-js="policyTimeBtn"]').addClass('dirtyField');
+                  });
+                  var view = new vPolicyTimeList({
+                      collection: policyDirtyField,
+                      model : that.model
+                });
+                var modal = new Backbone.BootstrapModal({
+                  content	: view,
+                  title	: 'Policy Validity Period',
+                  okText  :"Save",
+                  animate : true,
+                  focusOk : false,
+                  escape:false,
+                  // allowCancel:false,
+                  modalOptions:{
+                    backdrop: 'static',
+                    keyboard: false
+                  },
+                }).open();
+
+                modal.$el.addClass('modal-policy-time');
+                $('body').addClass('hideBodyScroll')
+                //To prevent modal being close by click out of modal
+                modal.$el.find('.cancel, .close').on('click', function(e){
+                  modal._preventClose = false;
+                  $('body').removeClass('hideBodyScroll');
+                  $('[data-js="policyTimeBtn"]').addClass('dirtyField');
+                  $(".datetimepicker").remove();
+                });
+                modal.$el.find('.ok').on('click', function(e){
+                    modal._preventClose = false;
+                    $('body').removeClass('hideBodyScroll');
+                });
+                modal.on('shown', function(a){
+                  this.preventClose();
+                });
+              });
+            },
+
+        setPolicyCondition : function(){
+            var that = this;
+            this.$el.find(this.ui.policyConditions).on('click', function(e){
+                var view = new vPolicyCondition({
+                    rangerServiceDefModel : that.rangerServiceDefModel,
+                    model : that.model
+                });
+                var modal = new Backbone.BootstrapModal({
+                  content   : view,
+                    title : 'Policy Conditions',
+                    okText  :"Save",
+                    animate : true,
+                    focusOk : false,
+                    escape:false,
+                    modalOptions:{
+                        backdrop: 'static',
+                    },
+                }).open();
+                modal.$el.addClass('modal-policy-conditions');
+                $('body').addClass('hideBodyScroll')
+                //To prevent modal being close by click out of modal
+                modal.$el.find('.cancel, .close').on('click', function(e){
+                  modal._preventClose = false;
+                  $('body').removeClass('hideBodyScroll');
+                  $('[data-js="customPolicyConditions"]').addClass('dirtyField');
+                });
+                modal.$el.find('.ok').on('click', function(e){
+                    modal._preventClose = false;
+                    $('body').removeClass('hideBodyScroll');
+                    $('[data-js="customPolicyConditions"]').addClass('dirtyField');
+                    var conditions = [], $data = [];
+                    _.each(modal.$el.find('[data-id="inputField"],[data-id="textAreaContainer"]'), function(m, context){
+                        var inputFieldName = m.name;
+                        if(m.value !== " " && !_.isEmpty(m.value)){
+                            conditions.push({type : inputFieldName, values : (m.value.split(',')).filter(Boolean)});
+                        }
+                    });
+                    that.model.set('conditions',conditions);
+                    if(conditions.length > 0){
+                        that.$el.find('[data-id="policyCondIcon"]').removeClass('fa-fw fa fa-plus').addClass('fa-fw fa fa-pencil');
+                    } else {
+                        that.$el.find('[data-id="policyCondIcon"]').removeClass('fa-fw fa fa-pencil').addClass('fa-fw fa fa-plus');
+                    }
+                    _.each(that.model.get('conditions'), function(val){
+                        console.log(that);
+                        var conditionName = that.rangerServiceDefModel.get('policyConditions').find(function(m){return m.name == val.type});
+                        $data.push('<tr><td width="40%">'+_.escape(conditionName.label)+'</td><td width="60%">'+(val.values).toString()+'</td></tr>')
+                    });
+                    if($data.length > 0){
+                        that.$el.find(that.ui.conditionData).html($data);
+                    }else{
+                        that.$el.find(that.ui.conditionData).html('<tr><td> No Conditions </td></tr>');
+                    }
+                });
+                modal.on('shown', function(a){
+                  this.preventClose();
+                });
+
+            })
+        },
+
 		initializePlugins : function() {
 			var that = this;
 			this.$(".wrap-header").each(function(i, ele) {
 				var wrap = $(this).next();
 				// If next element is a wrap and hasn't .non-collapsible class
 				if (wrap.hasClass('wrap') && ! wrap.hasClass('non-collapsible')){
-					$(this).append('<a href="#" class="wrap-expand pull-right" style="display: none">show&nbsp;&nbsp;<i class="icon-caret-down"></i></a>')
-						   .append('<a href="#" class="wrap-collapse pull-right" >hide&nbsp;&nbsp;<i class="icon-caret-up"></i></a>');
+					$(this).append('<a href="#" class="wrap-expand pull-right" style="display: none">show&nbsp;&nbsp;<i class="fa-fw fa fa-caret-down"></i></a>')
+						   .append('<a href="#" class="wrap-collapse pull-right" >hide&nbsp;&nbsp;<i class="fa-fw fa fa-caret-up"></i></a>');
 				}
 			});
 			// Collapse wrap
@@ -198,6 +326,22 @@ define(function(require){
 		evIsEnabledChange : function(form, fieldEditor){
 			XAUtil.checkDirtyFieldForToggle(fieldEditor.$el);
 		},
+		evdenyAccessChange : function(){
+			var that =this;
+			this.$el.find(this.ui.isDenyAllElse).toggles({
+			    	on : that.model.has('isDenyAllElse') ? that.model.get('isDenyAllElse') : false,
+			    	text : {on : 'True', off : 'False' },
+			    	width : 80,
+			}).on('click', function(e){
+				XAUtil.checkDirtyFieldForToggle(that.$el.find(that.ui.isDenyAllElse));
+				if(that.$el.find(that.ui.isDenyAllElse).find('.toggle-slide').hasClass('active')) {
+					that.$el.find(that.ui.denyConditionItems).hide();
+				} else {
+					that.$el.find(that.ui.denyConditionItems).show();
+				}
+			});
+
+		},
 		setupForm : function() {
 			if(!this.model.isNew()){
 				this.selectedResourceTypes = {};
@@ -215,7 +359,11 @@ define(function(require){
 				_.each(this.model.get('resources'),function(obj,key){
 					var resourceDef = _.findWhere(resourceDefList,{'name':key}),
 					sameLevelResourceDef = [], parentResource ;
-					sameLevelResourceDef = _.where(resourceDefList, {'level': resourceDef.level});
+					sameLevelResourceDef = _.filter(resourceDefList, function(objRsc){
+						if (objRsc.level === resourceDef.level && objRsc.parent === resourceDef.parent) {
+							return objRsc
+						}
+					});
 					//for parent leftnode status
                     if(resourceDef.parent){
                     	parentResource = _.findWhere(resourceDefList ,{'name':resourceDef.parent});
@@ -228,9 +376,15 @@ define(function(require){
                     }
 					if(sameLevelResourceDef.length > 1){
 						obj['resourceType'] = key;
-						this.model.set('sameLevel'+resourceDef.level, obj)
-						//parentShowHide
-						this.selectedResourceTypes['sameLevel'+resourceDef.level]=key;
+                                                if(_.isUndefined(resourceDef.parent)){
+                                                        this.model.set('sameLevel'+resourceDef.level, obj);
+                                                        //parentShowHide
+                                                        this.selectedResourceTypes['sameLevel'+resourceDef.level] = key;
+                                                }else{
+                                                        this.model.set('sameLevel'+resourceDef.level+resourceDef.parent, obj);
+                                                        this.selectedResourceTypes['sameLevel'+resourceDef.level+resourceDef.parent] = key;
+                                                }
+
 					}else{
 						//single value support
 						/*if(! XAUtil.isSinglevValueInput(resourceDef) ){
@@ -241,13 +395,16 @@ define(function(require){
 						}*/
 						this.model.set(resourceDef.name, obj)
 					}
-				},this)
+                                },this);
 			}
 		},
 		setUpSwitches :function(){
 			var that = this;
 			this.fields.isAuditEnabled.editor.setValue(this.model.get('isAuditEnabled'));
 			this.fields.isEnabled.editor.setValue(this.model.get('isEnabled'));
+                    if(this.model.has('policyPriority')){
+                        this.fields.policyPriority.editor.setValue(this.model.get('policyPriority') == 1 ? true : false);
+                    }
 		},
 		/** all custom field rendering */
 		renderCustomFields: function(){
@@ -261,7 +418,10 @@ define(function(require){
 			if( !enableDenyAndExceptionsInPolicies ){
 				this.$el.find(this.ui.allowExcludePerm).hide();
 				this.$el.find(this.ui.denyConditionItems).remove();
-			} 
+			}
+			if(enableDenyAndExceptionsInPolicies && this.$el.find(this.ui.isDenyAllElse).find('.toggle-slide').hasClass('active')){
+				this.$el.find(this.ui.denyConditionItems).hide();
+			}
 	
                         that.$('[data-customfields="groupPerms"]').html(new PermissionList({
                                 collection : that.formInputList,
@@ -311,7 +471,7 @@ define(function(require){
 				});
 			}
 			//hide form fields if it's parent is hidden
-			var resources = formDiv.find('.control-group');
+			var resources = formDiv.find('.form-group');
 			_.each(resources, function(rsrc , key ){ 
 				var parent = $(rsrc).attr('parent');
 				var label = $(rsrc).find('label').html();
@@ -332,9 +492,9 @@ define(function(require){
 	                	var resorceFieldName = _.pick(this.schema ,this.selectedFields[key]);
 	                	if(resorceFieldName[this.selectedFields[key]].sameLevelOpts && _.contains(resorceFieldName[this.selectedFields[key]].sameLevelOpts , 'none') 
 	                			&& formDiv.find(selector).find('select').val() != 'none' && onChangeOfSameLevelType){
-//	                		change trigger and set value to none
-	                		$(rsrc).find('select').val("none").trigger('change',"onChangeResources");
-	                	}
+						//change trigger and set value to selected node
+							$(rsrc).find('select').val($(rsrc).find('select option:nth-child(1)').text()).trigger('change',"onChangeResources");
+		                }
 	                }else{
 	                    if($(rsrc).find('select').val() == 'none'){
 	                    		$(rsrc).find('input[data-js="resource"]').select2('disable');
@@ -429,7 +589,13 @@ define(function(require){
 //					}
 				}
 			});
-			
+            if(this.model.has('policyLabels')){
+                var policyLabel = _.isEmpty(this.model.get('policyLabels')) ? [] : this.model.get('policyLabels').split(',');
+                this.model.set('policyLabels', policyLabel);
+            }
+            if(!_.isUndefined(App.vZone) && App.vZone.vZoneName){
+                this.model.set('zoneName', App.vZone.vZoneName);
+            }
 			this.model.set('resources',resources);
 			this.model.unset('path');
 			
@@ -440,17 +606,35 @@ define(function(require){
 			}else if( XAUtil.isRowFilterPolicy(this.model.get('policyType')) ){
 				this.model.set('rowFilterPolicyItems', this.setPermissionsToColl(this.formInputList, new RangerPolicyItem()));
 			}else{
+	            if(this.$el.find(this.ui.isDenyAllElse).find('.toggle-slide').hasClass('active')) {
+	            	this.model.set('isDenyAllElse',true);
+	            } else {
+	            	this.model.set('isDenyAllElse',false);
+	            }
 				this.model.set('policyItems', this.setPermissionsToColl(this.formInputList, new RangerPolicyItem()));
-				this.model.set('denyPolicyItems', this.setPermissionsToColl(this.formInputDenyList, new RangerPolicyItem()));
 				this.model.set('allowExceptions', this.setPermissionsToColl(this.formInputAllowExceptionList, new RangerPolicyItem()));
-				this.model.set('denyExceptions', this.setPermissionsToColl(this.formInputDenyExceptionList, new RangerPolicyItem()));
+				if(!this.model.get('isDenyAllElse')){
+					this.model.set('denyPolicyItems', this.setPermissionsToColl(this.formInputDenyList, new RangerPolicyItem()));
+					this.model.set('denyExceptions', this.setPermissionsToColl(this.formInputDenyExceptionList, new RangerPolicyItem()));
+				}else{
+					this.model.set('denyPolicyItems',[]);
+					this.model.set('denyExceptions',[]);
+				}
 			}
 			this.model.set('service',this.rangerService.get('name'));
-                        this.model.set('name', _.escape(this.model.get('name')));
+            var policyName = this.model.get('name');
+            if(this.model.has('id') && XAUtil.checkForEscapeCharacter(policyName)){
+                policyName = _.unescape(policyName);
+            }
+            this.model.set('name', _.escape(policyName));
+                        if(this.model.has('policyPriority')){
+                                this.model.set('policyPriority', this.model.get('policyPriority') ? 1 : 0);
+                        }
+
 		},
 		setPermissionsToColl : function(list, policyItemList) {
 			list.each(function(m){
-				if(!_.isUndefined(m.get('groupName')) || !_.isUndefined(m.get("userName"))){ //groupName or userName
+                                if(!_.isUndefined(m.get('groupName')) || !_.isUndefined(m.get("userName")) || !_.isUndefined(m.get('roleName'))){ //groupName or userName
 					var RangerPolicyItem=Backbone.Model.extend()
 					var policyItem = new RangerPolicyItem();
 					if(!_.isUndefined(m.get('groupName')) && !_.isNull(m.get('groupName'))){
@@ -459,6 +643,9 @@ define(function(require){
 					if(!_.isUndefined(m.get('userName')) && !_.isNull(m.get('userName'))){
 						policyItem.set("users",m.get("userName"));
 					}
+                                        if(!_.isUndefined(m.get('roleName')) && !_.isNull(m.get('roleName'))){
+                                                policyItem.set("roles",m.get("roleName"));
+                                        }
 					if(!(_.isUndefined(m.get('conditions')) && _.isEmpty(m.get('conditions')))){
 						var RangerPolicyItemConditionList = Backbone.Collection.extend();
 						var rPolicyItemCondList = new RangerPolicyItemConditionList(m.get('conditions'))
@@ -497,77 +684,78 @@ define(function(require){
 			function extractLast( term ) {
 				return split( term ).pop();
 			}
-
-			this.fields[that.pathFieldName].editor.$el.find('[data-js="resource"]').tagit({
-				autocomplete : {
-					cache: false,
-					source: function( request, response ) {
-						var url = "service/plugins/services/lookupResource/"+that.rangerService.get('name');
-						var context ={
-							'userInput' : extractLast( request.term ),
-							'resourceName' : that.pathFieldName,
-							'resources' : {}
-						};
-						var val = that.fields[that.pathFieldName].editor.getValue();
-						context.resources[that.pathFieldName] = _.isNull(val) || _.isEmpty(val) ? [] : val.resource.split(","); 
-						var p = $.ajax({
-							url : url,
-							type : "POST",
-							data : JSON.stringify(context),
-							dataType : 'json',
-							contentType: "application/json; charset=utf-8",
-						}).done(function(data){
-							if(data){
-								response(data);
-							} else {
-								response();
-							}
-
-						}).error(function(){
-							response();
-
-						});
-						setTimeout(function(){ 
-							p.abort();
-							console.log('connection timeout for resource path request...!!');
-						}, 10000);
-					},
-					open : function(){
-						$(this).removeClass('working');
-					},
-					search: function() {
-						if(!_.isUndefined(this.value) && _.contains(this.value,',')){ 
-							_.each(this.value.split(',') , function(tag){
-								that.fields[that.pathFieldName].editor.$el.tagit("createTag", tag);
-							});
-				        	return false;
-				        }	
-						var term = extractLast( this.value );
-						$(this).addClass('working');
-						if ( term.length < 1 ) {
-							return false;
-						}
-					},
-					
-				},
-				beforeTagAdded: function(event, ui) {
-			        // do something special
-					that.fields[that.pathFieldName].$el.removeClass('error');
-		        	that.fields[that.pathFieldName].$el.find('.help-inline').html('');
-					var tags =  [];
-			        console.log(ui.tag);
-			        if(!_.isUndefined(options.regExpValidation) && !options.regExpValidation.regexp.test(ui.tagLabel)){
-			        	that.fields[that.pathFieldName].$el.addClass('error');
-			        	that.fields[that.pathFieldName].$el.find('.help-inline').html(options.regExpValidation.message);
-			        	return false;
-			        }
-				}
-			}).on('change',function(e){
-				//check dirty field for tagit input type : `path`
-				XAUtil.checkDirtyField($(e.currentTarget).val(), defaultValue.toString(), $(e.currentTarget))
-			});
-	
-			
+                        var tagitOpts = {}
+                        if(!_.isUndefined(options.lookupURL) && options.lookupURL){
+                            tagitOpts["autocomplete"] = {
+                            cache: false,
+                    source: function( request, response ) {
+                        var url = "service/plugins/services/lookupResource/"+that.rangerService.get('name');
+                        var context ={
+                            'userInput' : extractLast( request.term ),
+                            'resourceName' : that.pathFieldName,
+                            'resources' : {}
+                        };
+                        var val = that.fields[that.pathFieldName].editor.getValue();
+                        context.resources[that.pathFieldName] = _.isNull(val) || _.isEmpty(val) ? [] : val.resource.split(",");
+                        var p = $.ajax({
+                            url : url,
+                            type : "POST",
+                            data : JSON.stringify(context),
+                            dataType : 'json',
+                            contentType: "application/json; charset=utf-8",
+                        }).done(function(data){
+                            if(data){
+                                response(data);
+                            } else {
+                                response();
+                            }
+                        }).fail(function(){
+                            response();
+                        });
+                        setTimeout(function(){
+                            p.abort();
+                            console.log('connection timeout for resource path request...!!');
+                        }, 10000);
+                    },
+                    open : function(){
+                        $(this).removeClass('working');
+                    },
+                    search: function() {
+                        if(!_.isUndefined(this.value) && (/[ ,]+/).test(this.value)){
+                            var values = this.value.trim().split(/[ ,]+/);
+                            if (values.length > 1) {
+                                for (var i = 0; i < values.length; i++) {
+                                    that.fields[that.pathFieldName].editor.$el.find('[data-js="resource"]').tagit("createTag", values[i]);
+                                }
+                                return ''
+                            } else {
+                                return val
+                            }
+                        }
+                        var term = extractLast( this.value );
+                        $(this).addClass('working');
+                        if ( term.length < 1 ) {
+                            return false;
+                        }
+                    },
+                            }
+                        }
+                        tagitOpts['beforeTagAdded'] = function(event, ui) {
+                // do something special
+                that.fields[that.pathFieldName].$el.removeClass('error');
+                that.fields[that.pathFieldName].$el.find('.help-inline').html('');
+                var tags =  [];
+                console.log(ui.tag);
+                if(!_.isUndefined(options.regExpValidation) && !options.regExpValidation.regexp.test(ui.tagLabel)){
+                    that.fields[that.pathFieldName].$el.addClass('error');
+                    that.fields[that.pathFieldName].$el.find('.help-inline').html(options.regExpValidation.message);
+                    return false;
+                }
+            }
+            this.fields[that.pathFieldName].editor.$el.find('[data-js="resource"]').tagit(tagitOpts).on('change', function(e){
+                //check dirty field for tagit input type : `path`
+                XAUtil.checkDirtyField($(e.currentTarget).val(), defaultValue.toString(), $(e.currentTarget));
+            });
 		},
 		getPlugginAttr :function(autocomplete, options){
 			var that =this, type = options.containerCssClass, validRegExpString = true, select2Opts=[];
@@ -638,7 +826,7 @@ define(function(require){
 							};
 						},
 						transport: function (options) {
-							$.ajax(options).error(function() { 
+                                                        $.ajax(options).fail(function() {
 								console.log("ajax failed");
 								this.success({
 									resultSize : 0
@@ -674,7 +862,12 @@ define(function(require){
 				var currentResource = _.findWhere(this.getResources(), {'name': name });
 				//same level type
 				if(_.isUndefined(this.fields[currentResource.name])){
-					var sameLevelName = 'sameLevel'+currentResource.level;
+                                        if(!_.isUndefined(currentResource.parent)){
+                                                var sameLevelName = 'sameLevel'+currentResource.level + currentResource.parent;
+                                        }else{
+                                                var sameLevelName = 'sameLevel'+currentResource.level;
+                                        }
+
 					name = this.fields[sameLevelName].editor.$resourceType.val()
 					val = this.fields[sameLevelName].getValue();
 					if(isCurrentSameLevelField){
@@ -700,26 +893,34 @@ define(function(require){
 		},
 		formValidation : function(coll){
                         var groupSet = false , permSet = false , groupPermSet = false , delegateAdmin = false ,
-			userSet=false, userPerm = false, userPermSet =false,breakFlag =false, condSet = false,customMaskSet = true;
+                        userSet=false, userPerm = false, userPermSet =false,breakFlag =false, condSet = false,customMaskSet = true,
+                        roleSet = false, rolePermSet = false, rolePerm = false;
 			console.log('validation called..');
 			coll.each(function(m){
 				if(_.isEmpty(m.attributes)) return;
-                                if(m.has('groupName') || m.has('userName') || m.has('accesses') || m.has('delegateAdmin') ){
+                if(m.has('groupName') || m.has('userName') || m.has('accesses') || m.has('delegateAdmin') || m.has('roleName')){
 					if(! breakFlag){
 						groupSet = m.has('groupName') ? true : false;
 						userSet = m.has('userName') ? true : false;
+                                                roleSet = m.has('roleName') ? true : false;
                                                 permSet = m.has('accesses') ? true : false;
                                                 delegateAdmin = m.has('delegateAdmin') ? m.get('delegateAdmin') : false;
 						if(groupSet && permSet){
 							groupPermSet = true;
 							userPermSet = false;
+                                                        rolePermSet = false;
 						}else if(userSet && permSet){
 							userPermSet = true;
 							groupPermSet = false;
+                                                        rolePermSet = false;
+                                                }else if(roleSet && permSet){
+                                                        rolePermSet = true;
+                                                        userPermSet = false;
+                                                        groupPermSet = false;
 						}else{
-                                                        if(!((userSet || groupSet) && delegateAdmin)){
-                                                                breakFlag=true;
-                                                        }
+                            if(!((userSet || groupSet || roleSet) && delegateAdmin)){
+                                    breakFlag=true;
+                            }
 						}
 					}
 				}
@@ -739,21 +940,27 @@ define(function(require){
 						userSet 		: userSet, isUsers:userPermSet,
 						auditLoggin 	: auditStatus,
 						condSet			: condSet,
-                                                customMaskSet   : customMaskSet,
-                                                delegateAdmin	: delegateAdmin,
+                        customMaskSet   : customMaskSet,
+                        delegateAdmin	: delegateAdmin,
+                        roleSet : roleSet, rolePermSet : rolePermSet,
 					};
-			if(groupSet || userSet){
+                        if(groupSet || userSet || roleSet){
 				obj['permSet'] = groupSet ? permSet : false;
 				obj['userPerm'] = userSet ? permSet : false;
+                                obj['rolePerm'] = roleSet ? permSet : false;
 			}else{
 				obj['permSet'] = permSet;
 				obj['userPerm'] = userSet;
+                                obj['rolePerm'] = roleSet;
 			}
 			return obj;
 		},
 		getPolicyBaseFieldNames : function(){
-			 var fields = ['isAuditEnabled','description'];
-			 return fields;
+			var baseField = ['description','isAuditEnabled', 'isDenyAllElse'];
+			if(XAUtil.isMaskingPolicy(this.model.get('policyType')) || XAUtil.isRowFilterPolicy(this.model.get('policyType'))){
+				baseField = _.without(baseField, 'isDenyAllElse');
+			}
+			return baseField;
 		},
 		getResources : function(){
 			if(XAUtil.isMaskingPolicy(this.model.get('policyType'))){
@@ -770,6 +977,5 @@ define(function(require){
 			return this.rangerServiceDefModel.get('resources');
 		},
 	});
-
 	return RangerPolicyForm;
 });

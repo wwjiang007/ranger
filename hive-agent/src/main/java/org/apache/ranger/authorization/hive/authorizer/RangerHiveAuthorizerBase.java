@@ -26,13 +26,14 @@ import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.hive.conf.HiveConf;
 import org.apache.hadoop.hive.conf.HiveConf.ConfVars;
 import org.apache.hadoop.hive.ql.security.HiveAuthenticationProvider;
+import org.apache.hadoop.hive.ql.security.authorization.plugin.AbstractHiveAuthorizer;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.DisallowTransformHook;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveAccessControlException;
-import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveAuthorizer;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveAuthzPluginException;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveAuthzSessionContext;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveAuthzSessionContext.CLIENT_TYPE;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveMetastoreClientFactory;
+import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePolicyProvider;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrincipal;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrivilegeInfo;
 import org.apache.hadoop.hive.ql.security.authorization.plugin.HivePrivilegeObject;
@@ -41,7 +42,7 @@ import org.apache.hadoop.hive.ql.security.authorization.plugin.SettableConfigUpd
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.ranger.authorization.utils.StringUtil;
 
-public abstract class RangerHiveAuthorizerBase implements HiveAuthorizer {
+public abstract class RangerHiveAuthorizerBase extends AbstractHiveAuthorizer {
 
 	private static final Log LOG = LogFactory.getLog(RangerHiveAuthorizerBase.class);
 
@@ -50,7 +51,7 @@ public abstract class RangerHiveAuthorizerBase implements HiveAuthorizer {
 	private HiveAuthenticationProvider mHiveAuthenticator;
 	private HiveAuthzSessionContext    mSessionContext;
 	private UserGroupInformation       mUgi;
-	
+
 	public RangerHiveAuthorizerBase(HiveMetastoreClientFactory metastoreClientFactory,
 									  HiveConf                   hiveConf,
 									  HiveAuthenticationProvider hiveAuthenticator,
@@ -132,51 +133,6 @@ public abstract class RangerHiveAuthorizerBase implements HiveAuthorizer {
 	}
 
 	@Override
-	public void createRole(String roleName, HivePrincipal adminGrantor)
-			throws HiveAuthzPluginException, HiveAccessControlException {
-		LOG.debug("RangerHiveAuthorizerBase.createRole()");
-
-		throwNotImplementedException("createRole");
-	}
-
-	@Override
-	public void dropRole(String roleName)
-			throws HiveAuthzPluginException, HiveAccessControlException {
-		LOG.debug("RangerHiveAuthorizerBase.dropRole()");
-
-		throwNotImplementedException("dropRole");
-	}
-
-	@Override
-	public List<String> getAllRoles()
-			throws HiveAuthzPluginException, HiveAccessControlException {
-		LOG.debug("RangerHiveAuthorizerBase.getAllRoles()");
-
-		throwNotImplementedException("getAllRoles");
-
-		return null;
-	}
-
-	@Override
-	public List<String> getCurrentRoleNames() throws HiveAuthzPluginException {
-		LOG.debug("RangerHiveAuthorizerBase.getCurrentRoleNames()");
-
-		throwNotImplementedException("getCurrentRoleNames");
-
-		return null;
-	}
-
-	@Override
-	public List<HiveRoleGrant> getPrincipalGrantInfoForRole(String roleName)
-			throws HiveAuthzPluginException, HiveAccessControlException {
-		LOG.debug("RangerHiveAuthorizerBase.getPrincipalGrantInfoForRole()");
-
-		throwNotImplementedException("getPrincipalGrantInfoForRole");
-
-		return null;
-	}
-
-	@Override
 	public List<HiveRoleGrant> getRoleGrantInfoForPrincipal(HivePrincipal principal)
 			throws HiveAuthzPluginException, HiveAccessControlException {
 		LOG.debug("RangerHiveAuthorizerBase.getRoleGrantInfoForPrincipal()");
@@ -191,38 +147,14 @@ public abstract class RangerHiveAuthorizerBase implements HiveAuthorizer {
 		return VERSION.V1;
 	}
 
-	@Override
-	public void grantRole(List<HivePrincipal> hivePrincipals, List<String> roles,
-			boolean grantOption, HivePrincipal grantorPrinc)
-					throws HiveAuthzPluginException, HiveAccessControlException {
-		LOG.debug("RangerHiveAuthorizerBase.grantRole()");
-
-		throwNotImplementedException("grantRole");
-	}
-
-	@Override
-	public void revokeRole(List<HivePrincipal> hivePrincipals, List<String> roles,
-			boolean grantOption, HivePrincipal grantorPrinc)
-					throws HiveAuthzPluginException, HiveAccessControlException {
-		LOG.debug("RangerHiveAuthorizerBase.revokeRole()");
-
-		throwNotImplementedException("revokeRole");
-	}
-
-	@Override
-	public void setCurrentRole(String roleName)
-			throws HiveAccessControlException, HiveAuthzPluginException {
-		LOG.debug("RangerHiveAuthorizerBase.setCurrentRole()");
-
-		throwNotImplementedException("setCurrentRole");
-	}
-
-	public Object getHiveAuthorizationTranslator() throws HiveAuthzPluginException {
-		return null;
-	}
-
 	private void throwNotImplementedException(String method) throws HiveAuthzPluginException {
-		throw new HiveAuthzPluginException(method + "() not implemented in Ranger HiveAuthorizer");
+		throw new HiveAuthzPluginException(method + "() not implemented in Ranger AbstractHiveAuthorizer");
+	}
+
+	@Override
+	public HivePolicyProvider getHivePolicyProvider() throws HiveAuthzPluginException {
+	    // TODO Auto-generated method stub
+	    return null;
 	}
 
 }

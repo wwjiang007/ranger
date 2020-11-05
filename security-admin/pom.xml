@@ -24,8 +24,11 @@
     <parent>
         <groupId>org.apache.ranger</groupId>
         <artifactId>ranger</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>3.0.0-SNAPSHOT</version>
     </parent>
+    <properties>
+        <skipJSTests>false</skipJSTests>
+    </properties>
     <dependencies>
         <dependency>
             <groupId>org.antlr</groupId>
@@ -43,7 +46,7 @@
             <version>${asm.all.version}</version>
         </dependency>
         <dependency>
-            <groupId>c3p0</groupId>
+            <groupId>com.mchange</groupId>
             <artifactId>c3p0</artifactId>
             <version>${c3p0.version}</version>
         </dependency>
@@ -54,13 +57,8 @@
         </dependency>
         <dependency>
             <groupId>commons-beanutils</groupId>
-            <artifactId>commons-beanutils-bean-collections</artifactId>
-            <version>${commons.beanutils.collections.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>commons-beanutils</groupId>
-            <artifactId>commons-beanutils-core</artifactId>
-            <version>${commons.beanutils.core.version}</version>
+            <artifactId>commons-beanutils</artifactId>
+            <version>${commons.beanutils.version}</version>
         </dependency>
         <dependency>
             <groupId>commons-cli</groupId>
@@ -93,8 +91,8 @@
             <version>${commons.compress.version}</version>
         </dependency>
         <dependency>
-            <groupId>commons-configuration</groupId>
-            <artifactId>commons-configuration</artifactId>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-configuration2</artifactId>
             <version>${commons.configuration.version}</version>
         </dependency>
         <dependency>
@@ -266,6 +264,27 @@
 			<groupId>org.apache.hadoop</groupId>
 			<artifactId>hadoop-mapreduce-client-core</artifactId>
 			<version>${hadoop.version}</version>
+			<exclusions>
+				<exclusion>
+					<groupId>com.fasterxml.jackson.jaxrs</groupId>
+					<artifactId>jackson-jaxrs-json-provider</artifactId>
+				</exclusion>
+			</exclusions>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-core</artifactId>
+			<version>${fasterxml.jackson.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-annotations</artifactId>
+			<version>${fasterxml.jackson.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+			<version>${fasterxml.jackson.databind.version}</version>
 		</dependency>
         <dependency>
             <groupId>com.sun.jersey.contribs</groupId>
@@ -368,10 +387,24 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.apache.thrift</groupId>
+            <artifactId>libfb303</artifactId>
+            <version>${libfb303.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.thrift</groupId>
+            <artifactId>libthrift</artifactId>
+            <version>${libthrift.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-common</artifactId>
             <version>${hadoop.version}</version>
             <exclusions>
+		<exclusion>
+		    <groupId>org.apache.commons</groupId>
+            	    <artifactId>commons-compress</artifactId>
+                </exclusion>
 		<exclusion>
                     <groupId>commons-httpclient</groupId>
                     <artifactId>commons-httpclient</artifactId>
@@ -438,6 +471,11 @@
                 </exclusion>
             </exclusions>
         </dependency>
+		<dependency>
+			<groupId>io.netty</groupId>
+			<artifactId>netty-all</artifactId>
+			<version>${netty-all.version}</version>
+		</dependency>
         <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-hdfs</artifactId>
@@ -468,6 +506,11 @@
             <version>${project.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.apache.ranger</groupId>
+            <artifactId>ugsync-util</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.springframework</groupId>
             <artifactId>spring-test</artifactId>
             <version>${springframework.test.version}</version>
@@ -475,18 +518,64 @@
         <dependency>
             <groupId>com.nimbusds</groupId>
             <artifactId>nimbus-jose-jwt</artifactId>
-            <version>4.41.2</version>
+            <version>8.15</version>
             <scope>compile</scope>
+        </dependency>
+        <!-- Transitive dependency for nimbus-jose-jwt.
+         Please re-check this version when updating nimbus-jose-jwt.
+         Please read RANGER-2080 for more details.
+        -->
+        <dependency>
+            <groupId>net.minidev</groupId>
+            <artifactId>json-smart</artifactId>
+            <version>2.3</version>
         </dependency>
         <dependency>
             <groupId>com.google.inject</groupId>
             <artifactId>guice</artifactId>
             <version>3.0</version>
         </dependency>
+	<dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty</artifactId>
+            <version>${netty.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>javax.annotation</groupId>
+            <artifactId>jsr250-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
 		<dependency>
 			<groupId>com.webcohesion.enunciate</groupId>
 			<artifactId>enunciate-core-annotations</artifactId>
 		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.jaxrs</groupId>
+			<artifactId>jackson-jaxrs-json-provider</artifactId>
+            <version>${fasterxml.jackson.version}</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+            <groupId>org.apache.hbase.thirdparty</groupId>
+            <artifactId>hbase-shaded-protobuf</artifactId>
+            <version>${hbase-shaded-protobuf}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.hbase.thirdparty</groupId>
+            <artifactId>hbase-shaded-netty</artifactId>
+            <version>${hbase-shaded-netty}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.hbase.thirdparty</groupId>
+            <artifactId>hbase-shaded-miscellaneous</artifactId>
+            <version>${hbase-shaded-miscellaneous}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.zookeeper</groupId>
+            <artifactId>zookeeper</artifactId>
+            <version>${zookeeper.version}</version>
+        </dependency>
 	</dependencies>
     <build>
         <pluginManagement>
@@ -534,11 +623,13 @@
                             <goal>war</goal>
                         </goals>
                         <configuration>
-                            <packagingExcludes>
-                                                        WEB-INF/lib/spring-*.SEC03.jar,
-                                                        WEB-INF/lib/spring-*.RC3.jar,
-                                                        WEB-INF/lib/spring-2.*.jar
-                                                </packagingExcludes>
+							<packagingExcludes>
+								WEB-INF/lib/spring-*.SEC03.jar,
+								WEB-INF/lib/spring-*.RC3.jar,
+								WEB-INF/lib/spring-2.*.jar,
+								WEB-INF/lib/jetty-*.jar,
+								WEB-INF/lib/commons-compress-*.jar
+							</packagingExcludes>
                             <warSourceDirectory>${project.build.directory}/${project.build.finalName}</warSourceDirectory>
                         </configuration>
                     </execution>
@@ -555,14 +646,23 @@
                             <goal>replace</goal>
                         </goals>
                         <configuration>
+                            <basedir>${project.build.directory}/${project.build.finalName}</basedir>
                             <includes>
-                                <include>security-admin/target/${project.build.finalName}/index.html</include>
-                                <include>security-admin/target/${project.build.finalName}/scripts/Init.js</include>
+                                <include>index.html</include>
+                                <include>scripts/Init.js</include>
                             </includes>
                             <replacements>
                                 <replacement>
                                     <token>build.version</token>
                                     <value>${project.version}</value>
+                                </replacement>
+                                <replacement>
+                                    <token>(?m)\&lt;\!-- *dev *--\>(.*)$</token>
+                                    <value>\&lt;\!-- dev $1 --\></value>
+                                </replacement>
+                                <replacement>
+                                    <token>\&lt;\!-- *prod *(.*) *--\></token>
+                                    <value>\&lt;\!-- prod --\>$1</value>
                                 </replacement>
                             </replacements>
                         </configuration>
@@ -573,13 +673,150 @@
 				<groupId>com.webcohesion.enunciate</groupId>
 				<artifactId>enunciate-maven-plugin</artifactId>
 				<configuration>
-					<configFile>enunciate.xml</configFile>
-					<enunciateArtifactId/>
-					<docsDir>docs/target/</docsDir>
-					<source>1.7</source>
-					<target>1.7</target>
+					<configFile>${basedir}/../enunciate.xml</configFile>
+					<docsDir>${basedir}/../docs/target/</docsDir>
 				</configuration>
+                <dependencies>
+                    <!-- dependency management version doesn't apply here, need to repeat the version numbers -->
+                    <dependency>
+                        <groupId>javax.xml.bind</groupId>
+                        <artifactId>jaxb-api</artifactId>
+                        <version>${jaxb.api.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>javax.jws</groupId>
+                        <artifactId>javax.jws-api</artifactId>
+                        <version>1.1</version>
+                    </dependency>
+                </dependencies>
 			</plugin>
+            <plugin>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>2.7</version>
+                <executions>
+                    <execution>
+                        <id>copy-resources</id>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <phase>validate</phase>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/jsmain</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${basedir}/src/main/webapp</directory>
+                                    <includes>
+                                        <include>package.json</include>
+                                        <include>package-lock.json</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>copy-js-test-resources</id>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <phase>validate</phase>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/jstest</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${basedir}/src/test/javascript</directory>
+                                    <includes>
+                                        <include>package.json</include>
+                                        <include>package-lock.json</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>com.github.eirslett</groupId>
+                <artifactId>frontend-maven-plugin</artifactId>
+                <version>1.6</version>
+                <configuration>
+                    <workingDirectory>${project.build.directory}</workingDirectory>
+                    <installDirectory>${project.build.directory}</installDirectory>
+                </configuration>
+                <executions>
+                    <execution>
+                        <phase>process-resources</phase>
+                        <id>install node and npm</id>
+                        <goals>
+                            <goal>install-node-and-npm</goal>
+                        </goals>
+                        <configuration>
+                            <nodeVersion>v8.12.0</nodeVersion>
+                            <npmVersion>6.4.1</npmVersion>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <phase>prepare-package</phase>
+                        <id>npm install for packaging</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <workingDirectory>${project.build.directory}/jsmain</workingDirectory>
+                            <arguments>install</arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <phase>prepare-package</phase>
+                        <id>npm run r.js</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <workingDirectory>${project.build.directory}/jsmain</workingDirectory>
+                            <arguments>run r.js -- -o ../${project.build.finalName}/minify.build.js</arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <phase>test</phase>
+                        <id>npm install for tests</id>
+                        <goals>
+                            <goal>npm</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${skipJSTests}</skip>
+                            <workingDirectory>${project.build.directory}/jstest</workingDirectory>
+                            <arguments>install</arguments>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <phase>test</phase>
+                        <id>karma dev</id>
+                        <goals>
+                            <goal>karma</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${skipJSTests}</skip>
+                            <workingDirectory>${project.build.directory}/jstest</workingDirectory>
+                            <karmaConfPath>../../src/test/javascript/karma-dev.conf.js</karmaConfPath>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <phase>integration-test</phase>
+                        <id>karma prd</id>
+                        <goals>
+                            <goal>karma</goal>
+                        </goals>
+                        <configuration>
+                            <environmentVariables>
+                                <buildDir>${project.build.finalName}</buildDir>
+                            </environmentVariables>
+                            <skip>${skipJSTests}</skip>
+                            <workingDirectory>${project.build.directory}/jstest</workingDirectory>
+                            <karmaConfPath>../../src/test/javascript/karma-prd.conf.js</karmaConfPath>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
         <resources>
             <resource>

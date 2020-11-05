@@ -31,6 +31,7 @@ import org.apache.ranger.common.ContextUtil;
 import org.apache.ranger.common.RESTErrorUtil;
 import org.apache.ranger.common.UserSessionBase;
 import org.apache.ranger.db.RangerDaoManager;
+import org.apache.ranger.view.VXResponse;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -74,6 +75,9 @@ public class RangerPreAuthSecurityHandler {
 		if (CollectionUtils.isEmpty(associatedTabs)) {
 			return true;
 		}
+                if(associatedTabs.contains(RangerAPIMapping.TAB_PERMISSIONS) && userSession.isAuditUserAdmin()){
+                        return true;
+                }
 		return isAPIAccessible(associatedTabs);
 	}
 
@@ -89,18 +93,23 @@ public class RangerPreAuthSecurityHandler {
 				}
 			}
 		}
-
-		throw restErrorUtil.createRESTException(HttpServletResponse.SC_FORBIDDEN, "User is not allowed to access the API", true);
+		VXResponse gjResponse = new VXResponse();
+        gjResponse.setStatusCode(HttpServletResponse.SC_FORBIDDEN);
+        gjResponse.setMsgDesc("User is not allowed to access the API");
+        throw restErrorUtil.generateRESTException(gjResponse);
 	}
 
 	public boolean isAPISpnegoAccessible(){
 		UserSessionBase userSession = ContextUtil.getCurrentUserSession();
-		if (userSession != null && (userSession.isSpnegoEnabled() || userSession.isUserAdmin())) {
+                if (userSession != null && (userSession.isSpnegoEnabled() || userSession.isUserAdmin() || userSession.isAuditUserAdmin())) {
 			return true;
-		}else if(userSession != null && (userSession.isUserAdmin() || userSession.isKeyAdmin())){
+                }else if(userSession != null && (userSession.isUserAdmin() || userSession.isKeyAdmin() || userSession.isAuditKeyAdmin())){
 			return true;
 		}
-		throw restErrorUtil.createRESTException(HttpServletResponse.SC_FORBIDDEN, "User is not allowed to access the API", true);
+        VXResponse gjResponse = new VXResponse();
+        gjResponse.setStatusCode(HttpServletResponse.SC_FORBIDDEN);
+        gjResponse.setMsgDesc("User is not allowed to access the API");
+        throw restErrorUtil.generateRESTException(gjResponse);
 	}
 	
 	public boolean isAdminOrKeyAdminRole(){
@@ -108,6 +117,9 @@ public class RangerPreAuthSecurityHandler {
 		if (userSession != null && (userSession.isKeyAdmin() || userSession.isUserAdmin())) {
 			return true;
 		}
-		throw restErrorUtil.createRESTException(HttpServletResponse.SC_UNAUTHORIZED, "User is not allowed to access the API", true);
+		VXResponse gjResponse = new VXResponse();
+        gjResponse.setStatusCode(HttpServletResponse.SC_UNAUTHORIZED);
+        gjResponse.setMsgDesc("User is not allowed to access the API");
+        throw restErrorUtil.generateRESTException(gjResponse);
 	}
 }

@@ -1,6 +1,7 @@
 {
 	"id":3,
 	"name": "hive",
+	"displayName": "Hadoop SQL",
 	"implClass": "org.apache.ranger.services.hive.RangerServiceHive",
 	"label": "Hive Server2",
 	"description": "Hive Server2",
@@ -23,7 +24,8 @@
 			"validationMessage": "",
 			"uiHint":"",
 			"label": "Hive Database",
-			"description": "Hive Database"
+			"description": "Hive Database",
+			"isValidLeaf": true
 		},
 
 		{
@@ -42,7 +44,8 @@
 			"validationMessage": "",
 			"uiHint":"",
 			"label": "Hive Table",
-			"description": "Hive Table"
+			"description": "Hive Table",
+			"isValidLeaf": true
 		},
 
 		{
@@ -93,13 +96,52 @@
 			"lookupSupported": false,
 			"recursiveSupported": true,
 			"excludesSupported": false,
-			"matcher": "org.apache.ranger.plugin.resourcematcher.RangerPathResourceMatcher",
+			"matcher": "org.apache.ranger.plugin.resourcematcher.RangerURLResourceMatcher",
 			"matcherOptions": { "wildCard":true, "ignoreCase":false },
 			"validationRegEx":"",
 			"validationMessage": "",
 			"uiHint":"",
 			"label": "URL",
 			"description": "URL"
+		},
+
+		{
+			"itemId": 6,
+			"name": "hiveservice",
+			"type": "string",
+			"level": 10,
+			"parent": "",
+			"mandatory": true,
+			"lookupSupported": false,
+			"recursiveSupported": false,
+			"excludesSupported": false,
+			"matcher": "org.apache.ranger.plugin.resourcematcher.RangerDefaultResourceMatcher",
+			"matcherOptions": { "wildCard":true, "ignoreCase":false },
+			"validationRegEx":"",
+			"validationMessage": "",
+			"uiHint":"",
+			"label": "Hive Service",
+			"description": "Hive Service"
+		},
+		{
+			"itemId": 7,
+			"name": "global",
+			"type": "string",
+			"level": 10,
+			"parent": "",
+			"lookupSupported": false,
+			"recursiveSupported": false,
+			"excludesSupported": false,
+			"matcher": "org.apache.ranger.plugin.resourcematcher.RangerDefaultResourceMatcher",
+			"matcherOptions": {
+				"wildCard": true,
+				"ignoreCase": false
+			},
+			"validationRegEx": "",
+			"validationMessage": "",
+			"uiHint": "",
+			"label": "Global",
+			"description": "Global"
 		}
 	],
 
@@ -161,7 +203,10 @@
 				"index",
 				"lock",
 				"read",
-				"write"
+				"write",
+				"repladmin",
+				"serviceadmin",
+				"refresh"
 			]
 		},
 
@@ -175,6 +220,30 @@
 			"itemId": 10,
 			"name": "write",
 			"label": "Write"
+		},
+
+		{
+			"itemId": 11,
+			"name": "repladmin",
+			"label": "ReplAdmin"
+		},
+
+		{
+			"itemId": 12,
+			"name": "serviceadmin",
+			"label": "Service Admin"
+		},
+
+		{
+			"itemId": 13,
+			"name": "tempudfadmin",
+			"label": "Temporary UDF Admin"
+		},
+
+		{
+			"itemId": 14,
+			"name": "refresh",
+			"label": "Refresh"
 		}
 	],
 

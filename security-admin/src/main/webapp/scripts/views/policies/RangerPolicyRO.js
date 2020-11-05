@@ -26,9 +26,11 @@ define(function(require) {
 	var XAGlobals = require('utils/XAGlobals');
 	var XAUtils = require('utils/XAUtils');
 	var localization = require('utils/XALangSupport');
+        var XAUtil = require('utils/XAUtils');
 
 	var RangerPolicyROTmpl = require('hbs!tmpl/policies/RangerPolicyRO_tmpl');
 	var RangerService = require('models/RangerService');
+	var RangerPolicy		= require('models/RangerPolicy');
 
 	var RangerPolicyRO = Backbone.Marionette.Layout.extend({
 		_viewName: 'RangerPolicyRO',
@@ -36,6 +38,7 @@ define(function(require) {
 		template: RangerPolicyROTmpl,
 		templateHelpers: function() {
             var isDelegatAdminChk;
+            var policyType = XAUtil.enumElementByValue(XAEnums.RangerPolicyType, this.policy.get('policyType'));
             if(this.policyDetails.serviceType !== XAEnums.ServiceType.SERVICE_TAG.label
                 && !XAUtils.isMaskingPolicy(this.policy.get('policyType'))
                 && !XAUtils.isRowFilterPolicy(this.policy.get('policyType'))) {
@@ -45,10 +48,11 @@ define(function(require) {
             }
 			return {
 				PolicyDetails: this.policyDetails,
-                isDelegatAdmin: isDelegatAdminChk
+                isDelegatAdmin: isDelegatAdminChk,
+                policyType: policyType.label,
+                isDenyAllElse : this.policy.has('isDenyAllElse') && !_.isUndefined(this.policy.get('isDenyAllElse')) ? true : false,
 			};
 		},
-		breadCrumbs: [],
 
 		/** Layout sub regions */
 		regions: {
@@ -80,52 +84,73 @@ define(function(require) {
 			var data = {
 				eventTime : this.eventTime,
 			};
-			this.policy.fetchByEventTime({
-				async: false,
-				cache: false,
-                                data : data,
-                                error : function(error , response){
-                                        if (response && response.status === 419 ) {
-                                                XAUtils.defaultErrorHandler(error , response);
-                                        } else {
-                                                XAUtils.showErrorMsg(response.responseJSON.msgDesc);
-                                        }
-                                }
-			});
+            if(!_.isEmpty(this.eventTime)){
+                this.policy.fetchByEventTime({
+                    async: false,
+                    cache: false,
+                    data : data,
+                    error : function(error , response){
+                            if (response && response.status === 419 ) {
+                                    XAUtils.defaultErrorHandler(error , response);
+                            } else {
+                                    XAUtils.showErrorMsg(response.responseJSON.msgDesc);
+                            }
+                    }
+                });
+            }else{
+                this.policy = this.model;
+                this.serviceDef = this.rangerService;
+            }
 		},
 
 		initializePolicyDetailsObj : function(){
-            // In this.policy service type is undefined then we take repotype.
-            if(_.isUndefined(this.policy.get('serviceType'))){
-                    this.serviceDef = this.serviceDefList.findWhere({'id' : this.repoType})
-            }else{
-                    this.serviceDef = this.serviceDefList.findWhere({'name':this.policy.get('serviceType')});
+            if(!_.isUndefined(this.eventTime)){
+                // In this.policy service type is undefined then we take repotype.
+                if(_.isUndefined(this.policy.get('serviceType'))){
+                        this.serviceDef = this.serviceDefList.findWhere({'id' : this.repoType})
+                }else{
+                        this.serviceDef = this.serviceDefList.findWhere({'name':this.policy.get('serviceType')});
+                }
             }
-			var self = this;
+			var self = this , resourceDef;
 			var details = this.policyDetails = {};
 			details.id = this.policy.get('id');
+			details.version = this.policy.get('version');
 			details.name = this.policy.get('name');
 			details.isEnabled = this.policy.get('isEnabled') ? localization.tt('lbl.ActiveStatus_STATUS_ENABLED') : localization.tt('lbl.ActiveStatus_STATUS_DISABLED');
+                        details.policyPriority = this.policy.get('policyPriority') == 1 ? localization.tt('lbl.override') : localization.tt('lbl.normal');
 			details.description = this.policy.get('description');
 			details.isAuditEnabled = this.policy.get('isAuditEnabled') ? XAEnums.AuditStatus.AUDIT_ENABLED.label : XAEnums.AuditStatus.AUDIT_DISABLED.label;
 			details.resources = [];
 			details.service = this.policy.get('service');
 			details.serviceType = this.serviceDef.get('name');
 			details.isRecursive = undefined;
-			_.each(this.serviceDef.get('resources'), function(def, i){
+            if(XAUtils.isAccessPolicy(this.policy.get('policyType'))){
+                resourceDef = this.serviceDef.get('resources');
+            }else{
+                if(XAUtils.isMaskingPolicy(this.policy.get('policyType'))){
+                    resourceDef = this.serviceDef.get('dataMaskDef').resources;
+                }else{
+                    resourceDef = this.serviceDef.get('rowFilterDef').resources;
+                }
+            }
+            _.each(resourceDef, function(def, i){
 				if(!_.isUndefined(this.policy.get('resources')[def.name])){
 					var resource = {},
 						policyResources = this.policy.get('resources')[def.name];
 					resource.label = def.label;
 					resource.values = policyResources.values;
 					if(def.recursiveSupported){
-						details.isRecursive = policyResources.isRecursive ? 'ON': 'OFF';
-					} else if(def.excludesSupported){
+						resource.Rec_Recursive = policyResources.isRecursive ? XAEnums.RecursiveStatus.STATUS_RECURSIVE.label : XAEnums.RecursiveStatus.STATUS_NONRECURSIVE.label;
+					}
+					if(def.excludesSupported){
 						resource.Rec_Exc = policyResources.isExcludes ? XAEnums.ExcludeStatus.STATUS_EXCLUDE.label : XAEnums.ExcludeStatus.STATUS_INCLUDE.label;
 					}
 					details.resources.push(resource);
 				}
 			}, this);
+            details.policyLabels = this.policy.get('policyLabels');
+            details.zoneName = this.policy.get('zoneName');
 			var perm = details.permissions = this.getPermHeaders();
 			perm.policyItems	 = this.policy.get('policyItems');
 			perm.allowException  = this.policy.get('allowExceptions');
@@ -147,22 +172,44 @@ define(function(require) {
 			details.createTime = Globalize.format(new Date(this.policy.get('createTime')),  "MM/dd/yyyy hh:mm tt");
 			details.updatedBy = this.policy.get('updatedBy');
 			details.updateTime = Globalize.format(new Date(this.policy.get('updateTime')),  "MM/dd/yyyy hh:mm tt");
+                        if(this.policy.has('validitySchedules')){
+                                details.validitySchedules = this.policy.get('validitySchedules');
+                        }
+            if(this.policy.has('conditions') && this.policy.get('conditions').length > 0 && self.serviceDef){
+                details.conditions = XAUtils.getPolicyConditionDetails(this.policy.get('conditions'), self.serviceDef);
+            }
+            if(this.policy.has('isDenyAllElse')) {
+            	details.isDenyAllElse = this.policy.get('isDenyAllElse') ? 'TRUE' : 'FALSE';
+            }
 			//get policyItems
 			this.createPolicyItems();
 			
 		},
 		createPolicyItems : function(){
 			this.policyDetails['policyItemsCond'] = [];
-			var headers = this.getPermHeaders();
+			var headers = this.getPermHeaders(), items = [];
 			this.policyDetails['policyCondition'] = headers.policyCondition;
-			var items = [{'itemName': 'policyItems',title : 'Allow Condition'},
-			             {'itemName': 'allowExceptions',title : 'Exclude from Allow Conditions'},
-			             {'itemName': 'denyPolicyItems',title : 'Deny Condition'},
-                         {'itemName': 'denyExceptions',title : 'Exclude from Deny Conditions'},
-                         {'itemName': 'dataMaskPolicyItems',title : 'Masking Conditions'},
-                         {'itemName': 'rowFilterPolicyItems',title : 'Row Level Conditions'}]
+            if(XAUtils.isAccessPolicy(this.policy.get('policyType'))){
+                items = [{'itemName': 'policyItems',title : 'Allow Condition'}];
+            }
+            if(XAUtils.isRowFilterPolicy(this.policy.get('policyType'))){
+                items.push({'itemName': 'rowFilterPolicyItems',title : 'Row Level Conditions'});
+            }
+            if(XAUtils.isMaskingPolicy(this.policy.get('policyType'))){
+                items.push({'itemName': 'dataMaskPolicyItems',title : 'Masking Conditions'});
+            }
+            if(JSON.parse(this.serviceDef.get('options').enableDenyAndExceptionsInPolicies) && XAUtils.isAccessPolicy(this.policy.get('policyType'))){
+                items.push({'itemName': 'allowExceptions',title : 'Exclude from Allow Conditions'},
+                          {'itemName': 'denyPolicyItems',title : 'Deny Condition'},
+                          {'itemName': 'denyExceptions',title : 'Exclude from Deny Conditions'});
+                if(this.policy.has('isDenyAllElse') && this.policy.get('isDenyAllElse')){
+                	items = _.reject(items, function(m){
+                		return m.itemName == 'denyPolicyItems' || m.itemName == 'denyExceptions'
+                	})
+                }
+            }
 			_.each(items, function(item){
-				if(!_.isUndefined(this.policy.get(item.itemName)) && !_.isEmpty(this.policy.get(item.itemName))){
+                if(!_.isUndefined(this.policy.get(item.itemName))){
 					this.policyDetails['policyItemsCond'].push({ title : item.title, headers : headers.header, policyItems : this.policy.get(item.itemName)})
 				}
 			}, this)
@@ -204,6 +251,7 @@ define(function(require) {
 			}
 			permList.unshift(localization.tt('lbl.selectUser'));
 			permList.unshift(localization.tt('lbl.selectGroup'));
+                        permList.unshift(localization.tt('lbl.selectRole'));
 			return {
 				header : permList,
 				policyCondition : policyCondition
@@ -214,7 +262,8 @@ define(function(require) {
 			var $el = $(e.currentTarget);
 			if($el.hasClass('active')){
 				var curr = this.policy.get('version');
-				this.getPolicyByVersion(++curr, e);
+                                var nextVal = this.policyVersionList[(_.indexOf(this.policyVersionList, curr)+1) % this.policyVersionList.length];
+                                this.getPolicyByVersion(nextVal, e);
 			}
 		},
 
@@ -222,13 +271,17 @@ define(function(require) {
 			var $el = $(e.currentTarget);
 			if($el.hasClass('active')){
 				var curr = this.policy.get('version');
-				this.getPolicyByVersion(--curr, e);
+                                var previousVal = this.policyVersionList[(_.indexOf(this.policyVersionList, curr)-1) % this.policyVersionList.length];
+                                this.getPolicyByVersion(previousVal, e);
 			}
 		},
 
 		getPolicyByVersion : function(ver, e){
 			//to support old policy log after updating that policy.
 			this.policy.set('serviceType',undefined);
+			if(this.policy.has('conditions')){
+				this.policy.unset('conditions', { silent: true });
+			}
 			this.policy.fetchByVersion(ver, {
 				cache : false,
 				async : false
@@ -237,6 +290,7 @@ define(function(require) {
 			this.render();
 			var verEl = $(e.currentTarget).parent();
 			verEl.find('text').text('Version '+this.policy.get('version'));
+			var reverEl = verEl.next('#revert');
 			var prevEl = verEl.find('#preVer'),
 				nextEl = verEl.find('#nextVer');
 			if(this.policy.get('version')>1){
@@ -244,12 +298,41 @@ define(function(require) {
 			}else{
 				prevEl.removeClass('active');
 			}
-			var policyVerIndexAt = this.policyVersionList.indexOf(this.policy.get('version').toString());
+                        var policyVerIndexAt = this.policyVersionList.indexOf(this.policy.get('version'));
 			if(!_.isUndefined(this.policyVersionList[++policyVerIndexAt])){
 				nextEl.addClass('active');
+				reverEl.css('display','');
 			}else{
 				nextEl.removeClass('active');
+				reverEl.css('display','none');
 			}
+		},
+
+		revert : function(e, collection, modal){
+			e.preventDefault();
+			var policyId = this.policy.attributes.id;
+			var rangerPolicy = new RangerPolicy({id : policyId});
+			rangerPolicy.attributes = this.policy.attributes;
+			rangerPolicy.save({}, {
+				wait: true,
+				success: function() {
+					XAUtil.blockUI('unblock');
+					XAUtil.notifySuccess('Success', 'Policy reverted successfully.');
+					collection.fetch({
+						cache : false,
+						reset : true
+					});
+					modal.close();
+				},
+				error: function(model, response, options) {
+					XAUtil.blockUI('unblock');
+					if(response && response.responseJSON && response.responseJSON.msgDesc) {
+						XAUtil.showErrorMsg(response.responseJSON.msgDesc);
+					} else {
+						XAUtil.notifyError('Error', 'Error reverting policy.');
+					}
+				}
+			});
 		},
 
 		/** on close */

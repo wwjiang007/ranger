@@ -19,13 +19,21 @@
 
 package org.apache.ranger.service;
 
+import java.lang.reflect.Type;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
+import com.google.gson.reflect.TypeToken;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.ranger.authorization.utils.JsonUtils;
+import org.apache.ranger.biz.RangerTagDBRetriever;
 import org.apache.ranger.common.SearchField;
 import org.apache.ranger.common.SearchField.DATA_TYPE;
 import org.apache.ranger.common.SearchField.SEARCH_TYPE;
+import org.apache.ranger.entity.XXServiceResource;
 import org.apache.ranger.entity.XXTag;
 import org.apache.ranger.plugin.model.RangerTag;
 import org.apache.ranger.plugin.util.SearchFilter;
@@ -34,6 +42,8 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class RangerTagService extends RangerTagServiceBase<XXTag, RangerTag> {
+
+	public static final Type subsumedDataType = new TypeToken<Map<String, String>>() {}.getType();
 
 	public RangerTagService() {
 		searchFields.add(new SearchField(SearchFilter.TAG_ID, "obj.id", SearchField.DATA_TYPE.INTEGER, SearchField.SEARCH_TYPE.FULL));
@@ -52,10 +62,28 @@ public class RangerTagService extends RangerTagServiceBase<XXTag, RangerTag> {
 	}
 
 	@Override
+	public RangerTag postCreate(XXTag tag) {
+		RangerTag ret = super.postCreate(tag);
+
+		daoMgr.getXXServiceVersionInfo().updateServiceVersionInfoForTagUpdate(tag.getId());
+
+		return ret;
+	}
+
+	@Override
 	public RangerTag postUpdate(XXTag tag) {
 		RangerTag ret = super.postUpdate(tag);
 
-		daoMgr.getXXServiceVersionInfo().updateServiceVersionInfoForTagUpdate(tag.getId(), tag.getUpdateTime());
+		daoMgr.getXXServiceVersionInfo().updateServiceVersionInfoForTagUpdate(tag.getId());
+
+		return ret;
+	}
+
+	@Override
+	protected XXTag preDelete(Long id) {
+		XXTag ret = super.preDelete(id);
+
+		daoMgr.getXXServiceVersionInfo().updateServiceVersionInfoForTagUpdate(id);
 
 		return ret;
 	}
@@ -95,13 +123,12 @@ public class RangerTagService extends RangerTagServiceBase<XXTag, RangerTag> {
 	public List<RangerTag> getTagsForResourceId(Long resourceId) {
 		List<RangerTag> ret = new ArrayList<RangerTag>();
 
-		List<XXTag> xxTags = daoMgr.getXXTag().findForResourceId(resourceId);
-		
-		if(CollectionUtils.isNotEmpty(xxTags)) {
-			for(XXTag xxTag : xxTags) {
-				RangerTag tag = populateViewBean(xxTag);
+		XXServiceResource serviceResourceEntity = daoMgr.getXXServiceResource().getById(resourceId);
 
-				ret.add(tag);
+		if (serviceResourceEntity != null) {
+			String tagsText = serviceResourceEntity.getTags();
+			if (StringUtils.isNotEmpty(tagsText)) {
+				ret = RangerTagDBRetriever.gsonBuilder.fromJson(tagsText, RangerServiceResourceService.duplicatedDataType);
 			}
 		}
 
@@ -111,13 +138,12 @@ public class RangerTagService extends RangerTagServiceBase<XXTag, RangerTag> {
 	public List<RangerTag> getTagsForResourceGuid(String resourceGuid) {
 		List<RangerTag> ret = new ArrayList<RangerTag>();
 
-		List<XXTag> xxTags = daoMgr.getXXTag().findForResourceGuid(resourceGuid);
-		
-		if(CollectionUtils.isNotEmpty(xxTags)) {
-			for(XXTag xxTag : xxTags) {
-				RangerTag tag = populateViewBean(xxTag);
+		XXServiceResource serviceResourceEntity = daoMgr.getXXServiceResource().findByGuid(resourceGuid);
 
-				ret.add(tag);
+		if (serviceResourceEntity != null) {
+			String tagsText = serviceResourceEntity.getTags();
+			if (StringUtils.isNotEmpty(tagsText)) {
+				ret = RangerTagDBRetriever.gsonBuilder.fromJson(tagsText, RangerServiceResourceService.duplicatedDataType);
 			}
 		}
 
@@ -139,4 +165,25 @@ public class RangerTagService extends RangerTagServiceBase<XXTag, RangerTag> {
 
 		return ret;
 	}
+
+    @Override
+    protected RangerTag mapEntityToViewBean(RangerTag vObj, XXTag xObj) {
+        RangerTag ret = super.mapEntityToViewBean(vObj, xObj);
+
+        Map<String, String> attributes = RangerTagDBRetriever.gsonBuilder.fromJson(xObj.getTagAttrs(), RangerTagService.subsumedDataType);
+        ret.setAttributes(attributes);
+        return ret;
+    }
+
+    @Override
+    protected XXTag mapViewToEntityBean(RangerTag vObj, XXTag xObj, int OPERATION_CONTEXT) {
+        XXTag ret = super.mapViewToEntityBean(vObj, xObj, OPERATION_CONTEXT);
+        ret.setTagAttrs(JsonUtils.mapToJson(vObj.getAttributes()));
+        return ret;
+    }
+
+    @Override
+    public Map<String, String> getAttributesForTag(XXTag xTag) {
+        return new HashMap<>();
+    }
 }

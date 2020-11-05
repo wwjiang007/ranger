@@ -21,14 +21,17 @@ package org.apache.ranger.rest;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.log4j.Logger;
+import org.apache.ranger.admin.client.datatype.RESTResponse;
 import org.apache.ranger.common.RESTErrorUtil;
 import org.apache.ranger.common.annotation.RangerAnnotationJSMgrName;
 import org.apache.ranger.plugin.model.RangerPluginInfo;
 import org.apache.ranger.plugin.model.RangerPolicy;
+import org.apache.ranger.plugin.model.RangerRole;
+import org.apache.ranger.plugin.model.RangerSecurityZone;
 import org.apache.ranger.plugin.model.RangerService;
 import org.apache.ranger.plugin.model.RangerServiceDef;
+import org.apache.ranger.plugin.util.GrantRevokeRoleRequest;
 import org.apache.ranger.plugin.util.SearchFilter;
-import org.apache.ranger.view.RangerPluginInfoList;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -56,7 +59,67 @@ public class PublicAPIsv2 {
 	ServiceREST serviceREST;
 
 	@Autowired
+	TagREST tagREST;
+
+	@Autowired
+	SecurityZoneREST securityZoneRest;
+
+	@Autowired
+	RoleREST roleREST;
+
+	@Autowired
 	RESTErrorUtil restErrorUtil;
+
+	/*
+	 * SecurityZone Creation API
+	 */
+	@POST
+	@Path("/api/zones")
+	public RangerSecurityZone createSecurityZone(RangerSecurityZone securityZone) {
+		return securityZoneRest.createSecurityZone(securityZone);
+	}
+
+	/*
+	 * SecurityZone Manipulation API
+	 */
+	@PUT
+	@Path("/api/zones/{id}")
+	public RangerSecurityZone updateSecurityZone(@PathParam("id") Long zoneId, RangerSecurityZone securityZone) {
+		return securityZoneRest.updateSecurityZone(zoneId, securityZone);
+	}
+
+	@DELETE
+	@Path("/api/zones/name/{name}")
+	public void deleteSecurityZone(@PathParam("name") String zoneName) {
+		securityZoneRest.deleteSecurityZone(zoneName);
+	}
+
+	 @DELETE
+	 @Path("/api/zones/{id}")
+	 public void deleteSecurityZone(@PathParam("id") Long zoneId) {
+		 securityZoneRest.deleteSecurityZone(zoneId);
+	 }
+
+	/*
+	 *  API's to Access SecurityZones
+	 */
+	@GET
+	@Path("/api/zones/name/{name}")
+	public RangerSecurityZone getSecurityZone(@PathParam("name") String zoneName) {
+		return securityZoneRest.getSecurityZone(zoneName);
+	}
+
+	@GET
+	@Path("/api/zones/{id}")
+	public RangerSecurityZone getSecurityZone(@PathParam("id") Long id) {
+		return securityZoneRest.getSecurityZone(id);
+	}
+
+	@GET
+    @Path("/api/zones")
+    public List<RangerSecurityZone> getAllZones(@Context HttpServletRequest request){
+		return securityZoneRest.getAllZones(request).getSecurityZones();
+	}
 
 	/*
 	* ServiceDef Manipulation APIs
@@ -453,11 +516,191 @@ public class PublicAPIsv2 {
 			logger.debug("==> PublicAPIsv2.getPluginsInfo()");
 		}
 
-		RangerPluginInfoList pluginInfoList = serviceREST.getPluginsInfo(request);
+		List<RangerPluginInfo> ret = serviceREST.getPluginsInfo(request).getPluginInfoList();
 
 		if (logger.isDebugEnabled()) {
 			logger.debug("<== PublicAPIsv2.getPluginsInfo()");
 		}
-		return pluginInfoList.getPluginInfoList();
+		return ret;
+	}
+
+	@DELETE
+	@Path("/api/server/policydeltas")
+	@PreAuthorize("hasRole('ROLE_SYS_ADMIN')")
+	public void deletePolicyDeltas(@DefaultValue("7") @QueryParam("days") Integer olderThan, @Context HttpServletRequest request) {
+		if (logger.isDebugEnabled()) {
+			logger.debug("==> PublicAPIsv2.deletePolicyDeltas(" + olderThan + ")");
+		}
+
+		serviceREST.deletePolicyDeltas(olderThan, request);
+
+		if (logger.isDebugEnabled()) {
+			logger.debug("<== PublicAPIsv2.deletePolicyDeltas(" + olderThan + ")");
+		}
+	}
+
+	@DELETE
+	@Path("/api/server/tagdeltas")
+	@PreAuthorize("hasRole('ROLE_SYS_ADMIN')")
+	public void deleteTagDeltas(@DefaultValue("7") @QueryParam("days") Integer olderThan, @Context HttpServletRequest request) {
+		if (logger.isDebugEnabled()) {
+			logger.debug("==> PublicAPIsv2.deleteTagDeltas(" + olderThan + ")");
+		}
+
+		tagREST.deleteTagDeltas(olderThan, request);
+
+		if (logger.isDebugEnabled()) {
+			logger.debug("<== PublicAPIsv2.deleteTagDeltas(" + olderThan + ")");
+		}
+	}
+
+	@DELETE
+	@Path("/api/server/purgepolicies/{serviceName}")
+	@PreAuthorize("hasRole('ROLE_SYS_ADMIN')")
+	public void purgeEmptyPolicies(@PathParam("serviceName") String serviceName, @Context HttpServletRequest request) {
+		if (logger.isDebugEnabled()) {
+			logger.debug("==> PublicAPIsv2.purgeEmptyPolicies(" + serviceName + ")");
+		}
+
+		if (serviceName == null) {
+			throw restErrorUtil.createRESTException(HttpServletResponse.SC_BAD_REQUEST , "Invalid service name", true);
+		}
+
+		serviceREST.purgeEmptyPolicies(serviceName, request);
+
+		if (logger.isDebugEnabled()) {
+			logger.debug("<== PublicAPIsv2.purgeEmptyPolicies(" + serviceName + ")");
+		}
+	}
+
+	/*
+	 * Role Creation API
+	 */
+
+	@POST
+	@Path("/api/roles")
+	@Produces({ "application/json", "application/xml" })
+	public RangerRole createRole(@QueryParam("serviceName") String serviceName, RangerRole role
+			, @DefaultValue("false") @QueryParam("createNonExistUserGroup") Boolean createNonExistUserGroup
+			, @Context HttpServletRequest request) {
+		logger.info("==> PublicAPIsv2.createRole");
+		RangerRole ret;
+		ret = roleREST.createRole(serviceName, role, createNonExistUserGroup);
+		logger.info("<== PublicAPIsv2.createRole" + ret.getName());
+		return ret;
+	}
+
+	/*
+	 * Role Manipulation API
+	 */
+	@PUT
+	@Path("/api/roles/{id}")
+	@Produces({ "application/json", "application/xml" })
+	public RangerRole updateRole(@PathParam("id") Long roleId, RangerRole role
+			, @DefaultValue("false") @QueryParam("createNonExistUserGroup") Boolean createNonExistUserGroup
+			, @Context HttpServletRequest request) {
+		return roleREST.updateRole(roleId, role, createNonExistUserGroup);
+	}
+
+	@DELETE
+	@Path("/api/roles/name/{name}")
+	public void deleteRole(@QueryParam("serviceName") String serviceName, @QueryParam("execUser") String userName, @PathParam("name") String roleName, @Context HttpServletRequest request) {
+		roleREST.deleteRole(serviceName, userName, roleName);
+	}
+
+	@DELETE
+	@Path("/api/roles/{id}")
+	public void deleteRole(@PathParam("id") Long roleId, @Context HttpServletRequest request) {
+		roleREST.deleteRole(roleId);
+	}
+
+	/*
+	 *  APIs to Access Roles
+	 */
+	@GET
+	@Path("/api/roles/name/{name}")
+	@Produces({ "application/json", "application/xml" })
+	public RangerRole getRole(@QueryParam("serviceName") String serviceName, @QueryParam("execUser") String userName, @PathParam("name") String roleName, @Context HttpServletRequest request) {
+		return roleREST.getRole(serviceName, userName, roleName);
+	}
+
+	@GET
+	@Path("/api/roles/{id}")
+	@Produces({ "application/json", "application/xml" })
+	public RangerRole getRole(@PathParam("id") Long id, @Context HttpServletRequest request) {
+		return roleREST.getRole(id);
+	}
+
+	@GET
+	@Path("/api/roles")
+	@Produces({ "application/json", "application/xml" })
+	public List<RangerRole> getAllRoles(@Context HttpServletRequest request) {
+		return roleREST.getAllRoles(request).getSecurityRoles();
+	}
+
+	@GET
+	@Path("/api/roles/names")
+	@Produces({ "application/json", "application/xml" })
+	public List<String> getAllRoleNames(@QueryParam("serviceName") String serviceName, @QueryParam("execUser") String userName, @Context HttpServletRequest request){
+		return roleREST.getAllRoleNames(serviceName, userName, request);
+	}
+
+	@GET
+	@Path("/api/roles/user/{user}")
+	@Produces({ "application/json", "application/xml" })
+	public List<String> getUserRoles(@PathParam("user") String userName, @Context HttpServletRequest request){
+		return roleREST.getUserRoles(userName, request);
+	}
+
+	/*
+    	This API is used to add users and groups with/without GRANT privileges to this Role. It follows add-or-update semantics
+ 	 */
+	@PUT
+	@Path("/api/roles/{id}/addUsersAndGroups")
+	public RangerRole addUsersAndGroups(@PathParam("id") Long roleId, List<String> users, List<String> groups, Boolean isAdmin, @Context HttpServletRequest request) {
+		return roleREST.addUsersAndGroups(roleId, users, groups, isAdmin);
+	}
+
+	/*
+        This API is used to remove users and groups, without regard to their GRANT privilege, from this Role.
+     */
+	@PUT
+	@Path("/api/roles/{id}/removeUsersAndGroups")
+	public RangerRole removeUsersAndGroups(@PathParam("id") Long roleId, List<String> users, List<String> groups, @Context HttpServletRequest request) {
+		return roleREST.removeUsersAndGroups(roleId, users, groups);
+	}
+
+	/*
+        This API is used to remove GRANT privilege from listed users and groups.
+     */
+	@PUT
+	@Path("/api/roles/{id}/removeAdminFromUsersAndGroups")
+	public RangerRole removeAdminFromUsersAndGroups(@PathParam("id") Long roleId, List<String> users, List<String> groups, @Context HttpServletRequest request) {
+		return roleREST.removeAdminFromUsersAndGroups(roleId, users, groups);
+	}
+
+	/*
+    	This API is used to add users and roles with/without GRANT privileges to this Role. It follows add-or-update semantics
+ 	 */
+	@PUT
+	@Path("/api/roles/grant/{serviceName}")
+	@Consumes({ "application/json", "application/xml" })
+	@Produces({ "application/json", "application/xml" })
+	public RESTResponse grantRole(@PathParam("serviceName") String serviceName, GrantRevokeRoleRequest grantRoleRequest, @Context HttpServletRequest request) {
+		if(logger.isDebugEnabled()) {
+			logger.debug("==> PublicAPIsv2.grantRoleUsersAndRoles(" + grantRoleRequest.toString() + ")");
+		}
+		return roleREST.grantRole(serviceName, grantRoleRequest, request);
+	}
+
+	/*
+        This API is used to remove users and groups, without regard to their GRANT privilege, from this Role.
+     */
+	@PUT
+	@Path("/api/roles/revoke/{serviceName}")
+	@Consumes({ "application/json", "application/xml" })
+	@Produces({ "application/json", "application/xml" })
+	public RESTResponse revokeRoleUsersAndRoles(@PathParam("serviceName") String serviceName, GrantRevokeRoleRequest revokeRoleRequest, @Context HttpServletRequest request) {
+		return roleREST.revokeRole(serviceName, revokeRoleRequest, request);
 	}
 }

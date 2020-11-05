@@ -32,7 +32,10 @@ import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 
 import org.apache.commons.lang.text.StrSubstitutor;
+import org.apache.ranger.authorization.hadoop.config.RangerPluginConfig;
+import org.apache.ranger.plugin.model.RangerPolicy;
 import org.apache.ranger.plugin.policyengine.RangerAccessRequest;
+import org.apache.ranger.plugin.policyengine.RangerPluginContext;
 import org.apache.ranger.plugin.policyengine.RangerPolicyEngineImpl;
 import org.apache.ranger.plugin.util.PerfDataRecorder;
 import org.apache.ranger.plugin.util.PerfDataRecorder.PerfStatistic;
@@ -143,13 +146,12 @@ public class RangerPolicyEnginePerformanceTest {
 	public void policyEngineTest() throws InterruptedException {
 		List<RangerAccessRequest> requests = requestsCache.getUnchecked(concurrency);
 		ServicePolicies servicePolicies = servicePoliciesCache.getUnchecked(numberOfPolicies);
-
-		final RangerPolicyEngineImpl rangerPolicyEngine = new RangerPolicyEngineImpl("perf-test", servicePolicies, RangerPolicyFactory.createPolicyEngineOption());
-		rangerPolicyEngine.preProcess(requests);
+		RangerPluginContext pluginContext = new RangerPluginContext(new RangerPluginConfig("hive", null, "perf-test", "cl1", "on-prem", RangerPolicyFactory.createPolicyEngineOption()));
+		final RangerPolicyEngineImpl rangerPolicyEngine = new RangerPolicyEngineImpl(servicePolicies, pluginContext, null);
 
 		for (int iterations = 0; iterations < WARM_UP__ITERATIONS; iterations++) {
 			// using return value of 'isAccessAllowed' with a cheap operation: System#identityHashCode so JIT wont remove it as dead code
-			System.identityHashCode(rangerPolicyEngine.isAccessAllowed(requests.get(iterations % concurrency), null)); 
+			System.identityHashCode(rangerPolicyEngine.evaluatePolicies(requests.get(iterations % concurrency), RangerPolicy.POLICY_TYPE_ACCESS, null));
 			PerfDataRecorder.clearStatistics();
 		}
 
@@ -159,7 +161,7 @@ public class RangerPolicyEnginePerformanceTest {
 			new Thread(new Runnable() {
 				@Override
 				public void run() {
-					System.identityHashCode(rangerPolicyEngine.isAccessAllowed(rangerAccessRequest, null));
+					System.identityHashCode(rangerPolicyEngine.evaluatePolicies(rangerAccessRequest, RangerPolicy.POLICY_TYPE_ACCESS, null));
 					latch.countDown();
 				}
 			}, String.format("Client #%s", i)).start();

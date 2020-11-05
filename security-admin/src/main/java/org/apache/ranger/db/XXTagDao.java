@@ -28,7 +28,9 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.ranger.authorization.utils.StringUtil;
 import org.apache.ranger.common.db.BaseDao;
 import org.apache.ranger.entity.XXTag;
+import org.springframework.stereotype.Service;
 
+@Service
 public class XXTagDao extends BaseDao<XXTag> {
 
 	public XXTagDao(RangerDaoManagerBase daoManager) {
@@ -118,19 +120,6 @@ public class XXTagDao extends BaseDao<XXTag> {
 
 		try {
 			return getEntityManager().createNamedQuery("XXTag.findByServiceId", tClass)
-					.setParameter("serviceId", serviceId).getResultList();
-		} catch (NoResultException e) {
-			return new ArrayList<XXTag>();
-		}
-	}
-
-	public List<XXTag> findForServicePlugin(Long serviceId) {
-		if (serviceId == null) {
-			return new ArrayList<XXTag>();
-		}
-
-		try {
-			return getEntityManager().createNamedQuery("XXTag.findForServicePlugin", tClass)
 					.setParameter("serviceId", serviceId).getResultList();
 		} catch (NoResultException e) {
 			return new ArrayList<XXTag>();

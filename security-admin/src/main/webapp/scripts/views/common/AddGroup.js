@@ -82,7 +82,6 @@ define(function(require){
 				var labelStr1 = this.$el.find('label').html().replace('*','');
 				this.$el.find('label').html(labelStr1);
 			}
-
 			this.$('.tags').editable({
 			    placement: 'right',
 			    emptytext : 'Please select',
@@ -93,19 +92,17 @@ define(function(require){
 			    		return;
 			    	}
 			    	that.checkDirtyFieldForGroup(values);
-			    	if(!_.isArray(values))	values=values.toString().split(',');
-			    	
 			    	var valArr = [];
-			    	if(!_.isUndefined($(that.el).find('.select2-container-multi')) 
-			    			&& $(that.el).find('.select2-container-multi').length > 0){
-			    		values = $(that.el).find('.select2-container-multi').select2('data')
+					if(!_.isUndefined($('.multi-group-select'))
+							&& $('.multi-group-select').length > 0){
+						values = $('.multi-group-select').select2('data');
 			    	} else {
 			    		var groupNameList = that.model.get('groupNameList');
 			    		values = _.map(that.model.get('groupIdList'),function(id,i){ return {'id': id, 'text': _.escape(groupNameList[i]) };});
 			    	}
 			    	
 			    	valArr = _.map(values,function(val,i){ 
-			    		return "<span class='label label-inverse'>" + val.text + "</span>"  
+						return "<span class='badge badge-dark'>" + val.text + "</span>"  
 			    	},that);
 
 			    	that.groupArr = values;
@@ -140,6 +137,7 @@ define(function(require){
 			var that = this,groupCnt = 0;
     		var tags = _.map(that.model.get('groupIdList'),function(id,i){ return {'id': id, 'text': _.escape(that.model.get('groupNameList')[i]) };});
 			return{
+				containerCssClass : 'multi-group-select',
 				closeOnSelect : true,
 				placeholder : 'Select Group',
 			//	maximumSelectionSize : 1,

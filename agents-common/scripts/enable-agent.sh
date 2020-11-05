@@ -208,16 +208,26 @@ elif [ "${HCOMPONENT_NAME}" = "hadoop" ] ||
     HCOMPONENT_LIB_DIR=${HCOMPONENT_INSTALL_DIR}/share/hadoop/hdfs/lib
 elif [ "${HCOMPONENT_NAME}" = "sqoop" ]; then
     HCOMPONENT_LIB_DIR=${HCOMPONENT_INSTALL_DIR}/server/lib
+elif [ "${HCOMPONENT_NAME}" = "kylin" ]; then
+    HCOMPONENT_LIB_DIR=${HCOMPONENT_INSTALL_DIR}/tomcat/webapps/kylin/WEB-INF/lib
+elif [ "${HCOMPONENT_NAME}" = "elasticsearch" ]; then
+    HCOMPONENT_LIB_DIR=${HCOMPONENT_INSTALL_DIR}/plugins
+elif [ "${HCOMPONENT_NAME}" = "presto" ]; then
+    HCOMPONENT_LIB_DIR=${HCOMPONENT_INSTALL_DIR}/plugin/ranger
+    if [ ! -d "${HCOMPONENT_LIB_DIR}" ]; then
+        echo "INFO: Creating ${HCOMPONENT_LIB_DIR}"
+        mkdir -p ${HCOMPONENT_LIB_DIR}
+    fi
 fi
 
 HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/conf
 if [ "${HCOMPONENT_NAME}" = "solr" ]; then
-    HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/solr-webapp/webapp/WEB-INF/classes
+    HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/resources
     if [ ! -d $HCOMPONENT_CONF_DIR ]; then	
 	install_owner=`ls -ld | cut -f 3 -d " "`
 	echo "INFO: Creating $HCOMPONENT_CONF_DIR" 
 	mkdir -p $HCOMPONENT_CONF_DIR
-	echo "INFO: Changing ownership of  $HCOMPONENT_CONF_DIR to $install_owner" 
+	echo "INFO: Changing ownership of $HCOMPONENT_CONF_DIR to $install_owner"
 	chown $install_owner:$install_owner $HCOMPONENT_CONF_DIR
     fi    
 elif [ "${HCOMPONENT_NAME}" = "kafka" ]; then
@@ -228,6 +238,16 @@ elif [ "${HCOMPONENT_NAME}" = "yarn" ]; then
     HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/etc/hadoop
 elif [ "${HCOMPONENT_NAME}" = "sqoop" ]; then
     HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/conf
+elif [ "${HCOMPONENT_NAME}" = "elasticsearch" ]; then
+    HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/config/ranger-elasticsearch-plugin
+	if [ ! -d $HCOMPONENT_CONF_DIR ]; then
+	echo "INFO: Creating $HCOMPONENT_CONF_DIR"
+	mkdir -p $HCOMPONENT_CONF_DIR
+	echo "INFO: Changing ownership of $HCOMPONENT_CONF_DIR to $CFG_OWNER_INF"
+	chown $CFG_OWNER_INF $HCOMPONENT_CONF_DIR
+    fi
+elif [ "${HCOMPONENT_NAME}" = "presto" ]; then
+    HCOMPONENT_CONF_DIR=${HCOMPONENT_INSTALL_DIR}/etc
 fi
 
 HCOMPONENT_ARCHIVE_CONF_DIR=${HCOMPONENT_CONF_DIR}/.archive
@@ -714,9 +734,6 @@ then
         updatePropertyToFile atlas.authorizer.impl $authName ${fn}
     fi
 fi
-#
-# Set notice to restart the ${HCOMPONENT_NAME}
-#
 
 if [ "${HCOMPONENT_NAME}" = "sqoop" ]
 then
@@ -740,6 +757,61 @@ then
 		addOrUpdatePropertyToFile org.apache.sqoop.security.authorization.validator $authName ${fn}
 	fi
 fi
+
+if [ "${HCOMPONENT_NAME}" = "kylin" ]
+then
+	if [ "${action}" = "enable" ]
+	then
+		authName="org.apache.ranger.authorization.kylin.authorizer.RangerKylinAuthorizer"
+	else
+		authName=""
+	fi
+
+	dt=`date '+%Y%m%d%H%M%S'`
+	fn=`ls ${HCOMPONENT_CONF_DIR}/kylin.properties 2> /dev/null`
+	if [ -f "${fn}" ]
+	then
+		dn=`dirname ${fn}`
+		bn=`basename ${fn}`
+		bf=${dn}/.${bn}.${dt}
+		echo "backup of ${fn} to ${bf} ..."
+		cp ${fn} ${bf}
+		echo "Add or Update properties file: [${fn}] ... "
+		addOrUpdatePropertyToFile kylin.server.external-acl-provider $authName ${fn}
+	fi
+fi
+
+if [ "${HCOMPONENT_NAME}" = "presto" ]
+then
+	if [ "${action}" = "enable" ]
+	then
+		controlName="ranger"
+	else
+		controlName="allow-all"
+	fi
+	dt=`date '+%Y%m%d%H%M%S'`
+	fn=`ls ${HCOMPONENT_CONF_DIR}/access-control.properties 2> /dev/null`
+	if [ -f "${fn}" ]
+	then
+		dn=`dirname ${fn}`
+		bn=`basename ${fn}`
+		bf=${dn}/.${bn}.${dt}
+		echo "backup of ${fn} to ${bf} ..."
+		cp ${fn} ${bf}
+	else
+	    fn=${HCOMPONENT_CONF_DIR}/access-control.properties
+	fi
+	echo "Add or Update properties file: [${fn}] ... "
+	addOrUpdatePropertyToFile access-control.name $controlName ${fn}
+	echo "Linking config files"
+	cd ${HCOMPONENT_LIB_DIR}/ranger-presto-plugin-impl/
+	ln -sf ${HCOMPONENT_CONF_DIR} conf
+fi
+
+
+#
+# Set notice to restart the ${HCOMPONENT_NAME}
+#
 
 echo "Ranger Plugin for ${HCOMPONENT_NAME} has been ${action}d. Please restart ${HCOMPONENT_NAME} to ensure that changes are effective."
 

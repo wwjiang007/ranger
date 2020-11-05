@@ -19,28 +19,17 @@ package org.apache.ranger.db;
 
 import org.apache.ranger.common.db.BaseDao;
 import org.apache.ranger.entity.XXPolicyItemRowFilterInfo;
+import org.springframework.stereotype.Service;
 
 import javax.persistence.NoResultException;
 import java.util.ArrayList;
 import java.util.List;
 
+@Service
 public class XXPolicyItemRowFilterInfoDao extends BaseDao<XXPolicyItemRowFilterInfo> {
 
 	public XXPolicyItemRowFilterInfoDao(RangerDaoManagerBase daoManager) {
 		super(daoManager);
-	}
-	
-	public List<XXPolicyItemRowFilterInfo> findByPolicyItemId(Long polItemId) {
-		if(polItemId == null) {
-			return new ArrayList<XXPolicyItemRowFilterInfo>();
-		}
-		try {
-			return getEntityManager()
-					.createNamedQuery("XXPolicyItemRowFilterInfo.findByPolicyItemId", tClass)
-					.setParameter("polItemId", polItemId).getResultList();
-		} catch (NoResultException e) {
-			return new ArrayList<XXPolicyItemRowFilterInfo>();
-		}
 	}
 
 	public List<XXPolicyItemRowFilterInfo> findByPolicyId(Long policyId) {

@@ -21,9 +21,9 @@ package org.apache.ranger.tagsync.source.atlas;
 
 
 import org.apache.atlas.kafka.NotificationProvider;
+import org.apache.atlas.model.notification.EntityNotification;
 import org.apache.atlas.notification.NotificationConsumer;
 import org.apache.atlas.notification.NotificationInterface;
-import org.apache.atlas.v1.model.notification.EntityNotificationV1;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -101,10 +101,9 @@ public class AtlasTagSource extends AbstractTagSource {
 
 		if (ret) {
 			NotificationInterface notification = NotificationProvider.get();
-			List<NotificationConsumer<EntityNotificationV1>> iterators = notification.createConsumers(NotificationInterface.NotificationType.ENTITIES, 1);
+			List<NotificationConsumer<EntityNotification>> iterators = notification.createConsumers(NotificationInterface.NotificationType.ENTITIES, 1);
 
 			consumerTask = new ConsumerRunnable(iterators.get(0));
-
 		}
 
 		if (LOG.isDebugEnabled()) {
@@ -138,10 +137,10 @@ public class AtlasTagSource extends AbstractTagSource {
 		}
 	}
 
-	private static String getPrintableEntityNotification(EntityNotificationV1 notification) {
+	private static String getPrintableEntityNotification(EntityNotificationWrapper notification) {
 		StringBuilder sb = new StringBuilder();
 
-		sb.append("{ Notification-Type: ").append(notification.getOperationType()).append(", ");
+		sb.append("{ Notification-Type: ").append(notification.getOpType()).append(", ");
         RangerAtlasEntityWithTags entityWithTags = new RangerAtlasEntityWithTags(notification);
         sb.append(entityWithTags.toString());
 
@@ -151,9 +150,9 @@ public class AtlasTagSource extends AbstractTagSource {
 
 	private class ConsumerRunnable implements Runnable {
 
-		private final NotificationConsumer<EntityNotificationV1> consumer;
+		private final NotificationConsumer<EntityNotification> consumer;
 
-		private ConsumerRunnable(NotificationConsumer<EntityNotificationV1> consumer) {
+		private ConsumerRunnable(NotificationConsumer<EntityNotification> consumer) {
 			this.consumer = consumer;
 		}
 
@@ -163,32 +162,89 @@ public class AtlasTagSource extends AbstractTagSource {
 			if (LOG.isDebugEnabled()) {
 				LOG.debug("==> ConsumerRunnable.run()");
 			}
+
+			boolean seenCommitException = false;
+			long offsetOfLastMessageDeliveredToRanger = -1L;
+
 			while (true) {
 				try {
-					List<AtlasKafkaMessage<EntityNotificationV1>> messages = consumer.receive(1000L);
+					List<AtlasKafkaMessage<EntityNotification>> messages = consumer.receive(1000L);
 
-					for (AtlasKafkaMessage<EntityNotificationV1> message :  messages) {
-						EntityNotificationV1 notification = message != null ? message.getMessage() : null;
+					int index = 0;
+
+					if (messages.size() > 0 && seenCommitException) {
+						if (LOG.isDebugEnabled()) {
+							LOG.debug("seenCommitException=[true], offsetOfLastMessageDeliveredToRanger=[" + offsetOfLastMessageDeliveredToRanger + "]");
+						}
+						for (; index < messages.size(); index++) {
+							AtlasKafkaMessage<EntityNotification> message = messages.get(index);
+							if (message.getOffset() <= offsetOfLastMessageDeliveredToRanger) {
+								// Already delivered to Ranger
+								TopicPartition partition = new TopicPartition("ATLAS_ENTITIES", message.getPartition());
+								try {
+									if (LOG.isDebugEnabled()) {
+										LOG.debug("Committing previously commit-failed message with offset:[" + message.getOffset() + "]");
+									}
+									consumer.commit(partition, message.getOffset());
+								} catch (Exception commitException) {
+									LOG.warn("Ranger tagsync already processed message at offset " + message.getOffset() + ". Ignoring failure in committing this message and continuing to process next message", commitException);
+									LOG.warn("This will cause Kafka to deliver this message:[" + message.getOffset() + "] repeatedly!! This may be unrecoverable error!!");
+								}
+							} else {
+								break;
+							}
+						}
+					}
+
+					seenCommitException = false;
+					offsetOfLastMessageDeliveredToRanger = -1L;
+
+					for (; index < messages.size(); index++) {
+						AtlasKafkaMessage<EntityNotification> message = messages.get(index);
+						EntityNotification notification = message != null ? message.getMessage() : null;
 
 						if (notification != null) {
-							if (LOG.isDebugEnabled()) {
-								LOG.debug("Notification=" + getPrintableEntityNotification(notification));
+							EntityNotificationWrapper notificationWrapper = null;
+							try {
+								notificationWrapper = new EntityNotificationWrapper(notification);
+							} catch (Throwable e) {
+								LOG.error("notification:[" + notification +"] has some issues..perhaps null entity??", e);
 							}
+							if (notificationWrapper != null) {
+								if (LOG.isDebugEnabled()) {
+									LOG.debug("Message-offset=" + message.getOffset() + ", Notification=" + getPrintableEntityNotification(notificationWrapper));
+								}
 
-							ServiceTags serviceTags = AtlasNotificationMapper.processEntityNotification(notification);
-							if (serviceTags != null) {
-								updateSink(serviceTags);
+								ServiceTags serviceTags = AtlasNotificationMapper.processEntityNotification(notificationWrapper);
+								if (serviceTags != null) {
+									updateSink(serviceTags);
+								}
+								offsetOfLastMessageDeliveredToRanger = message.getOffset();
+
+								if (!seenCommitException) {
+									TopicPartition partition = new TopicPartition("ATLAS_ENTITIES", message.getPartition());
+									try {
+										consumer.commit(partition, message.getOffset());
+									} catch (Exception commitException) {
+										seenCommitException = true;
+										LOG.warn("Ranger tagsync processed message at offset " + message.getOffset() + ". Ignoring failure in committing this message and continuing to process next message", commitException);
+									}
+								}
 							}
-
-							TopicPartition partition = new TopicPartition("ATLAS_ENTITIES", message.getPartition());
-							consumer.commit(partition, message.getOffset());
 						} else {
 							LOG.error("Null entityNotification received from Kafka!! Ignoring..");
 						}
 					}
 				} catch (Exception exception) {
 					LOG.error("Caught exception..: ", exception);
-					return;
+					// If transient error, retry after short interval
+					try {
+						Thread.sleep(100);
+					} catch (InterruptedException interrupted) {
+						LOG.error("Interrupted: ", interrupted);
+						LOG.error("Returning from thread. May cause process to be up but not processing events!!");
+						return;
+					}
 				}
 			}
 		}

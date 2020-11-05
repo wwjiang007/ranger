@@ -45,7 +45,8 @@ define(function(require) {
 		 */
 		state : {
 			firstPage: 0,
-			pageSize : XAGlobals.settings.PAGE_SIZE
+                        pageSize : XAGlobals.settings.PAGE_SIZE,
+                        order : 1
 		},
 		mode : 'server',
 		/**
@@ -98,6 +99,7 @@ define(function(require) {
 
 			newState.pageSize = pageSize ? pageSize : state.pageSize;
 			newState.currentPage = startIndex === 0 ? 0 : Math.ceil(startIndex / newState.pageSize);
+			newState.startIndex = startIndex;
 			//newState.totalPages = totalCount === 0 ? 0 : Math.ceil(totalCount / serverState.pageSize);
 
 			return newState;

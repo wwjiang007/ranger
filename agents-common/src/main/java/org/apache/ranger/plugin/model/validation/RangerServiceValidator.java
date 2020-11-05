@@ -22,7 +22,7 @@ package org.apache.ranger.plugin.model.validation;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-
+import java.util.regex.Pattern;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -35,8 +35,11 @@ import org.apache.ranger.plugin.store.ServiceStore;
 import com.google.common.collect.Sets;
 
 public class RangerServiceValidator extends RangerValidator {
-
 	private static final Log LOG = LogFactory.getLog(RangerServiceValidator.class);
+
+	private static final Pattern SERVICE_NAME_VALIDATION_REGEX         = Pattern.compile("^[a-zA-Z0-9_-][a-zA-Z0-9_-]{0,254}", Pattern.CASE_INSENSITIVE);
+	private static final Pattern LEGACY_SERVICE_NAME_VALIDATION_REGEX  = Pattern.compile("^[a-zA-Z0-9_-][a-zA-Z0-9\\s_-]{0,254}", Pattern.CASE_INSENSITIVE);
+	private static final Pattern SERVICE_DISPLAY_NAME_VALIDATION_REGEX = Pattern.compile("^[a-zA-Z0-9_-][a-zA-Z0-9\\s_-]{0,254}", Pattern.CASE_INSENSITIVE);
 
 	public RangerServiceValidator(ServiceStore store) {
 		super(store);
@@ -46,7 +49,6 @@ public class RangerServiceValidator extends RangerValidator {
 		if(LOG.isDebugEnabled()) {
 			LOG.debug(String.format("==> RangerServiceValidator.validate(%s, %s)", service, action));
 		}
-
 		List<ValidationFailureDetails> failures = new ArrayList<>();
 		boolean valid = isValid(service, action, failures);
 		String message = "";
@@ -61,7 +63,7 @@ public class RangerServiceValidator extends RangerValidator {
 			}
 		}
 	}
-	
+
 	boolean isValid(Long id, Action action, List<ValidationFailureDetails> failures) {
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("==> RangerServiceValidator.isValid(" + id + ")");
@@ -96,7 +98,7 @@ public class RangerServiceValidator extends RangerValidator {
 		}
 		return valid;
 	}
-	
+
 	boolean isValid(RangerService service, Action action, List<ValidationFailureDetails> failures) {
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("==> RangerServiceValidator.isValid(" + service + ")");
@@ -104,7 +106,6 @@ public class RangerServiceValidator extends RangerValidator {
 		if (!(action == Action.CREATE || action == Action.UPDATE)) {
 			throw new IllegalArgumentException("isValid(RangerService, ...) is only supported for CREATE/UPDATE");
 		}
-		
 		boolean valid = true;
 		if (service == null) {
 			ValidationErrorCode error = ValidationErrorCode.SERVICE_VALIDATION_ERR_NULL_SERVICE_OBJECT;
@@ -151,9 +152,17 @@ public class RangerServiceValidator extends RangerValidator {
 						.build());
 				valid = false;
 			} else {
-				RangerService otherService = getService(name);
-				if (otherService != null && action == Action.CREATE) {
-					ValidationErrorCode error = ValidationErrorCode.SERVICE_VALIDATION_ERR_SERVICE_NAME_CONFICT;
+				Pattern serviceNameRegex = SERVICE_NAME_VALIDATION_REGEX;
+				if (action == Action.UPDATE) {
+					RangerService rangerService = getService(service.getId());
+					if (rangerService != null && StringUtils.isNotBlank(rangerService.getName()) && rangerService.getName().contains(" ")) {
+						//RANGER-2808 Support for space in services created with space in earlier version
+						serviceNameRegex = LEGACY_SERVICE_NAME_VALIDATION_REGEX;
+					}
+				}
+
+				if(!isValidString(serviceNameRegex, name)){
+					ValidationErrorCode error = ValidationErrorCode.SERVICE_VALIDATION_ERR_SPECIAL_CHARACTERS_SERVICE_NAME;
 					failures.add(new ValidationFailureDetailsBuilder()
 							.field("name")
 							.isSemanticallyIncorrect()
@@ -161,13 +170,58 @@ public class RangerServiceValidator extends RangerValidator {
 							.becauseOf(error.getMessage(name))
 							.build());
 					valid = false;
-				} else if (otherService != null && otherService.getId() !=null && !otherService.getId().equals(id)) {
-					ValidationErrorCode error = ValidationErrorCode.SERVICE_VALIDATION_ERR_ID_NAME_CONFLICT;
+				}else{
+					RangerService otherService = getService(name);
+					if (otherService != null && action == Action.CREATE) {
+						ValidationErrorCode error = ValidationErrorCode.SERVICE_VALIDATION_ERR_SERVICE_NAME_CONFICT;
+						failures.add(new ValidationFailureDetailsBuilder()
+								.field("name")
+								.isSemanticallyIncorrect()
+								.errorCode(error.getErrorCode())
+								.becauseOf(error.getMessage(name))
+								.build());
+						valid = false;
+					} else if (otherService != null && otherService.getId() !=null && !otherService.getId().equals(id)) {
+						ValidationErrorCode error = ValidationErrorCode.SERVICE_VALIDATION_ERR_ID_NAME_CONFLICT;
+						failures.add(new ValidationFailureDetailsBuilder()
+								.field("id/name")
+								.isSemanticallyIncorrect()
+								.errorCode(error.getErrorCode())
+								.becauseOf(error.getMessage(name, otherService.getId()))
+								.build());
+						valid = false;
+					}
+				}
+			}
+			// Display name
+			String displayName = service.getDisplayName();
+			if(!isValidString(SERVICE_DISPLAY_NAME_VALIDATION_REGEX, displayName)){
+				ValidationErrorCode error = ValidationErrorCode.SERVICE_VALIDATION_ERR_SPECIAL_CHARACTERS_SERVICE_DISPLAY_NAME;
+				failures.add(new ValidationFailureDetailsBuilder()
+						.field("displayName")
+						.isSemanticallyIncorrect()
+						.errorCode(error.getErrorCode())
+						.becauseOf(error.getMessage(displayName))
+						.build());
+				valid = false;
+			}else{
+				RangerService otherService = getServiceByDisplayName(displayName);
+				if (otherService != null && action == Action.CREATE) {
+					ValidationErrorCode error = ValidationErrorCode.SERVICE_VALIDATION_ERR_SERVICE_DISPLAY_NAME_CONFICT;
 					failures.add(new ValidationFailureDetailsBuilder()
-							.field("id/name")
+							.field("displayName")
 							.isSemanticallyIncorrect()
 							.errorCode(error.getErrorCode())
-							.becauseOf(error.getMessage(name, otherService.getId()))
+							.becauseOf(error.getMessage(displayName, otherService.getName()))
+							.build());
+					valid = false;
+				} else if (otherService != null && otherService.getId() !=null && !otherService.getId().equals(id)) {
+					ValidationErrorCode error = ValidationErrorCode.SERVICE_VALIDATION_ERR_SERVICE_DISPLAY_NAME_CONFICT;
+					failures.add(new ValidationFailureDetailsBuilder()
+							.field("id/displayName")
+							.isSemanticallyIncorrect()
+							.errorCode(error.getErrorCode())
+							.becauseOf(error.getMessage(displayName, otherService.getName()))
 							.build());
 					valid = false;
 				}
@@ -213,7 +267,6 @@ public class RangerServiceValidator extends RangerValidator {
 					valid = false;
 				}
 			}
-
 			String tagServiceName = service.getTagService();
 
 			if (StringUtils.isNotBlank(tagServiceName) && StringUtils.equals(type, EmbeddedServiceDefsUtil.EMBEDDED_SERVICEDEF_TAG_NAME)) {
@@ -226,7 +279,6 @@ public class RangerServiceValidator extends RangerValidator {
 			}
 
 			boolean needToEnsureServiceType = false;
-
 			if (action == Action.UPDATE) {
 				RangerService otherService = getService(name);
 				String otherTagServiceName = otherService == null ? null : otherService.getTagService();
@@ -241,7 +293,6 @@ public class RangerServiceValidator extends RangerValidator {
 					needToEnsureServiceType = true;
 				}
 			}
-
 			if (needToEnsureServiceType) {
 				RangerService maybeTagService = getService(tagServiceName);
 				if (maybeTagService == null || !StringUtils.equals(maybeTagService.getType(), EmbeddedServiceDefsUtil.EMBEDDED_SERVICEDEF_TAG_NAME)) {
@@ -259,5 +310,9 @@ public class RangerServiceValidator extends RangerValidator {
 			LOG.debug("<== RangerServiceValidator.isValid(" + service + "): " + valid);
 		}
 		return valid;
+	}
+
+	public boolean isValidString(final Pattern pattern, final String name) {
+		return pattern != null && StringUtils.isNotBlank(name) && pattern.matcher(name).matches();
 	}
 }

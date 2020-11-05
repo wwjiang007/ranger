@@ -73,7 +73,8 @@ public abstract class RangerBaseModelService<T extends XXDBBase, V extends Range
 	public static final int OPERATION_CREATE_CONTEXT = 1;
 	public static final int OPERATION_UPDATE_CONTEXT = 2;
 	public static final int OPERATION_DELETE_CONTEXT = 3;
-
+	public static final int OPERATION_IMPORT_CREATE_CONTEXT = 4;
+	public static final int OPERATION_IMPORT_DELETE_CONTEXT = 5;
 	protected Class<T> tEntityClass;
 	protected Class<V> tViewClass;
 	private Boolean populateExistingBaseFields;
@@ -84,7 +85,8 @@ public abstract class RangerBaseModelService<T extends XXDBBase, V extends Range
 	protected final String countQueryStr;
 	protected String queryStr;
 
-	BaseDao<T> entityDao;
+	@Autowired
+	protected BaseDao<T> entityDao;
 
 	@SuppressWarnings("unchecked")
 	public RangerBaseModelService() {
@@ -139,12 +141,9 @@ public abstract class RangerBaseModelService<T extends XXDBBase, V extends Range
 		return null;
 	}
 
-	@SuppressWarnings("unchecked")
 	protected BaseDao<T> getDao() {
 		if (entityDao == null) {
-			entityDao = (BaseDao<T>) daoMgr.getDaoForClassName(tEntityClass
-					.getSimpleName());
-
+			throw new NullPointerException("entityDao is not injected by Spring!");
 		}
 		return entityDao;
 	}
@@ -228,6 +227,13 @@ public abstract class RangerBaseModelService<T extends XXDBBase, V extends Range
 		return vObj;
 	}
 
+	public V create(V vObj, boolean flush) {
+		T resource = preCreate(vObj);
+		resource = getDao().create(resource, flush);
+		vObj = postCreate(resource);
+		return vObj;
+	}
+
 	public V read(Long id) {
 		T resource = getDao().getById(id);
 		if (resource == null) {
@@ -262,6 +268,30 @@ public abstract class RangerBaseModelService<T extends XXDBBase, V extends Range
 	}
 	
 	public boolean delete(V vObj) {
+		boolean result = false;
+		Long id = vObj.getId();
+		T resource = preDelete(id);
+		if (resource == null) {
+			throw restErrorUtil.createRESTException(
+					tEntityClass.getSimpleName() + " not found",
+					MessageEnums.DATA_NOT_FOUND, id, null,
+					tEntityClass.getSimpleName() + ":" + id);
+		}
+		try {
+			result = getDao().remove(resource);
+		} catch (Exception e) {
+			LOG.error("Error deleting " + tEntityClass.getSimpleName()
+					+ ". Id=" + id, e);
+
+			throw restErrorUtil.createRESTException(
+					tEntityClass.getSimpleName() + " can't be deleted",
+					MessageEnums.OPER_NOT_ALLOWED_FOR_STATE, id, null, "" + id
+							+ ", error=" + e.getMessage());
+		}
+		return result;
+	}
+
+	public boolean delete(V vObj, boolean flush) {
 		boolean result = false;
 		Long id = vObj.getId();
 		T resource = preDelete(id);
@@ -384,14 +414,9 @@ public abstract class RangerBaseModelService<T extends XXDBBase, V extends Range
 		
 		EntityManager em = getDao().getEntityManager();
 		Query query = searchUtil.createSearchQuery(em, searchString, sortString, searchCriteria,
-				searchFieldList, getClassType(), false, isCountQuery);
+				searchFieldList, false, isCountQuery);
 		return query;
 	}
-	
-	protected int getClassType() {
-		return bizUtil.getClassType(tEntityClass);
-	}
-	
 
 	protected String getUserScreenName(Long userId) {
 		String ret = null;

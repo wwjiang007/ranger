@@ -24,14 +24,14 @@
     <parent>
         <groupId>org.apache.ranger</groupId>
         <artifactId>ranger</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>3.0.0-SNAPSHOT</version>
         <relativePath>..</relativePath>
     </parent>
     <dependencies>
         <dependency>
             <groupId>net.sf.jopt-simple</groupId>
             <artifactId>jopt-simple</artifactId>
-            <version>3.2</version>
+            <version>${jopt-simple.version}</version>
         </dependency>
     </dependencies>
 </project>

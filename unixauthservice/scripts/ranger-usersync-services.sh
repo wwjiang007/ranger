@@ -45,6 +45,7 @@ realScriptPath=`readlink -f $0`
 realScriptDir=`dirname $realScriptPath`
 cd $realScriptDir
 cdir=`pwd`
+ranger_usersync_max_heap_size=1g
 
 for custom_env_script in `find ${cdir}/conf/ -name "ranger-usersync-env*"`; do
         if [ -f $custom_env_script ]; then
@@ -78,6 +79,8 @@ fi
 INSTALL_ARGS="${cdir}/install.properties"
 RANGER_BASE_DIR=$(getInstallProperty 'ranger_base_dir')
 
+JAVA_OPTS=" ${JAVA_OPTS} -XX:MetaspaceSize=100m -XX:MaxMetaspaceSize=200m -Xmx${ranger_usersync_max_heap_size} -Xms1g "
+
 if [ "${action}" == "START" ]; then
 
 	#Export JAVA_HOME
@@ -92,7 +95,7 @@ if [ "${action}" == "START" ]; then
 	cp="${cdir}/dist/*:${cdir}/lib/*:${cdir}/conf:${RANGER_USERSYNC_HADOOP_CONF_DIR}/*"
 
 	cd ${cdir}
-	umask 0077
+	
 	if [ -z "${logdir}" ]; then 
 	    logdir=${cdir}/logs
 	fi
@@ -129,18 +132,43 @@ if [ "${action}" == "START" ]; then
 elif [ "${action}" == "STOP" ]; then
 	WAIT_TIME_FOR_SHUTDOWN=2
 	NR_ITER_FOR_SHUTDOWN_CHECK=15
-	if [ -f $pidf ]; then
+	if [ -f "$pidf" ] ; then
 		pid=`cat $pidf` > /dev/null 2>&1
-		kill -9 $pid > /dev/null 2>&1
-		sleep 1 #Give kill -9 sometime to "kill"
-		if ps -p $pid > /dev/null; then
-			echo "Wow, even kill -9 failed, giving up! Sorry.."
-		else
-			rm -f $pidf
-			echo "Apache Ranger Usersync Service [pid = ${pid}] has been stopped."
-		fi
+		echo "Getting pid from $pidf .."
 	else
-		echo "Apache Ranger Usersync Service not running"
+		pid=`ps -ef | grep java | grep -- '-Dproc_rangerusersync' | grep -v grep | awk '{ print $2 }'`
+		if [ "$pid" != "" ];then
+			echo "pid file($pidf) not present, taking pid from \'ps\' command.."
+		else
+			echo "Apache Ranger Usersync Service is not running"
+			return	
+		fi
+	fi
+	echo "Found Apache Ranger Usersync Service with pid $pid, Stopping it..."
+	kill -15 $pid
+	for ((i=0; i<$NR_ITER_FOR_SHUTDOWN_CHECK; i++))
+	do
+		sleep $WAIT_TIME_FOR_SHUTDOWN
+		if ps -p $pid > /dev/null ; then
+			echo "Shutdown in progress. Will check after $WAIT_TIME_FOR_SHUTDOWN secs again.."
+			continue;
+		else
+			break;
+		fi
+	done
+	# if process is still around, use kill -9
+	if ps -p $pid > /dev/null ; then
+		echo "Initial kill failed, getting serious now..."
+		kill -9 $pid
+	fi
+	sleep 1 #give kill -9  sometime to "kill"
+	if ps -p $pid > /dev/null ; then
+		echo "Wow, even kill -9 failed, giving up! Sorry.."
+		exit 1
+
+	else
+		rm -rf $pidf
+		echo "Apache Ranger Usersync Service with pid ${pid} has been stopped."
 	fi
 	exit;
 	

@@ -27,28 +27,43 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.conf.Configuration;
 import org.apache.ranger.audit.model.AuthzAuditEvent;
-import org.apache.ranger.audit.provider.AuditProviderFactory;
+import org.apache.ranger.audit.provider.AuditHandler;
 import org.apache.ranger.audit.provider.MiscUtil;
-import org.apache.ranger.authorization.hadoop.config.RangerConfiguration;
 import org.apache.ranger.authorization.hadoop.constants.RangerHadoopConstants;
 import org.apache.ranger.plugin.contextenricher.RangerTagForEval;
 import org.apache.ranger.plugin.policyengine.*;
+import org.apache.ranger.plugin.service.RangerBasePlugin;
+import org.apache.ranger.plugin.util.JsonUtilsV2;
 import org.apache.ranger.plugin.util.RangerAccessRequestUtil;
-import org.codehaus.jackson.map.ObjectMapper;
+import org.apache.ranger.plugin.util.RangerRESTUtils;
 
 
 public class RangerDefaultAuditHandler implements RangerAccessResultProcessor {
-
-	protected static final String RangerModuleName =  RangerConfiguration.getInstance().get(RangerHadoopConstants.AUDITLOG_RANGER_MODULE_ACL_NAME_PROP , RangerHadoopConstants.DEFAULT_RANGER_MODULE_ACL_NAME);
-
 	private static final Log LOG = LogFactory.getLog(RangerDefaultAuditHandler.class);
-	static long sequenceNumber;
 
-	private static String UUID 	= MiscUtil.generateUniqueId();
-	private static AtomicInteger  counter =  new AtomicInteger(0);
+	private static final String       CONF_AUDIT_ID_STRICT_UUID     = "xasecure.audit.auditid.strict.uuid";
+	private static final boolean      DEFAULT_AUDIT_ID_STRICT_UUID  = false;
+
+
+	private   final boolean         auditIdStrictUUID;
+	protected final String          moduleName;
+	private   final RangerRESTUtils restUtils      = new RangerRESTUtils();
+	private         long            sequenceNumber = 0;
+	private         String          UUID           = MiscUtil.generateUniqueId();
+	private         AtomicInteger   counter        =  new AtomicInteger(0);
+
+
 
 	public RangerDefaultAuditHandler() {
+		auditIdStrictUUID = DEFAULT_AUDIT_ID_STRICT_UUID;
+		moduleName        = RangerHadoopConstants.DEFAULT_RANGER_MODULE_ACL_NAME;
+	}
+
+	public RangerDefaultAuditHandler(Configuration config) {
+		auditIdStrictUUID = config.getBoolean(CONF_AUDIT_ID_STRICT_UUID, DEFAULT_AUDIT_ID_STRICT_UUID);
+		moduleName        = config.get(RangerHadoopConstants.AUDITLOG_RANGER_MODULE_ACL_NAME_PROP , RangerHadoopConstants.DEFAULT_RANGER_MODULE_ACL_NAME);
 	}
 
 	@Override
@@ -106,7 +121,7 @@ public class RangerDefaultAuditHandler implements RangerAccessResultProcessor {
 			ret.setResourceType(resourceType);
 			ret.setResourcePath(resourcePath);
 			ret.setRequestData(request.getRequestData());
-			ret.setEventTime(request.getAccessTime());
+			ret.setEventTime(request.getAccessTime() != null ? request.getAccessTime() : new Date());
 			ret.setUser(request.getUser());
 			ret.setAction(request.getAccessType());
 			ret.setAccessResult((short) (result.getIsAllowed() ? 1 : 0));
@@ -115,14 +130,20 @@ public class RangerDefaultAuditHandler implements RangerAccessResultProcessor {
 			ret.setClientIP(request.getClientIPAddress());
 			ret.setClientType(request.getClientType());
 			ret.setSessionId(request.getSessionId());
-			ret.setAclEnforcer(RangerModuleName);
+			ret.setAclEnforcer(moduleName);
 			Set<String> tags = getTags(request);
 			if (tags != null) {
 				ret.setTags(tags);
 			}
 			ret.setAdditionalInfo(getAdditionalInfo(request));
 			ret.setClusterName(request.getClusterName());
+			ret.setZoneName(result.getZoneName());
+			ret.setAgentHostname(restUtils.getAgentHostname());
+			ret.setPolicyVersion(result.getPolicyVersion());
+
 			populateDefaults(ret);
+
+			result.setAuditLogId(ret.getEventId());
 		}
 
 		if(LOG.isDebugEnabled()) {
@@ -170,7 +191,9 @@ public class RangerDefaultAuditHandler implements RangerAccessResultProcessor {
 
 		if(auditEvent != null) {
 			populateDefaults(auditEvent);
-                        if(!AuditProviderFactory.getAuditProvider().log(auditEvent)) {
+
+			AuditHandler auditProvider = RangerBasePlugin.getAuditProvider(auditEvent.getRepositoryName());
+			if (auditProvider == null || !auditProvider.log(auditEvent)) {
 				MiscUtil.logErrorMessageByInterval(LOG, "fail to log audit event " + auditEvent);
 			}
 		}
@@ -195,6 +218,10 @@ public class RangerDefaultAuditHandler implements RangerAccessResultProcessor {
 
 		if (auditEvent.getEventId() == null || auditEvent.getEventId().isEmpty()) {
 			auditEvent.setEventId(generateNextAuditEventId());
+		}
+
+		if (auditEvent.getAgentId() == null) {
+			auditEvent.setAgentId(MiscUtil.getApplicationType());
 		}
 
 		auditEvent.setSeqNum(sequenceNumber++);
@@ -247,23 +274,33 @@ public class RangerDefaultAuditHandler implements RangerAccessResultProcessor {
 	}
 
 	private String generateNextAuditEventId() {
-      int nextId = counter.getAndIncrement();
+		final String ret;
 
-      if(nextId == Integer.MAX_VALUE) {
-        // reset UUID and counter
-        UUID = MiscUtil.generateUniqueId();
-        counter = new AtomicInteger(0);
-      }
+		if (auditIdStrictUUID) {
+			ret = MiscUtil.generateGuid();
+		} else {
+			int nextId = counter.getAndIncrement();
 
-      return UUID + "-" + Integer.toString(nextId);
+			if (nextId == Integer.MAX_VALUE) {
+				// reset UUID and counter
+				UUID    = MiscUtil.generateUniqueId();
+				counter = new AtomicInteger(0);
+			}
+
+			ret = UUID + "-" + Integer.toString(nextId);
+		}
+
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("generateNextAuditEventId(): " + ret);
+		}
+
+		return ret;
 	 }
 
 	private String writeObjectAsString(Serializable obj) {
-		ObjectMapper mapper = new ObjectMapper();
-
 		String jsonStr = StringUtils.EMPTY;
 		try {
-			jsonStr = mapper.writeValueAsString(obj);
+			jsonStr = JsonUtilsV2.objToJson(obj);
 		} catch (Exception e) {
 			LOG.error("Cannot create JSON string for object:[" + obj + "]", e);
 		}

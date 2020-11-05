@@ -52,6 +52,8 @@ public class RangerAPIList {
 	public static final String GET_ACCESS_LOGS = "AssetREST.getAccessLogs";
 	public static final String GRANT_PERMISSION = "AssetREST.grantPermission";
 	public static final String REVOKE_PERMISSION = "AssetREST.revokePermission";
+	public static final String GET_UGSYNC_AUDITS = "AssetREST.getUgsyncAudits";
+	public static final String GET_UGSYNC_AUDITS_BY_SYNCSOURCE = "AssetREST.getUgsyncAuditsBySyncSource";
 
 	/**
 	 * List of APIs for ServiceREST
@@ -86,7 +88,7 @@ public class RangerAPIList {
 	public static final String GET_POLICY_VERSION_LIST = "ServiceREST.getPolicyVersionList";
 	public static final String GET_POLICY_FOR_VERSION_NO = "ServiceREST.getPolicyForVersionNumber";
 	public static final String GET_PLUGINS_INFO = "ServiceREST.getPluginsInfo";
-
+        public static final String GET_METRICS_BY_TYPE = "ServiceREST.getMetricByType";
 
 
 	/**
@@ -148,6 +150,8 @@ public class RangerAPIList {
 	public static final String MODIFY_USER_VISIBILITY = "XUserREST.modifyUserVisibility";
 	public static final String DELETE_X_USER = "XUserREST.deleteXUser";
 	public static final String SEARCH_X_USERS = "XUserREST.searchXUsers";
+	public static final String GET_USERS_LOOKUP = "XUserREST.getUsersLookup";
+	public static final String GET_GROUPS_LOOKUP = "XUserREST.getGroupsLookup";
 	public static final String COUNT_X_USERS = "XUserREST.countXUsers";
 	public static final String GET_X_GROUP_USER = "XUserREST.getXGroupUser";
 	public static final String CREATE_X_GROUP_USER = "XUserREST.createXGroupUser";

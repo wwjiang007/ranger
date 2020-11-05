@@ -30,6 +30,7 @@ import java.util.Map.Entry;
 import org.apache.ranger.common.AppConstants;
 import org.apache.ranger.common.JSONUtil;
 import org.apache.ranger.common.MessageEnums;
+import org.apache.ranger.plugin.util.JsonUtilsV2;
 import org.apache.ranger.plugin.util.PasswordUtils;
 import org.apache.ranger.common.PropertiesUtil;
 import org.apache.ranger.common.SearchField;
@@ -41,7 +42,6 @@ import org.apache.ranger.entity.XXAsset;
 import org.apache.ranger.entity.XXTrxLog;
 import org.apache.ranger.util.RangerEnumUtil;
 import org.apache.ranger.view.VXAsset;
-import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.type.TypeReference;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
@@ -113,10 +113,11 @@ public class XAssetService extends XAssetServiceBase<XXAsset, VXAsset> {
 	@Override
 	protected XXAsset mapViewToEntityBean(VXAsset vObj, XXAsset mObj,
 			int OPERATION_CONTEXT) {
+	    XXAsset ret = null;
         if (vObj != null && mObj != null) {
             String oldConfig = mObj.getConfig();
-            super.mapViewToEntityBean(vObj, mObj, OPERATION_CONTEXT);
-            String config = vObj.getConfig();
+            ret = super.mapViewToEntityBean(vObj, mObj, OPERATION_CONTEXT);
+            String config = ret.getConfig();
             if (config != null && !config.isEmpty()) {
                 Map<String, String> configMap = jsonUtil.jsonToMap(config);
                 Entry<String, String> passwordEntry = getPasswordEntry(configMap);
@@ -140,15 +141,15 @@ public class XAssetService extends XAssetServiceBase<XXAsset, VXAsset> {
                     }
                 }
             }
-            mObj.setConfig(config);
+            ret.setConfig(config);
         }
-		return mObj;
+		return ret;
 	}
 
 	@Override
 	protected VXAsset mapEntityToViewBean(VXAsset vObj, XXAsset mObj) {
-		vObj = super.mapEntityToViewBean(vObj, mObj);
-		String config = vObj.getConfig();
+		VXAsset ret = super.mapEntityToViewBean(vObj, mObj);
+		String config = ret.getConfig();
 		if (config != null && !config.isEmpty()) {
 			Map<String, String> configMap = jsonUtil.jsonToMap(config);
 			Entry<String, String> passwordEntry = getPasswordEntry(configMap);
@@ -157,8 +158,8 @@ public class XAssetService extends XAssetServiceBase<XXAsset, VXAsset> {
 			}
 			config = jsonUtil.readMapToString(configMap);
 		}
-		vObj.setConfig(config);
-		return vObj;
+		ret.setConfig(config);
+		return ret;
 	}
 	
 	private Entry<String, String> getPasswordEntry(Map<String, String> configMap) {
@@ -188,11 +189,10 @@ public class XAssetService extends XAssetServiceBase<XXAsset, VXAsset> {
 	public void validateConfig(VXAsset vObj) {
 		HashMap<String, Object> configrationMap = null;
 		if (vObj.getAssetType() == AppConstants.ASSET_HDFS) {
-			ObjectMapper objectMapper = new ObjectMapper();
 			TypeReference<HashMap<String, Object>> typeRef = new TypeReference
 					<HashMap<String, Object>>() {};
 			try {
-				configrationMap = objectMapper.readValue(vObj.getConfig(),
+				configrationMap = JsonUtilsV2.getMapper().readValue(vObj.getConfig(),
 						typeRef);
 			} catch (Exception e) {
 				logger.error("Error in config json", e);

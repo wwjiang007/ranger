@@ -20,7 +20,7 @@ package org.apache.ranger.authorization.hbase;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.hadoop.hbase.HRegionInfo;
+import org.apache.hadoop.hbase.client.RegionInfo;
 import org.apache.hadoop.hbase.coprocessor.RegionCoprocessorEnvironment;
 import org.apache.hadoop.hbase.security.access.Permission.Action;
 import org.apache.hadoop.hbase.util.Bytes;
@@ -39,6 +39,8 @@ public class HbaseAuthUtilsImpl implements HbaseAuthUtils {
 				return ACCESS_TYPE_CREATE;
 			case ADMIN:
 				return ACCESS_TYPE_ADMIN;
+			case EXEC:
+				return ACCESS_TYPE_EXECUTE;
 			default:
 				return action.name().toLowerCase();
 		}
@@ -55,8 +57,13 @@ public class HbaseAuthUtilsImpl implements HbaseAuthUtils {
 	}
 
 	@Override
+	public boolean isExecuteAccess(String access) {
+		return getAccess(Action.EXEC).equals(access);
+	}
+
+	@Override
 	public String getTable(RegionCoprocessorEnvironment regionServerEnv) {
-		HRegionInfo hri = regionServerEnv.getRegion().getRegionInfo();
+		RegionInfo hri = regionServerEnv.getRegion().getRegionInfo();
 		byte[] tableName = hri.getTable().getName();
 		String tableNameStr = Bytes.toString(tableName);
 		if (LOG.isDebugEnabled()) {
@@ -64,5 +71,23 @@ public class HbaseAuthUtilsImpl implements HbaseAuthUtils {
 			LOG.debug(message);
 		}
 		return tableNameStr;
+	}
+
+	@Override
+	public String getActionName(String access) {
+		switch(access) {
+			case ACCESS_TYPE_READ:
+				return Action.READ.name();
+			case ACCESS_TYPE_WRITE:
+				return Action.WRITE.name();
+			case ACCESS_TYPE_CREATE:
+				return Action.CREATE.name();
+			case ACCESS_TYPE_ADMIN:
+				return Action.ADMIN.name();
+			case ACCESS_TYPE_EXECUTE:
+				return Action.EXEC.name();
+			default:
+				return access.toUpperCase();
+		}
 	}
 }

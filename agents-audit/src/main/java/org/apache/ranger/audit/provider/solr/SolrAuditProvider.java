@@ -19,6 +19,7 @@
 
 package org.apache.ranger.audit.provider.solr;
 
+import java.io.IOException;
 import java.security.PrivilegedExceptionAction;
 import java.util.Collection;
 import java.util.Collections;
@@ -97,18 +98,16 @@ public class SolrAuditProvider extends AuditDestination {
 						solrClient = MiscUtil.executePrivilegedAction(new PrivilegedExceptionAction<SolrClient>() {
 							@Override
 							public SolrClient run()  throws Exception {
-								SolrClient solrClient = new HttpSolrClient(solrURL);
-								return solrClient;
+								HttpSolrClient.Builder builder = new HttpSolrClient.Builder();
+								builder.withBaseSolrUrl(solrURL);
+								builder.allowCompression(true);
+								builder.withConnectionTimeout(1000);
+								HttpSolrClient httpSolrClient = builder.build();
+								return httpSolrClient;
 							};
 						});
 
 						me = solrClient;
-						if (solrClient instanceof HttpSolrClient) {
-							HttpSolrClient httpSolrClient = (HttpSolrClient) solrClient;
-							httpSolrClient.setAllowCompression(true);
-							httpSolrClient.setConnectionTimeout(1000);
-							// solrClient.setSoTimeout(10000);
-						}
 					} catch (Throwable t) {
 						LOG.fatal("Can't connect to Solr server. URL="
 								+ solrURL, t);
@@ -231,8 +230,16 @@ public class SolrAuditProvider extends AuditDestination {
 	 */
 	@Override
 	public void stop() {
-		// TODO Auto-generated method stub
-
+		LOG.info("SolrAuditProvider.stop() called..");
+		try {
+			if (solrClient != null) {
+				solrClient.close();
+			}
+		} catch (IOException ioe) {
+			LOG.error("Error while stopping slor!", ioe);
+		} finally {
+			solrClient = null;
+		}
 	}
 
 	/*
@@ -284,6 +291,8 @@ public class SolrAuditProvider extends AuditDestination {
 		doc.addField("evtTime", auditEvent.getEventTime());
 		doc.addField("tags", auditEvent.getTags());
 		doc.addField("cluster", auditEvent.getClusterName());
+		doc.addField("zone", auditEvent.getZoneName());
+		doc.addField("agentHost", auditEvent.getAgentHostname());
 		return doc;
 	}
 	

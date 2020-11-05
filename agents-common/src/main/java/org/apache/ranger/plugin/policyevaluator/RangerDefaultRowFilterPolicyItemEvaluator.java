@@ -18,12 +18,13 @@
  */
 package org.apache.ranger.plugin.policyevaluator;
 
-
 import org.apache.ranger.plugin.model.RangerPolicy;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerPolicyItemRowFilterInfo;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerRowFilterPolicyItem;
 import org.apache.ranger.plugin.model.RangerServiceDef;
+import org.apache.ranger.plugin.policyengine.RangerAccessResult;
 import org.apache.ranger.plugin.policyengine.RangerPolicyEngineOptions;
+import org.apache.ranger.plugin.policyresourcematcher.RangerPolicyResourceMatcher;
 
 
 public class RangerDefaultRowFilterPolicyItemEvaluator extends RangerDefaultPolicyItemEvaluator implements RangerRowFilterPolicyItemEvaluator {
@@ -38,5 +39,15 @@ public class RangerDefaultRowFilterPolicyItemEvaluator extends RangerDefaultPoli
 	@Override
 	public RangerPolicyItemRowFilterInfo getRowFilterInfo() {
 		return rowFilterPolicyItem == null ? null : rowFilterPolicyItem.getRowFilterInfo();
+	}
+
+	@Override
+	public void updateAccessResult(RangerPolicyEvaluator policyEvaluator, RangerAccessResult result, RangerPolicyResourceMatcher.MatchType matchType) {
+		RangerPolicyItemRowFilterInfo rowFilterInfo = getRowFilterInfo();
+
+		if (result.getFilterExpr() == null && rowFilterInfo != null) {
+			result.setFilterExpr(rowFilterInfo.getFilterExpr());
+			policyEvaluator.updateAccessResult(result, matchType, true, getComments());
+		}
 	}
 }

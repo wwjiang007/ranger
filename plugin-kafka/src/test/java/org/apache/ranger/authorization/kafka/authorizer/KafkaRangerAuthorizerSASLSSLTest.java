@@ -27,8 +27,6 @@ import java.util.Arrays;
 import java.util.Properties;
 import java.util.concurrent.Future;
 
-import org.I0Itec.zkclient.ZkClient;
-import org.I0Itec.zkclient.ZkConnection;
 import org.apache.commons.io.FileUtils;
 import org.apache.curator.test.TestingServer;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -44,12 +42,8 @@ import org.apache.kafka.common.config.SslConfigs;
 import org.junit.Assert;
 import org.junit.Test;
 
-import kafka.admin.AdminUtils;
-import kafka.admin.RackAwareMode;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServerStartable;
-import kafka.utils.ZKStringSerializer$;
-import kafka.utils.ZkUtils;
 
 /**
  * A simple test that starts a Kafka broker, creates "test" and "dev" topics, sends a message to them and consumes it. We also plug in a 
@@ -65,6 +59,7 @@ import kafka.utils.ZkUtils;
  * 
  * Clients and services authenticate to Kafka using the SASL SSL protocol as part of this test.
  */
+@org.junit.Ignore("Causing JVM to abort on some platforms")
 public class KafkaRangerAuthorizerSASLSSLTest {
     
     private static KafkaServerStartable kafkaServer;
@@ -126,7 +121,10 @@ public class KafkaRangerAuthorizerSASLSSLTest {
         props.put("security.inter.broker.protocol", "SASL_SSL");
         props.put("sasl.enabled.mechanisms", "PLAIN");
         props.put("sasl.mechanism.inter.broker.protocol", "PLAIN");
-        
+
+        props.put("offsets.topic.replication.factor", (short) 1);
+        props.put("offsets.topic.num.partitions", 1);
+
         props.put("ssl.keystore.location", serviceKeystorePath);
         props.put("ssl.keystore.password", "sspass");
         props.put("ssl.key.password", "skpass");
@@ -144,11 +142,7 @@ public class KafkaRangerAuthorizerSASLSSLTest {
         kafkaServer.startup();
 
         // Create some topics
-        ZkClient zkClient = new ZkClient(zkServer.getConnectString(), 30000, 30000, ZKStringSerializer$.MODULE$);
-
-        final ZkUtils zkUtils = new ZkUtils(zkClient, new ZkConnection(zkServer.getConnectString()), false);
-        AdminUtils.createTopic(zkUtils, "test", 1, 1, new Properties(), RackAwareMode.Enforced$.MODULE$);
-        AdminUtils.createTopic(zkUtils, "dev", 1, 1, new Properties(), RackAwareMode.Enforced$.MODULE$);
+        KafkaTestUtils.createSomeTopics(zkServer.getConnectString());
     }
     
     @org.junit.AfterClass

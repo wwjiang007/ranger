@@ -50,25 +50,31 @@ define(function(require) {
 				text : 'h.repositoryManager',
 				title: 'h.repositoryManager'
 			},
-			ServiceManager :{
-				href : '#!/policymanager/resource', 
-				text : 'h.serviceManager',
-				title: 'h.serviceManager'
+			ServiceManager : function(options){
+				var textVal = 'h.serviceManager';
+				return {
+					href : '#!/policymanager/resource',
+					text :  !_.isEmpty(options) ? 'Service Manager : ' + options + ' zone' : textVal,
+					title : !_.isEmpty(options) ? 'Service Manager : ' + options + ' zone' : textVal,
+				}
 			},
-			TagBasedServiceManager :{
-				href : '#!/policymanager/tag', 
-				text : 'h.serviceManager',
-				title: 'h.serviceManager'
+			TagBasedServiceManager : function(options){
+				var textVal = 'h.serviceManager';
+				return{
+					href : '#!/policymanager/tag',
+					text : !_.isEmpty(options) ? 'Service Manager : ' + options + ' zone' : textVal,
+					title: !_.isEmpty(options) ? 'Service Manager : ' + options + ' zone' : textVal,
+				}
 			},
 			Users : { 
 				href : '#!/users/usertab',
-				text : 'h.usersOrGroups',
-				title: 'h.usersOrGroups'
+                                text : 'h.usersOrGroupsOrRoles',
+                                title: 'h.usersOrGroupsOrRoles'
 			},
 			Groups : { 
 				href : '#!/users/grouptab',
-				text : 'h.usersOrGroups',
-				title: 'h.usersOrGroups'
+                                text : 'h.usersOrGroupsOrRoles',
+                                title: 'h.usersOrGroupsOrRoles'
 			},
 			Kms : { 
 				href : '#!/kms/keys/new/manage/service',
@@ -209,8 +215,8 @@ define(function(require) {
 				}
 				return {
 					href : href,
-					text : options.model.get('name') +' Policies',
-					title: options.model.get('name') +' Policies'
+                    text : options.model.get('displayName') +' Policies',
+                    title: options.model.get('displayName') +' Policies'
 				};
 			},
 			ManageHivePolicies : function(options){
@@ -258,7 +264,7 @@ define(function(require) {
                 };
 			},
 			ModulePermissions :{
-				href : '#!/permissions',
+                                href : '#!/permissions/models',
 				text : 'h.permissions',
 				title: 'h.permissions'
 			},
@@ -294,7 +300,45 @@ define(function(require) {
                     text : 'h.kms',
                     title: 'h.kms'
                 };
-			}
+            },
+            SecurityZone :{
+                href : '#!/zones/zone/list',
+                text : 'h.securityZone',
+                title: 'h.securityZone'
+            },
+            ZoneCreate : {
+                href : '#!/zones/create',
+                text : 'h.zoneCreate',
+                title: 'h.zoneCreate'
+            },
+            ZoneEdit : function(options){
+                return {
+                    href : 'javascript:void(0);',
+                    text : 'h.zoneEdit',
+                    title: 'h.zoneEdit'
+                };
+            },
+            ZoneName: function(options) {
+                return {
+                    href: 'javascript:void(0)',
+                    text: 'Zone Name : ' + options
+                }
+            },
+            Roles : {
+                href : '#!/users/roletab',
+                text : 'h.usersOrGroupsOrRoles',
+                title: 'h.usersOrGroupsOrRoles',
+            },
+            RoleCreate : {
+                href : '#!/role/create',
+                text : 'lbl.roleCreate',
+                title: 'lbl.roleCreate',
+            },
+            RoleEdit : {
+                href : 'javascript:void(0);',
+                text : 'lbl.roleEdit',
+                title: 'lbl.roleEdit',
+            },
 	};      
        
 	

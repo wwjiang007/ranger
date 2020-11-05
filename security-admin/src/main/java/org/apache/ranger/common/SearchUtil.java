@@ -208,6 +208,18 @@ public class SearchUtil {
 		return value;
 	}
 
+	public String extractRoleString(HttpServletRequest request,
+			SearchCriteria searchCriteria, String paramName,
+			String userFriendlyParamName, String regEx) {
+		String value = extractString(request, searchCriteria, paramName, userFriendlyParamName, regEx);
+		if(!RangerConstants.VALID_USER_ROLE_LIST.contains(value)) {
+			restErrorUtil.validateString(value, regEx, "Invalid value for "
+					+ userFriendlyParamName,
+					MessageEnums.INVALID_INPUT_DATA, null, paramName);
+		}
+		return value;
+	}
+
 	public List<Integer> extractEnum(HttpServletRequest request,
 			SearchCriteria searchCriteria, String paramName,
 			String userFriendlyParamName, String listName, int maxValue) {
@@ -690,7 +702,7 @@ public class SearchUtil {
 
 	public Query createSearchQuery(EntityManager em, String queryStr, String sortClause,
 			SearchCriteria searchCriteria, List<SearchField> searchFields,
-			int objectClassType, boolean hasAttributes, boolean isCountQuery) {
+			boolean hasAttributes, boolean isCountQuery) {
 
 		// [1] Build where clause
 		StringBuilder queryClause = buildWhereClause(searchCriteria,
@@ -724,13 +736,6 @@ public class SearchUtil {
 		}
 
 		return query;
-	}
-
-	public Query createSearchQuery(EntityManager em, String queryStr, String sortClause,
-			SearchCriteria searchCriteria, List<SearchField> searchFields,
-			boolean isCountQuery) {
-		return createSearchQuery(em, queryStr, sortClause, searchCriteria,
-				searchFields, -1, false, isCountQuery);
 	}
 	
 	public List<Integer> extractIntList(HttpServletRequest request,

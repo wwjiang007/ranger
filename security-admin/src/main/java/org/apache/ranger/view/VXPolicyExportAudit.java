@@ -65,6 +65,10 @@ public class VXPolicyExportAudit extends VXDataObject implements java.io.Seriali
 	 */
 	protected String repositoryName;
 	/**
+	 * Repository Display Name
+	 */
+	protected String repositoryDisplayName;
+	/**
 	 * JSON of the policies exported
 	 */
 	protected String exportedJson;
@@ -76,6 +80,10 @@ public class VXPolicyExportAudit extends VXDataObject implements java.io.Seriali
 	protected String syncStatus;
 	
 	protected String clusterName;
+
+	protected String zoneName;
+
+	protected Long policyVersion;
 
 	/**
 	 * Default constructor. This will set all the attributes to default value.
@@ -169,6 +177,23 @@ public class VXPolicyExportAudit extends VXDataObject implements java.io.Seriali
 	}
 
 	/**
+	 * This method sets the value to the member attribute <b>repositoryDisplayName</b>.
+	 * You cannot set null to the attribute.
+	 * @param repositoryDisplayName Value to set member attribute <b>repositoryDisplayName</b>
+	 */
+	public void setRepositoryDisplayName(String repositoryDisplayName) {
+		this.repositoryDisplayName = repositoryDisplayName;
+	}
+
+	/**
+	 * Returns the value for the member attribute <b>repositoryDisplayName</b>
+	 * @return String - value of member attribute <b>repositoryDisplayName</b>.
+	 */
+	public String getRepositoryDisplayName() {
+		return repositoryDisplayName;
+	}
+
+	/**
 	 * This method sets the value to the member attribute <b>exportedJson</b>.
 	 * You cannot set null to the attribute.
 	 * @param exportedJson Value to set member attribute <b>exportedJson</b>
@@ -219,6 +244,21 @@ public class VXPolicyExportAudit extends VXDataObject implements java.io.Seriali
 		this.clusterName = clusterName;
 	}
 
+	public String getZoneName() {
+		return zoneName;
+	}
+
+	public void setZoneName(String zoneName) {
+		this.zoneName = zoneName;
+	}
+
+	public Long getPolicyVersion() {
+		return policyVersion;
+	}
+
+	public void setPolicyVersion(Long policyVersion) {
+		this.policyVersion = policyVersion;
+	}
 
 	@Override
 	public int getMyClassType( ) {
@@ -237,10 +277,13 @@ public class VXPolicyExportAudit extends VXDataObject implements java.io.Seriali
 		str += "requestedEpoch={" + requestedEpoch + "} ";
 		str += "lastUpdated={" + lastUpdated + "} ";
 		str += "repositoryName={" + repositoryName + "} ";
+		str += "repositoryDisplayName={" + repositoryDisplayName + "} ";
 		str += "exportedJson={" + exportedJson + "} ";
 		str += "httpRetCode={" + httpRetCode + "} ";
 		str += "syncStatus={" + syncStatus + "} ";
 		str += "clusterName={" + clusterName + "} ";
+		str += "zoneName={" + zoneName + "}";
+		str += "policyVersion={" + policyVersion + "}";
 		str += "}";
 		return str;
 	}

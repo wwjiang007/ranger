@@ -17,18 +17,23 @@
 
 <h3 class="wrap-header bold"> {{tt 'lbl.keyManagement'}} </h3>
 <div class="wrap non-collapsible m-height ">
-	<fieldset>
-		<p class="formHeader" style="padding: 12px 4px;">
-			Select Service : <input type="text" name="serviceName" data-js="serviceName" style="margin-left: 17px;font-weight: normal;font-size: 13px;" >
-		</p>
-	</fieldset>
-	<div style=" margin-top: 14px; ">
-		<div class="span9">
-			<div class="visual_search"></div>
-		</div>
-		<div class="clearfix">
-			<a href="javascript:;" class="btn btn-primary btn-right" type="button" data-id="addNewKey"> {{tt 'lbl.addNewKey'}} </a>
-			<a href="#!/group/create" class="btn btn-primary btn-right" type="button" data-id="addNewGroup" style="display:none;"> {{tt 'lbl.addNewZone'}} </a>
+  {{#if setOldUi}}
+    <fieldset>
+  		<p class="formHeader" style="padding: 12px 4px;">
+  			Select Service : <input type="text" name="serviceName" data-js="serviceName" style="font-weight: normal;font-size: 13px;" >
+  		</p>
+  	</fieldset>
+  {{/if}}
+        <div>
+                <div class="row margin-bottom-11">
+                        <div class="col-md-10">
+                <div class="visual_search"></div>
+            </div>
+        {{#isKeyadmin}}
+            <div class="col-md-2">
+                <a href="javascript:;" class="btn btn-primary btn-right" type="button" data-id="addNewKey"> {{tt 'lbl.addNewKey'}} </a>
+            </div>
+        {{/isKeyadmin}}
 		</div>
 		<div data-id="r_tableList" class="clickable">
           <b class="_prevNav"></b>

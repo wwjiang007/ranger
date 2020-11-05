@@ -23,34 +23,23 @@ import java.nio.file.Files;
 import java.util.List;
 
 import org.apache.commons.lang.StringUtils;
-import org.apache.ranger.admin.client.RangerAdminClient;
-import org.apache.ranger.authorization.hadoop.config.RangerConfiguration;
-import org.apache.ranger.plugin.util.GrantRevokeRequest;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.ranger.admin.client.AbstractRangerAdminClient;
 import org.apache.ranger.plugin.util.ServicePolicies;
 import org.apache.ranger.plugin.util.ServiceTags;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
 
 /**
  * A test implementation of the RangerAdminClient interface that just reads policies in from a file and returns them
  */
-public class RangerAdminClientImpl implements RangerAdminClient {
-    private static final Logger LOG = LoggerFactory.getLogger(RangerAdminClientImpl.class);
+public class RangerAdminClientImpl extends AbstractRangerAdminClient {
     private final static String cacheFilename = "hdfs-policies.json";
     private final static String tagFilename = "hdfs-policies-tag.json";
-    private Gson gson;
+    private String hdfsVersion = null;
 
-    public void init(String serviceName, String appId, String configPropertyPrefix) {
-        Gson gson = null;
-        try {
-            gson = new GsonBuilder().setDateFormat("yyyyMMdd-HH:mm:ss.SSS-Z").setPrettyPrinting().create();
-        } catch(Throwable excp) {
-            LOG.error("RangerAdminClientImpl: failed to create GsonBuilder object", excp);
-        }
-        this.gson = gson;
+    public void init(String serviceName, String appId, String configPropertyPrefix, Configuration config) {
+        super.init(serviceName, appId, configPropertyPrefix, config);
+
+        this.hdfsVersion = config.get("hdfs.version", "");
     }
 
     public ServicePolicies getServicePoliciesIfUpdated(long lastKnownVersion, long lastActivationTimeInMillis) throws Exception {
@@ -59,7 +48,6 @@ public class RangerAdminClientImpl implements RangerAdminClient {
         if (basedir == null) {
             basedir = new File(".").getCanonicalPath();
         }
-	    String hdfsVersion = RangerConfiguration.getInstance().get("hdfs.version", "");
 
         final String relativePath;
         if (StringUtils.isNotBlank(hdfsVersion)) {
@@ -74,20 +62,11 @@ public class RangerAdminClientImpl implements RangerAdminClient {
         return gson.fromJson(new String(cacheBytes), ServicePolicies.class);
     }
 
-    public void grantAccess(GrantRevokeRequest request) throws Exception {
-
-    }
-
-    public void revokeAccess(GrantRevokeRequest request) throws Exception {
-
-    }
-
     public ServiceTags getServiceTagsIfUpdated(long lastKnownVersion, long lastActivationTimeInMillis) throws Exception {
         String basedir = System.getProperty("basedir");
         if (basedir == null) {
             basedir = new File(".").getCanonicalPath();
         }
-        String hdfsVersion = RangerConfiguration.getInstance().get("hdfs.version", "");
 
         final String relativePath;
         if (StringUtils.isNotBlank(hdfsVersion)) {

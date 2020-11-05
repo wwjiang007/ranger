@@ -19,33 +19,36 @@
 
 package org.apache.ranger.biz;
 
-import java.io.File;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.servlet.http.HttpServletResponse;
 
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.apache.commons.io.IOCase;
 import org.apache.commons.lang.StringUtils;
+import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.log4j.Logger;
+import org.apache.ranger.authorization.hadoop.config.RangerAdminConfig;
 import org.apache.ranger.common.AppConstants;
 import org.apache.ranger.common.ContextUtil;
 import org.apache.ranger.common.GUIDUtil;
 import org.apache.ranger.common.MessageEnums;
 import org.apache.ranger.common.PropertiesUtil;
 import org.apache.ranger.common.RESTErrorUtil;
-import org.apache.ranger.common.RangerCommonEnums;
 import org.apache.ranger.common.RangerConstants;
 import org.apache.ranger.common.StringUtil;
 import org.apache.ranger.common.UserSessionBase;
-import org.apache.ranger.common.db.BaseDao;
 import org.apache.ranger.db.RangerDaoManager;
+import org.apache.ranger.db.XXDBBaseDao;
 import org.apache.ranger.entity.XXAsset;
 import org.apache.ranger.entity.XXDBBase;
 import org.apache.ranger.entity.XXGroup;
@@ -59,8 +62,10 @@ import org.apache.ranger.entity.XXUser;
 import org.apache.ranger.plugin.model.RangerBaseModelObject;
 import org.apache.ranger.plugin.model.RangerService;
 import org.apache.ranger.plugin.store.EmbeddedServiceDefsUtil;
-import org.apache.ranger.service.AbstractBaseResourceService;
-import org.apache.ranger.view.VXDataObject;
+import org.apache.ranger.rest.ServiceREST;
+import org.apache.ranger.security.context.RangerAdminOpContext;
+import org.apache.ranger.security.context.RangerContextHolder;
+import org.apache.ranger.service.XUserService;
 import org.apache.ranger.view.VXPortalUser;
 import org.apache.ranger.view.VXResource;
 import org.apache.ranger.view.VXResponse;
@@ -87,12 +92,14 @@ public class RangerBizUtil {
 	UserMgr userMgr;
 
 	@Autowired
+	XUserService xUserService;
+
+	@Autowired
 	GUIDUtil guidUtil;
 	
 	Set<Class<?>> groupEditableClasses;
 	private Class<?>[] groupEditableClassesList = {};
 
-	Map<String, Integer> classTypeMappings = new HashMap<String, Integer>();
 	private int maxFirstNameLength;
 	int maxDisplayNameLength = 150;
 	public final String EMPTY_CONTENT_DISPLAY_NAME = "...";
@@ -103,12 +110,21 @@ public class RangerBizUtil {
 	private static int PATH_CHAR_SET_LEN = PATH_CHAR_SET.length;
 	public static final String AUDIT_STORE_RDBMS = "DB";
 	public static final String AUDIT_STORE_SOLR = "solr";
+	public static final String AUDIT_STORE_ElasticSearch = "elasticSearch";
+	public static final boolean batchClearEnabled = PropertiesUtil.getBooleanProperty("ranger.jpa.jdbc.batch-clear.enable", true);
+	public static final int policyBatchSize = PropertiesUtil.getIntProperty("ranger.jpa.jdbc.batch-clear.size", 10);
+	public static final int batchPersistSize = PropertiesUtil.getIntProperty("ranger.jpa.jdbc.batch-persist.size", 500);
 
 	String auditDBType = AUDIT_STORE_RDBMS;
+	private final boolean allowUnauthenticatedAccessInSecureEnvironment;
 
 	static String fileSeparator = PropertiesUtil.getProperty("ranger.file.separator", "/");
 
 	public RangerBizUtil() {
+		RangerAdminConfig config = RangerAdminConfig.getInstance();
+
+		allowUnauthenticatedAccessInSecureEnvironment = config.getBoolean("ranger.admin.allow.unauthenticated.access", false);
+
 		maxFirstNameLength = Integer.parseInt(PropertiesUtil.getProperty("ranger.user.firstname.maxlength", "16"));
 		maxDisplayNameLength = PropertiesUtil.getIntProperty("ranger.bookmark.name.maxlen", maxDisplayNameLength);
 
@@ -123,39 +139,6 @@ public class RangerBizUtil {
                 random = new SecureRandom();
 	}
 
-	public <T extends XXDBBase> List<? extends XXDBBase> getParentObjects(
-			T object) {
-		List<XXDBBase> parentObjectList = null;
-		// if (checkParentAcess.contains(object.getMyClassType())) {
-		// parentObjectList = new ArrayList<MBase>();
-		// }
-		return parentObjectList;
-	}
-
-	public int getClassType(Class<?> klass) {
-		String className = klass.getName();
-		// See if this mapping is already in the database
-		Integer classType = classTypeMappings.get(className);
-		if (classType == null) {
-			// Instantiate the class and call the getClassType method
-			if (XXDBBase.class.isAssignableFrom(klass)) {
-				try {
-					XXDBBase gjObj = (XXDBBase) klass.newInstance();
-					classType = gjObj.getMyClassType();
-					classTypeMappings.put(className, classType);
-				} catch (Throwable ex) {
-					logger.error("Error instantiating object for class "
-							+ className, ex);
-				}
-			}
-		}
-		if (classType == null) {
-			return RangerCommonEnums.CLASS_TYPE_NONE;
-		} else {
-			return classType;
-		}
-	}
-
 	// Access control methods
 	public void checkSystemAdminAccess() {
 		UserSessionBase currentUserSession = ContextUtil
@@ -165,101 +148,6 @@ public class RangerBizUtil {
 		}
 		throw restErrorUtil
 				.create403RESTException("Only System Administrators can add accounts");
-	}
-
-	/**
-	 * @param contentType
-	 * @return
-	 */
-	public int getMimeTypeInt(String contentType) {
-		if ("JPEG".equalsIgnoreCase(contentType)
-				|| "JPG".equalsIgnoreCase(contentType)
-				|| contentType.endsWith("jpg") || contentType.endsWith("jpeg")) {
-			return RangerConstants.MIME_JPEG;
-		}
-		if ("PNG".equalsIgnoreCase(contentType) || contentType.endsWith("png")) {
-			return RangerConstants.MIME_PNG;
-		}
-		return RangerConstants.MIME_UNKNOWN;
-	}
-
-	/**
-	 * @param mimeType
-	 * @return
-	 */
-	public String getMimeType(int mimeType) {
-		switch (mimeType) {
-		case RangerConstants.MIME_JPEG:
-			return "jpg";
-		case RangerConstants.MIME_PNG:
-			return "png";
-		}
-		return "";
-	}
-
-	/**
-	 * @param contentType
-	 * @return
-	 */
-	public String getImageExtension(String contentType) {
-		if (contentType.toLowerCase().endsWith("jpg")
-				|| contentType.toLowerCase().endsWith("jpeg")) {
-			return "jpg";
-		} else if (contentType.toLowerCase().endsWith("png")) {
-			return "png";
-		}
-		return "";
-	}
-
-	/**
-	 * @param file
-	 * @return
-	 */
-	public String getFileNameWithoutExtension(File file) {
-		if (file != null) {
-			String fileName = file.getName();
-			if (fileName.indexOf(".") > 0) {
-				return fileName.substring(0, fileName.indexOf("."));
-			}
-			return fileName;
-
-		}
-		return null;
-	}
-
-	public String getDisplayNameForClassName(XXDBBase obj) {
-		String classTypeDisplayName = RangerConstants
-				.getLabelFor_ClassTypes(obj.getMyClassType());
-		if (classTypeDisplayName == null) {
-			logger.error(
-					"Error get name for class type. obj=" + obj.toString(),
-					new Throwable());
-		}
-		return classTypeDisplayName;
-	}
-
-	public String getDisplayName(XXDBBase obj) {
-		if (obj != null) {
-			return handleGetDisplayName(obj.getMyDisplayValue());
-		} else {
-			return handleGetDisplayName(null);
-		}
-	}
-
-	/**
-	 * @param displayValue
-	 * @return
-	 */
-	private String handleGetDisplayName(String displayValue) {
-		if (displayValue == null || displayValue.trim().isEmpty()) {
-			return EMPTY_CONTENT_DISPLAY_NAME;
-		}
-
-		if (displayValue.length() > maxDisplayNameLength) {
-			displayValue = displayValue.substring(0, maxDisplayNameLength - 3)
-					.concat("...");
-		}
-		return displayValue;
 	}
 
 	/**
@@ -283,92 +171,6 @@ public class RangerBizUtil {
 			publicName = fName + " " + lastName.substring(0, 1) + ".";
 		}
 		return publicName;
-	}
-
-	public void updateCloneReferences(XXDBBase obj) {
-		if (obj == null) {
-			return;
-		}
-	}
-
-	public Long getForUserId(XXDBBase resource) {
-		return null;
-	}
-
-	public XXDBBase getMObject(int objClassType, Long objId) {
-		XXDBBase obj = null;
-
-		if (objId != null) {
-			BaseDao<?> dao = daoManager.getDaoForClassType(objClassType);
-
-			if (dao != null) {
-				obj = (XXDBBase) dao.getById(objId);
-			}
-		}
-
-		return obj;
-	}
-
-	public XXDBBase getMObject(VXDataObject vXDataObject) {
-		if (vXDataObject != null) {
-			return getMObject(vXDataObject.getMyClassType(),
-					vXDataObject.getId());
-		}
-		return null;
-	}
-
-	public VXDataObject getVObject(int objClassType, Long objId) {
-		if (objId == null) {
-			return null;
-		}
-		if (objClassType == RangerConstants.CLASS_TYPE_USER_PROFILE) {
-			return userMgr.mapXXPortalUserVXPortalUser(daoManager
-					.getXXPortalUser().getById(objId));
-		}
-		try {
-			AbstractBaseResourceService<?, ?> myService = AbstractBaseResourceService
-					.getService(objClassType);
-			if (myService != null) {
-				return myService.readResource(objId);
-			}
-		} catch (Throwable t) {
-			logger.error("Error reading resource. objectClassType="
-					+ objClassType + ", objectId=" + objId, t);
-		}
-		return null;
-	}
-
-	public void deleteReferencedObjects(XXDBBase obj) {
-
-		if (obj == null) {
-			return;
-		}
-		if (obj.getMyClassType() == RangerConstants.CLASS_TYPE_NONE) {
-			return;
-		}
-
-	}
-
-	/**
-	 * @param obj
-	 */
-	void deleteObjects(List<XXDBBase> objs) {
-
-	}
-
-	void deleteObject(XXDBBase obj) {
-		AbstractBaseResourceService<?, ?> myService = AbstractBaseResourceService
-				.getService(obj.getMyClassType());
-		if (myService != null) {
-			myService.deleteResource(obj.getId());
-		} else {
-			logger.error("Service not found for obj=" + obj, new Throwable());
-		}
-	}
-
-	public <T extends XXDBBase> Class<? extends XXDBBase> getContextObject(
-			int objectClassType, Long objectId) {
-		return null;
 	}
 
 	public VXStringList mapStringListToVStringList(List<String> stringList) {
@@ -543,6 +345,19 @@ public class RangerBizUtil {
 		return false;
 	}
 
+    public boolean isAuditAdmin() {
+        UserSessionBase currentUserSession = ContextUtil
+                            .getCurrentUserSession();
+            if (currentUserSession == null) {
+                logger.debug("Unable to find session.");
+            return false;
+            }
+            if (currentUserSession.isAuditUserAdmin()) {
+                return true;
+            }
+            return false;
+    }
+
 	/**
 	 * return username of currently logged in user
 	 *
@@ -638,6 +453,17 @@ public class RangerBizUtil {
 			}
 		}
 		return matchFound;
+	}
+
+	public void failUnauthenticatedIfNotAllowed() throws Exception {
+		if (UserGroupInformation.isSecurityEnabled()) {
+			UserSessionBase currentUserSession = ContextUtil.getCurrentUserSession();
+			if (currentUserSession == null) {
+				if (!allowUnauthenticatedAccessInSecureEnvironment) {
+					throw new Exception("Unauthenticated access not allowed");
+				}
+			}
+		}
 	}
 
 	/**
@@ -1080,10 +906,8 @@ public class RangerBizUtil {
 	private boolean checkUsrPermForPolicy(Long xUserId, int permission,
 			Long resourceId) {
 		// this snippet load user groups and permission map list from DB
-		List<XXGroup> userGroups = new ArrayList<XXGroup>();
-		List<XXPermMap> permMapList = new ArrayList<XXPermMap>();
-		userGroups = daoManager.getXXGroup().findByUserId(xUserId);
-		permMapList = daoManager.getXXPermMap().findByResourceId(resourceId);
+		List<XXGroup> userGroups = daoManager.getXXGroup().findByUserId(xUserId);
+		List<XXPermMap> permMapList = daoManager.getXXPermMap().findByResourceId(resourceId);
 		Long publicGroupId = getPublicGroupId();
 		boolean matchFound = false;
 		for (XXPermMap permMap : permMapList) {
@@ -1091,9 +915,8 @@ public class RangerBizUtil {
 				if (permMap.getPermFor() == AppConstants.XA_PERM_FOR_GROUP) {
 					// check whether permission is enabled for public group or a
 					// group to which user belongs
-					matchFound = (publicGroupId != null && publicGroupId == permMap
-							.getGroupId())
-							|| isGroupInList(permMap.getGroupId(), userGroups);
+					matchFound = (publicGroupId != null && publicGroupId.equals(permMap.getGroupId())) ||
+											 isGroupInList(permMap.getGroupId(), userGroups);
 				} else if (permMap.getPermFor() == AppConstants.XA_PERM_FOR_USER) {
 					// check whether permission is enabled to user
 					matchFound = permMap.getUserId().equals(xUserId);
@@ -1421,6 +1244,17 @@ public class RangerBizUtil {
 		}
 		return false;
 	}
+    public boolean isAuditKeyAdmin() {
+        UserSessionBase currentUserSession = ContextUtil.getCurrentUserSession();
+        if (currentUserSession == null) {
+                logger.debug("Unable to find session.");
+                return false;
+        }
+        if (currentUserSession.isAuditKeyAdmin()) {
+                return true;
+        }
+        return false;
+    }
 
 	/**
 	 * @param xxDbBase
@@ -1438,24 +1272,24 @@ public class RangerBizUtil {
 
 		boolean isKeyAdmin = session.isKeyAdmin();
 		boolean isSysAdmin = session.isUserAdmin();
+		boolean isAuditor =  session.isAuditUserAdmin();
+		boolean isAuditorKeyAdmin = session.isAuditKeyAdmin();
 		boolean isUser = false;
 
 		List<String> roleList = session.getUserRoleList();
-		if (roleList.contains(RangerConstants.ROLE_USER)) {
+		if (roleList.contains(RangerConstants.ROLE_USER) ) {
 			isUser = true;
 		}
 
 		if (xxDbBase != null && xxDbBase instanceof XXServiceDef) {
 			XXServiceDef xServiceDef = (XXServiceDef) xxDbBase;
-			String implClass = xServiceDef.getImplclassname();
-			if (implClass == null) {
-				return false;
-			}
-
-			if (isKeyAdmin && EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME.equals(implClass)) {
-				return true;
-			} else if ((isSysAdmin || isUser) && !EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME.equals(implClass)) {
-				return true;
+			final String implClass = xServiceDef.getImplclassname();
+			if (EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME.equals(implClass)) {
+				// KMS case
+				return isKeyAdmin || isAuditorKeyAdmin;
+			} else {
+				// Other cases - implClass can be null!
+				return isSysAdmin || isUser || isAuditor;
 			}
 		}
 
@@ -1463,25 +1297,20 @@ public class RangerBizUtil {
 
 			// TODO: As of now we are allowing SYS_ADMIN to create/update/read/delete all the
 			// services including KMS
-			if (isSysAdmin) {
+			if (isSysAdmin || isAuditor) {
 				return true;
 			}
 
 			XXService xService = (XXService) xxDbBase;
 			XXServiceDef xServiceDef = daoManager.getXXServiceDef().getById(xService.getType());
 			String implClass = xServiceDef.getImplclassname();
-			if (implClass == null) {
-				return false;
+			if (EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME.equals(implClass)) {
+				// KMS case
+				return isKeyAdmin || isAuditorKeyAdmin;
+			} else {
+				// Other cases - implClass can be null!
+				return isUser;
 			}
-
-			if (isKeyAdmin && EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME.equals(implClass)) {
-				return true;
-			} else if (isUser && !EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME.equals(implClass)) {
-				return true;
-			}
-			// else if ((isSysAdmin || isUser) && !implClass.equals(EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME)) {
-			// return true;
-			// }
 		}
 		return false;
 	}
@@ -1497,13 +1326,17 @@ public class RangerBizUtil {
 
 		if (!session.isKeyAdmin() && !session.isUserAdmin()) {
 			throw restErrorUtil.createRESTException(
-					"User is not allowed to update service-def, only Admin can create/update/delete " + objType,
+					"This user is not allowed this operation. Only users with Admin permission have access to this operation " + objType,
 					MessageEnums.OPER_NO_PERMISSION);
 		}
 	}
 
 	public void hasKMSPermissions(String objType, String implClassName) {
 		UserSessionBase session = ContextUtil.getCurrentUserSession();
+		if (session == null) {
+			throw restErrorUtil.createRESTException("UserSession cannot be null, only KeyAdmin can create/update/delete "
+					+ objType, MessageEnums.OPER_NO_PERMISSION);
+		}
 
 		if (session.isKeyAdmin() && !EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME.equals(implClassName)) {
 			throw restErrorUtil.createRESTException("KeyAdmin can create/update/delete only KMS " + objType,
@@ -1520,17 +1353,31 @@ public class RangerBizUtil {
 	}
 
 	public boolean checkUserAccessible(VXUser vXUser) {
-		if(isKeyAdmin() && vXUser.getUserRoleList().contains(RangerConstants.ROLE_SYS_ADMIN)) {
-			throw restErrorUtil.createRESTException("Logged in user is not allowd to create/update user",
+                boolean isAccessible = true;
+                Collection<String> roleList = userMgr.getRolesByLoginId(vXUser
+                                .getName());
+                if (isKeyAdmin()) {
+                        if (vXUser.getUserRoleList().contains(RangerConstants.ROLE_SYS_ADMIN)
+                                        || vXUser.getUserRoleList().contains(RangerConstants.ROLE_ADMIN_AUDITOR)
+                                        || roleList.contains(RangerConstants.ROLE_SYS_ADMIN)
+                                        || roleList.contains(RangerConstants.ROLE_ADMIN_AUDITOR)) {
+                                isAccessible = false;
+                        }
+                }
+                if (isAdmin()) {
+                        if (vXUser.getUserRoleList().contains(RangerConstants.ROLE_KEY_ADMIN)
+                                        || vXUser.getUserRoleList().contains(RangerConstants.ROLE_KEY_ADMIN_AUDITOR)
+                                        || roleList.contains(RangerConstants.ROLE_KEY_ADMIN)
+                                        || roleList.contains(RangerConstants.ROLE_KEY_ADMIN_AUDITOR)) {
+                                isAccessible = false;
+                        }
+                }
+                if (!isAccessible) {
+                        throw restErrorUtil.createRESTException(
+                                        "Logged in user is not allowed to create/update user",
 					MessageEnums.OPER_NO_PERMISSION);
 		}
-
-		if(isAdmin() && vXUser.getUserRoleList().contains(RangerConstants.ROLE_KEY_ADMIN)) {
-			throw restErrorUtil.createRESTException("Logged in user is not allowd to create/update user",
-					MessageEnums.OPER_NO_PERMISSION);
-		}
-
-		return true;
+                return isAccessible;
 	}
 	
 	public boolean isSSOEnabled() {
@@ -1565,12 +1412,31 @@ public class RangerBizUtil {
 		return false;
 	}
 
-	public boolean isUserAllowedForGrantRevoke(RangerService rangerService,
-			String cfgNameAllowedUsers, String userName) {
+	public boolean isUserAllowedForGrantRevoke(RangerService rangerService, String userName) {
+		return isUserInConfigParameter(rangerService, ServiceREST.Allowed_User_List_For_Grant_Revoke, userName);
+	}
+
+	public boolean isUserRangerAdmin(String username) {
+		boolean isAdmin = false;
+		try {
+			VXUser vxUser = xUserService.getXUserByUserName(username);
+			if (vxUser != null && (vxUser.getUserRoleList().contains(RangerConstants.ROLE_ADMIN) || vxUser.getUserRoleList().contains(RangerConstants.ROLE_SYS_ADMIN))) {
+				isAdmin = true;
+			}
+		} catch (Exception ex) {
+		}
+		return isAdmin;
+	}
+
+	public boolean isUserServiceAdmin(RangerService rangerService, String userName) {
+		return isUserInConfigParameter(rangerService, ServiceDBStore.SERVICE_ADMIN_USERS, userName);
+	}
+
+	public boolean isUserInConfigParameter(RangerService rangerService, String configParamName, String userName) {
 		Map<String, String> map = rangerService.getConfigs();
 
-		if (map != null && map.containsKey(cfgNameAllowedUsers)) {
-			String userNames = map.get(cfgNameAllowedUsers);
+		if (map != null && map.containsKey(configParamName)) {
+			String userNames = map.get(configParamName);
 			String[] userList = userNames.split(",");
 			if (userList != null) {
 				for (String u : userList) {
@@ -1581,6 +1447,102 @@ public class RangerBizUtil {
 			}
 		}
 		return false;
-	}	
+	}
+
+        public void blockAuditorRoleUser() {
+                UserSessionBase session = ContextUtil.getCurrentUserSession();
+                if (session != null) {
+                        if (session.isAuditKeyAdmin() || session.isAuditUserAdmin()) {
+                                VXResponse vXResponse = new VXResponse();
+                                vXResponse.setStatusCode(HttpServletResponse.SC_UNAUTHORIZED);
+                                vXResponse.setMsgDesc("Operation"
+                                                + " denied. LoggedInUser="
+                                                +  session.getXXPortalUser().getId()
+                                                + " ,isn't permitted to perform the action.");
+                                throw restErrorUtil.generateRESTException(vXResponse);
+                        }
+                } else {
+                        VXResponse vXResponse = new VXResponse();
+                        vXResponse.setStatusCode(HttpServletResponse.SC_UNAUTHORIZED);
+                        vXResponse.setMsgDesc("Bad Credentials");
+                        throw restErrorUtil.generateRESTException(vXResponse);
+                }
+        }
+
+	public boolean hasModuleAccess(String moduleName) {
+		UserSessionBase currentUserSession = ContextUtil.getCurrentUserSession();
+		if(currentUserSession == null) {
+			return false;
+		}
+		if(!currentUserSession.isUserAdmin() && !currentUserSession.isAuditUserAdmin()) {
+			if(!currentUserSession.getRangerUserPermission().getUserPermissions().contains(moduleName)) {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	public void removeEmptyStrings(List<String> list) {
+		if(!CollectionUtils.isEmpty(list)) {
+			Iterator<String> i = list.iterator();
+			while (i.hasNext()){
+				String item = i.next();
+				if (item == null || StringUtils.isEmpty(StringUtils.trim(item))){
+					i.remove();
+			    }
+			}
+			trimAll(list);
+		}
+	}
+
+	public void trimAll(List<String> list) {
+		if(!CollectionUtils.isEmpty(list)) {
+			for (int i = 0; i < list.size(); i++) {
+				String item=list.get(i);
+				if(item.startsWith(" ") || item.endsWith(" ")) {
+					list.set(i, StringUtils.trim(item));
+				}
+			}
+		}
+	}
+
+	public static boolean isBulkMode() {
+		return ContextUtil.isBulkModeContext();
+	}
+
+	public static boolean setBulkMode(boolean val) {
+		if(RangerContextHolder.getOpContext()!=null){
+			RangerContextHolder.getOpContext().setBulkModeContext(val);
+		}
+		else {
+			  RangerAdminOpContext opContext = new RangerAdminOpContext();
+			  opContext.setBulkModeContext(val);
+			  RangerContextHolder.setOpContext(opContext);
+		}
+		return isBulkMode();
+	}
+
+	//should be used only in bulk operation like importPolicies, policies delete.
+	public void bulkModeOnlyFlushAndClear() {
+		if (batchClearEnabled) {
+			XXDBBaseDao xXDBBaseDao = daoManager.getXXDBBase();
+			if (xXDBBaseDao != null) {
+				xXDBBaseDao.flush();
+				xXDBBaseDao.clear();
+			}
+		}
+	}
+
+	public boolean checkAdminAccess() {
+		UserSessionBase currentUserSession = ContextUtil.getCurrentUserSession();
+		if (currentUserSession != null) {
+			return currentUserSession.isUserAdmin();
+		} else {
+			VXResponse vXResponse = new VXResponse();
+			vXResponse.setStatusCode(HttpServletResponse.SC_UNAUTHORIZED);
+			vXResponse.setMsgDesc("Bad Credentials");
+			throw restErrorUtil.generateRESTException(vXResponse);
+		}
+	}
 
 }

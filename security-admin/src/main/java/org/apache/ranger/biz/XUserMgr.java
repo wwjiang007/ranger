@@ -21,40 +21,35 @@ package org.apache.ranger.biz;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.ranger.common.ContextUtil;
-import org.apache.ranger.common.GUIDUtil;
-import org.apache.ranger.common.RangerCommonEnums;
+import org.apache.commons.collections.MapUtils;
+import org.apache.commons.lang.StringUtils;
+import org.apache.ranger.common.*;
 import org.apache.ranger.entity.XXGroupPermission;
 import org.apache.ranger.entity.XXModuleDef;
 import org.apache.ranger.entity.XXUserPermission;
+import org.apache.ranger.plugin.model.GroupInfo;
 import org.apache.ranger.plugin.model.RangerPolicy;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerDataMaskPolicyItem;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerPolicyItem;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerRowFilterPolicyItem;
-import org.apache.ranger.service.RangerPolicyService;
-import org.apache.ranger.service.XGroupPermissionService;
-import org.apache.ranger.service.XModuleDefService;
-import org.apache.ranger.service.XPortalUserService;
-import org.apache.ranger.service.XResourceService;
-import org.apache.ranger.service.XUserPermissionService;
-import org.apache.ranger.view.VXGroupPermission;
-import org.apache.ranger.view.VXModuleDef;
-import org.apache.ranger.view.VXUserPermission;
+import org.apache.ranger.plugin.model.UserInfo;
+import org.apache.ranger.plugin.util.RangerUserStore;
+import org.apache.ranger.security.context.RangerAPIMapping;
+import org.apache.ranger.service.*;
+import org.apache.ranger.ugsyncutil.model.GroupUserInfo;
+import org.apache.ranger.ugsyncutil.model.UsersGroupRoleAssignments;
+import org.apache.ranger.view.*;
 import org.apache.log4j.Logger;
-import org.apache.ranger.authorization.utils.StringUtil;
-import org.apache.ranger.common.AppConstants;
-import org.apache.ranger.common.MessageEnums;
-import org.apache.ranger.common.PropertiesUtil;
-import org.apache.ranger.common.RangerConstants;
-import org.apache.ranger.common.SearchCriteria;
-import org.apache.ranger.common.UserSessionBase;
 import org.apache.ranger.db.RangerDaoManager;
 import org.apache.ranger.db.XXAuditMapDao;
 import org.apache.ranger.db.XXAuthSessionDao;
@@ -78,25 +73,11 @@ import org.apache.ranger.entity.XXPermMap;
 import org.apache.ranger.entity.XXPolicy;
 import org.apache.ranger.entity.XXPortalUser;
 import org.apache.ranger.entity.XXResource;
+import org.apache.ranger.entity.XXSecurityZone;
+import org.apache.ranger.entity.XXSecurityZoneRefGroup;
+import org.apache.ranger.entity.XXSecurityZoneRefUser;
 import org.apache.ranger.entity.XXTrxLog;
 import org.apache.ranger.entity.XXUser;
-import org.apache.ranger.service.XGroupService;
-import org.apache.ranger.service.XUserService;
-import org.apache.ranger.view.VXAuditMap;
-import org.apache.ranger.view.VXAuditMapList;
-import org.apache.ranger.view.VXGroup;
-import org.apache.ranger.view.VXGroupGroup;
-import org.apache.ranger.view.VXGroupList;
-import org.apache.ranger.view.VXGroupUser;
-import org.apache.ranger.view.VXGroupUserInfo;
-import org.apache.ranger.view.VXGroupUserList;
-import org.apache.ranger.view.VXLong;
-import org.apache.ranger.view.VXPermMap;
-import org.apache.ranger.view.VXPermMapList;
-import org.apache.ranger.view.VXPortalUser;
-import org.apache.ranger.view.VXUser;
-import org.apache.ranger.view.VXUserGroupInfo;
-import org.apache.ranger.view.VXUserList;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
@@ -104,12 +85,12 @@ import org.springframework.transaction.annotation.Transactional;
 
 import javax.servlet.http.HttpServletResponse;
 
-import org.apache.ranger.view.VXResponse;
 import org.apache.ranger.entity.XXPortalUserRole;
-import org.apache.ranger.view.VXString;
-import org.apache.ranger.view.VXStringList;
+
 @Component
 public class XUserMgr extends XUserMgrBase {
+
+	private static final String RANGER_USER_GROUP_GLOBAL_STATE_NAME = "RangerUserStore";
 
 	@Autowired
 	XUserService xUserService;
@@ -156,12 +137,16 @@ public class XUserMgr extends XUserMgrBase {
 	@Autowired
 	GUIDUtil guidUtil;
 
-    @Autowired
-    UserMgr userManager;
+	@Autowired
+	XUgsyncAuditInfoService xUgsyncAuditInfoService;
+
+	@Autowired
+	XGroupUserService xGroupUserService;
+
+	@Autowired
+	StringUtil stringUtil;
 
 	static final Logger logger = Logger.getLogger(XUserMgr.class);
-
-
 
 	public VXUser getXUserByUserName(String userName) {
 		VXUser vXUser=null;
@@ -183,6 +168,7 @@ public class XUserMgr extends XUserMgrBase {
 
 	public VXUser createXUser(VXUser vXUser) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
                 validatePassword(vXUser);
 		String userName = vXUser.getName();
 		if (userName == null || "null".equalsIgnoreCase(userName)
@@ -193,7 +179,7 @@ public class XUserMgr extends XUserMgrBase {
 		}
 
 		if (vXUser.getDescription() == null) {
-			setUserDesc(vXUser);
+			vXUser.setDescription(vXUser.getName());
 		}
 
 		String actualPassword = vXUser.getPassword();
@@ -208,7 +194,15 @@ public class XUserMgr extends XUserMgrBase {
 		if("null".equalsIgnoreCase(vXPortalUser.getLastName())){
 			vXPortalUser.setLastName("");
 		}
-		vXPortalUser.setEmailAddress(vXUser.getEmailAddress());
+
+		String emailAddress = vXUser.getEmailAddress();
+		if (StringUtils.isNotEmpty(emailAddress) && !stringUtil.validateEmail(emailAddress)) {
+			logger.warn("Invalid email address:" + emailAddress);
+			throw restErrorUtil.createRESTException("Please provide valid email address.",
+					MessageEnums.INVALID_INPUT_DATA);
+		}
+		vXPortalUser.setEmailAddress(emailAddress);
+
 		if (vXPortalUser.getFirstName() != null
 				&& vXPortalUser.getLastName() != null
 				&& !vXPortalUser.getFirstName().trim().isEmpty()
@@ -230,7 +224,7 @@ public class XUserMgr extends XUserMgrBase {
 
 		String hiddenPassword = PropertiesUtil.getProperty("ranger.password.hidden", "*****");
 		createdXUser.setPassword(hiddenPassword);
-
+		Collection<String> groupNamesList = new ArrayList<String>();
 		Collection<Long> groupIdList = vXUser.getGroupIdList();
 		List<VXGroupUser> vXGroupUsers = new ArrayList<VXGroupUser>();
 		if (groupIdList != null) {
@@ -240,8 +234,11 @@ public class XUserMgr extends XUserMgrBase {
 				// trxLogList.addAll(xGroupUserService.getTransactionLog(
 				// vXGroupUser, "create"));
 				vXGroupUsers.add(vXGroupUser);
+				groupNamesList.add(vXGroupUser.getName());
 			}
 		}
+		createdXUser.setGroupIdList(groupIdList);
+		createdXUser.setGroupNameList(groupNamesList);
 		for (VXGroupUser vXGroupUser : vXGroupUsers) {
 			trxLogList.addAll(xGroupUserService.getTransactionLog(vXGroupUser,
 					"create"));
@@ -265,18 +262,34 @@ public class XUserMgr extends XUserMgrBase {
 
 						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_RESOURCE_BASED_POLICIES), isCreate);
 						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_REPORTS), isCreate);
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_SECURITY_ZONE), isCreate);
 					} else if (role.equals(RangerConstants.ROLE_SYS_ADMIN)) {
-
 						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_REPORTS), isCreate);
 						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_RESOURCE_BASED_POLICIES), isCreate);
 						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_AUDIT), isCreate);
 						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_USER_GROUPS), isCreate);
 						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_TAG_BASED_POLICIES), isCreate);
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_SECURITY_ZONE), isCreate);
 					} else if (role.equals(RangerConstants.ROLE_KEY_ADMIN)) {
-
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_AUDIT), isCreate);
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_USER_GROUPS),isCreate);
 						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_KEY_MANAGER), isCreate);
 						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_REPORTS), isCreate);
 						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_RESOURCE_BASED_POLICIES), isCreate);
+					} else if (role.equals(RangerConstants.ROLE_KEY_ADMIN_AUDITOR)) {
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_AUDIT), isCreate);
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_USER_GROUPS), isCreate);
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_KEY_MANAGER), isCreate);
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_REPORTS), isCreate);
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_RESOURCE_BASED_POLICIES), isCreate);
+					} else if (role.equals(RangerConstants.ROLE_ADMIN_AUDITOR)) {
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_REPORTS), isCreate);
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_RESOURCE_BASED_POLICIES), isCreate);
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_AUDIT), isCreate);
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_USER_GROUPS), isCreate);
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_TAG_BASED_POLICIES), isCreate);
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerAPIMapping.TAB_PERMISSIONS), isCreate);
+						createOrUpdateUserPermisson(vXPortalUser, moduleNameId.get(RangerConstants.MODULE_SECURITY_ZONE), isCreate);
 					}
 
 				}
@@ -331,7 +344,7 @@ public class XUserMgr extends XUserMgrBase {
 		return null;
 	}
 
-	private VXGroupUser createXGroupUser(Long userId, Long groupId) {
+	protected VXGroupUser createXGroupUser(Long userId, Long groupId) {
 		VXGroupUser vXGroupUser = new VXGroupUser();
 		vXGroupUser.setParentGroupId(groupId);
 		vXGroupUser.setUserId(userId);
@@ -350,13 +363,18 @@ public class XUserMgr extends XUserMgrBase {
 					+ "username.", MessageEnums.INVALID_INPUT_DATA);
 		}
 		checkAccess(vXUser.getName());
+                xaBizUtil.blockAuditorRoleUser();
 		VXPortalUser oldUserProfile = userMgr.getUserProfileByLoginId(vXUser
 				.getName());
+		if (oldUserProfile == null) {
+			throw restErrorUtil.createRESTException(
+					"user " + vXUser.getName() + " does not exist.",
+					MessageEnums.INVALID_INPUT_DATA);
+		}
 		VXPortalUser vXPortalUser = new VXPortalUser();
 		if (oldUserProfile != null && oldUserProfile.getId() != null) {
 			vXPortalUser.setId(oldUserProfile.getId());
 		}
-		// TODO : There is a possibility that old user may not exist.
 
 		vXPortalUser.setFirstName(vXUser.getFirstName());
 		if("null".equalsIgnoreCase(vXPortalUser.getFirstName())){
@@ -379,7 +397,8 @@ public class XUserMgr extends XUserMgrBase {
 		} else {
 			vXPortalUser.setPublicScreenName(vXUser.getName());
 		}
-		vXPortalUser.setUserSource(vXUser.getUserSource());
+    vXPortalUser.setUserSource(oldUserProfile.getUserSource());
+
 		String hiddenPasswordString = PropertiesUtil.getProperty("ranger.password.hidden", "*****");
 		String password = vXUser.getPassword();
 		if (oldUserProfile != null && password != null
@@ -445,12 +464,14 @@ public class XUserMgr extends XUserMgrBase {
 		// There is nothing to log anything in XXUser so far.
 		vXUser = xUserService.updateResource(vXUser);
 		vXUser.setUserRoleList(roleList);
-        if (oldUserProfile.getUserSource() == RangerCommonEnums.USER_APP) {
-		vXUser.setPassword(password);
-        }
-        else if (oldUserProfile.getUserSource() == RangerCommonEnums.USER_EXTERNAL) {
-            vXUser.setPassword(oldUserProfile.getPassword());
-        }
+		if (oldUserProfile != null) {
+			if (oldUserProfile.getUserSource() == RangerCommonEnums.USER_APP) {
+				vXUser.setPassword(password);
+			}
+			else if (oldUserProfile.getUserSource() == RangerCommonEnums.USER_EXTERNAL) {
+				vXUser.setPassword(oldUserProfile.getPassword());
+			}
+		}
 
 		List<XXTrxLog> trxLogList = xUserService.getTransactionLog(vXUser,
 				oldUserProfile, "update");
@@ -458,13 +479,22 @@ public class XUserMgr extends XUserMgrBase {
 
 		Long userId = vXUser.getId();
 		List<Long> groupUsersToRemove = new ArrayList<Long>();
+		trxLogList.addAll(createOrDelGrpUserWithUpdatedGrpId(vXUser, groupIdList,userId, groupUsersToRemove));
+		xaBizUtil.createTrxLog(trxLogList);
 
+		return vXUser;
+	}
+	private List<XXTrxLog> createOrDelGrpUserWithUpdatedGrpId(VXUser vXUser, Collection<Long> groupIdList,Long userId, List<Long> groupUsersToRemove) {
+		Collection<String> groupNamesSet = new HashSet<String>();
+		List<XXTrxLog> trxLogList = new ArrayList<>();
 		if (groupIdList != null) {
 			SearchCriteria searchCriteria = new SearchCriteria();
 			searchCriteria.addParam("xUserId", userId);
-			VXGroupUserList vXGroupUserList = xGroupUserService
-					.searchXGroupUsers(searchCriteria);
+			VXGroupUserList vXGroupUserList = xGroupUserService.searchXGroupUsers(searchCriteria);
 			List<VXGroupUser> vXGroupUsers = vXGroupUserList.getList();
+			for(VXGroupUser eachVXGrpUser : vXGroupUsers) {
+				groupNamesSet.add(eachVXGrpUser.getName());
+			}
 
 			if (vXGroupUsers != null) {
 
@@ -478,10 +508,9 @@ public class XUserMgr extends XUserMgrBase {
 						}
 					}
 					if (!found) {
-						VXGroupUser vXGroupUser = createXGroupUser(userId,
-								groupId);
-						trxLogList.addAll(xGroupUserService.getTransactionLog(
-								vXGroupUser, "create"));
+						VXGroupUser vXGroupUser = createXGroupUser(userId, groupId);
+						trxLogList.addAll(xGroupUserService.getTransactionLog(vXGroupUser, "create"));
+						groupNamesSet.add(vXGroupUser.getName());
 					}
 				}
 
@@ -490,45 +519,42 @@ public class XUserMgr extends XUserMgrBase {
 					boolean found = false;
 					for (Long groupId : groupIdList) {
 						if (groupId.equals(vXGroupUser.getParentGroupId())) {
-							trxLogList.addAll(xGroupUserService
-									.getTransactionLog(vXGroupUser, "update"));
+							trxLogList.addAll(xGroupUserService.getTransactionLog(vXGroupUser, "update"));
 							found = true;
 							break;
 						}
 					}
 					if (!found) {
 						// TODO I've to get the transaction log from here.
-						trxLogList.addAll(xGroupUserService.getTransactionLog(
-								vXGroupUser, "delete"));
+						trxLogList.addAll(xGroupUserService.getTransactionLog(vXGroupUser, "delete"));
 						groupUsersToRemove.add(vXGroupUser.getId());
 						// xGroupUserService.deleteResource(vXGroupUser.getId());
+						groupNamesSet.remove(vXGroupUser.getName());
 					}
 				}
 
 			} else {
 				for (Long groupId : groupIdList) {
 					VXGroupUser vXGroupUser = createXGroupUser(userId, groupId);
-					trxLogList.addAll(xGroupUserService.getTransactionLog(
-							vXGroupUser, "create"));
+					trxLogList.addAll(xGroupUserService.getTransactionLog(vXGroupUser, "create"));
+					groupNamesSet.add(vXGroupUser.getName());
 				}
 			}
 			vXUser.setGroupIdList(groupIdList);
+			vXUser.setGroupNameList(new ArrayList<>(groupNamesSet));
 		} else {
-			logger.debug("Group id list can't be null for user. Group user "
-					+ "mapping not updated for user : " + userId);
+			logger.debug(
+					"Group id list can't be null for user. Group user " + "mapping not updated for user : " + userId);
 		}
-
-		xaBizUtil.createTrxLog(trxLogList);
-
 		for (Long groupUserId : groupUsersToRemove) {
 			xGroupUserService.deleteResource(groupUserId);
 		}
-
-		return vXUser;
+		return trxLogList;
 	}
 
         public VXUserGroupInfo createXUserGroupFromMap(VXUserGroupInfo vXUserGroupInfo) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
 		VXUserGroupInfo vxUGInfo = new VXUserGroupInfo();
         VXUser vXUser = vXUserGroupInfo.getXuserInfo();
         VXPortalUser vXPortalUser = userMgr.getUserProfileByLoginId(vXUser
@@ -539,8 +565,7 @@ public class XUserMgr extends XUserMgrBase {
         List<String> existingRole = daoManager.getXXPortalUserRole()
                 .findXPortalUserRolebyXPortalUserId(xxPortalUser.getId());
         if (xxPortalUser.getUserSource() == RangerCommonEnums.USER_EXTERNAL) {
-            vXPortalUser = userManager.updateRoleForExternalUsers(reqRoleList,
-                    existingRole, vXPortalUser);
+            vXPortalUser = userMgr.updateRoleForExternalUsers(reqRoleList, existingRole, vXPortalUser);
         }
         vXUser = xUserService.createXUserWithOutLogin(vXUser);
         vxUGInfo.setXuserInfo(vXUser);
@@ -558,7 +583,11 @@ public class XUserMgr extends XUserMgrBase {
             assignPermissionToUser(vXPortalUser, true);
         }
 		vxUGInfo.setXgroupInfo(vxg);
-
+        try {
+			daoManager.getXXGlobalState().onGlobalAppDataChange(RANGER_USER_GROUP_GLOBAL_STATE_NAME);
+		} catch (Exception excp) {
+			logger.error("createXUserGroupFromMap(" + vXUser.getName() + ") failed", excp);
+		}
 		return vxUGInfo;
 	}
 	
@@ -566,6 +595,7 @@ public class XUserMgr extends XUserMgrBase {
 	public VXGroupUserInfo createXGroupUserFromMap(
 			VXGroupUserInfo vXGroupUserInfo) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
 		VXGroupUserInfo vxGUInfo = new VXGroupUserInfo();
 
 		VXGroup vXGroup = vXGroupUserInfo.getXgroupInfo();
@@ -578,7 +608,7 @@ public class XUserMgr extends XUserMgrBase {
 		List<VXUser> vxu = new ArrayList<VXUser>();
         for (VXUser vXUser : vXGroupUserInfo.getXuserInfo()) {
             XXUser xUser = daoManager.getXXUser().findByUserName(
-                    vXUser.getName());
+					vXUser.getName());
             XXPortalUser xXPortalUser = daoManager.getXXPortalUser()
                     .findByLoginId(vXUser.getName());
             if (xUser != null) {
@@ -603,10 +633,10 @@ public class XUserMgr extends XUserMgrBase {
                 List<String> existingRole = daoManager.getXXPortalUserRole()
                         .findXPortalUserRolebyXPortalUserId(
                                 xxPortalUser.getId());
-                VXPortalUser vxPortalUser = userManager
+                VXPortalUser vxPortalUser = userMgr
                         .mapXXPortalUserToVXPortalUserForDefaultAccount(xxPortalUser);
                 if (xxPortalUser.getUserSource() == RangerCommonEnums.USER_EXTERNAL) {
-                    vxPortalUser = userManager.updateRoleForExternalUsers(
+                    vxPortalUser = userMgr.updateRoleForExternalUsers(
                             reqRoleList, existingRole, vxPortalUser);
                     assignPermissionToUser(vxPortalUser, true);
                 }
@@ -615,9 +645,15 @@ public class XUserMgr extends XUserMgrBase {
 
 		vxGUInfo.setXuserInfo(vxu);
 
+		try {
+			daoManager.getXXGlobalState().onGlobalAppDataChange(RANGER_USER_GROUP_GLOBAL_STATE_NAME);
+		} catch (Exception excp) {
+			logger.error("createXGroupUserFromMap(" + vXGroup.getName() + ") failed", excp);
+		}
+
 		return vxGUInfo;
 	}
-	
+
 	public VXGroupUserInfo getXGroupUserFromMap(
 			String groupName) {
 		checkAdminAccess();
@@ -655,7 +691,7 @@ public class XUserMgr extends XUserMgrBase {
                 }
 				vxu.add(vxUser);
 			}
-			
+
 		}
 		vxGUInfo.setXuserInfo(vxu);
 
@@ -665,12 +701,20 @@ public class XUserMgr extends XUserMgrBase {
 
 	public VXUser createXUserWithOutLogin(VXUser vXUser) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
                 validatePassword(vXUser);
 		return xUserService.createXUserWithOutLogin(vXUser);
 	}
 
+	public VXUser createExternalUser(String userName) {
+		checkAdminAccess();
+		xaBizUtil.blockAuditorRoleUser();
+		return createServiceConfigUser(userName);
+	}
+
 	public VXGroup createXGroup(VXGroup vXGroup) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
 		if (vXGroup.getDescription() == null) {
 			vXGroup.setDescription(vXGroup.getName());
 		}
@@ -684,11 +728,13 @@ public class XUserMgr extends XUserMgrBase {
 
 	public VXGroup createXGroupWithoutLogin(VXGroup vXGroup) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
 		return xGroupService.createXGroupWithOutLogin(vXGroup);
 	}
 
 	public VXGroupUser createXGroupUser(VXGroupUser vXGroupUser) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
 		vXGroupUser = xGroupUserService
 				.createXGroupUserWithOutLogin(vXGroupUser);
 		return vXGroupUser;
@@ -697,10 +743,37 @@ public class XUserMgr extends XUserMgrBase {
 	public VXUser getXUser(Long id) {
 		VXUser vXUser=null;
 		vXUser=xUserService.readResourceWithOutLogin(id);
+		if(vXUser != null){
+			if(!hasAccessToGetUserInfo(vXUser)){
+				logger.info("Logged-In user is not allowed to access requested user data.");
+				throw restErrorUtil.create403RESTException("Logged-In user is not allowed to access requested user data.");
+			}
+		}
+
 		if(vXUser!=null && !hasAccessToModule(RangerConstants.MODULE_USER_GROUPS)){
 			vXUser=getMaskedVXUser(vXUser);
 		}
 		return vXUser;
+	}
+
+	private boolean hasAccessToGetUserInfo(VXUser requestedVXUser) {
+		UserSessionBase userSession = ContextUtil.getCurrentUserSession();
+		if (userSession != null && userSession.getLoginId() != null) {
+			VXUser loggedInVXUser = xUserService.getXUserByUserName(userSession
+					.getLoginId());
+			if (loggedInVXUser != null) {
+				if (loggedInVXUser.getUserRoleList().size() == 1
+						&& loggedInVXUser.getUserRoleList().contains(
+								RangerConstants.ROLE_USER)) {
+
+					return requestedVXUser.getId().equals(loggedInVXUser.getId()) ? true : false;
+
+				}else{
+					return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	public VXGroupUser getXGroupUser(Long id) {
@@ -710,6 +783,28 @@ public class XUserMgr extends XUserMgrBase {
 
 	public VXGroup getXGroup(Long id) {
 		VXGroup vXGroup=null;
+
+		UserSessionBase userSession = ContextUtil.getCurrentUserSession();
+		if (userSession != null && userSession.getLoginId() != null) {
+			VXUser loggedInVXUser = xUserService.getXUserByUserName(userSession
+					.getLoginId());
+			if (loggedInVXUser != null) {
+				if (loggedInVXUser.getUserRoleList().size() == 1
+						&& loggedInVXUser.getUserRoleList().contains(
+								RangerConstants.ROLE_USER)) {
+
+					List<Long> listGroupId = daoManager.getXXGroupUser()
+							.findGroupIdListByUserId(loggedInVXUser.getId());
+
+					if (!listGroupId.contains(id)) {
+						logger.info("Logged-In user is not allowed to access requested user data.");
+						throw restErrorUtil
+								.create403RESTException("Logged-In user is not allowed to access requested group data.");
+					}
+
+				}
+			}
+		}
 		vXGroup=xGroupService.readResourceWithOutLogin(id);
 		if(vXGroup!=null && !hasAccessToModule(RangerConstants.MODULE_USER_GROUPS)){
 			vXGroup=getMaskedVXGroup(vXGroup);
@@ -744,6 +839,7 @@ public class XUserMgr extends XUserMgrBase {
 
 	public void deleteXGroupAndXUser(String groupName, String userName) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
 		VXGroup vxGroup = xGroupService.getGroupByGroupName(groupName);
 		VXUser vxUser = xUserService.getXUserByUserName(userName);
 		SearchCriteria searchCriteria = new SearchCriteria();
@@ -813,12 +909,15 @@ public class XUserMgr extends XUserMgrBase {
 		return ret;
 	}
 
-	public VXUserList getXGroupUsers(Long xGroupId) {
-		SearchCriteria searchCriteria = new SearchCriteria();
-		searchCriteria.addParam("xGroupId", xGroupId);
+	public VXUserList getXGroupUsers(SearchCriteria searchCriteria) {
+		if (!msBizUtil.hasModuleAccess(RangerConstants.MODULE_USER_GROUPS)) {
+			throw restErrorUtil.createRESTException(HttpServletResponse.SC_FORBIDDEN, "User is not having permissions on the "+RangerConstants.MODULE_USER_GROUPS+" module.", true);
+		}
+                VXUserList vXUserList = new VXUserList();
+
 		VXGroupUserList vXGroupUserList = xGroupUserService
 				.searchXGroupUsers(searchCriteria);
-		VXUserList vXUserList = new VXUserList();
+
 
 		List<VXUser> vXUsers = new ArrayList<VXUser>();
 		if (vXGroupUserList != null) {
@@ -833,53 +932,82 @@ public class XUserMgr extends XUserMgrBase {
 
 			}
 			vXUserList.setVXUsers(vXUsers);
+                        vXUserList.setStartIndex(searchCriteria.getStartIndex());
+                        vXUserList.setResultSize(vXGroupUserList.getList().size());
+                        vXUserList.setTotalCount(vXGroupUserList.getTotalCount());
+                        vXUserList.setPageSize(searchCriteria.getMaxRows());
+                        vXUserList.setSortBy(vXGroupUserList.getSortBy());
+                        vXUserList.setSortType(vXGroupUserList.getSortType());
 		} else {
-			logger.debug("No users found for group id : " + xGroupId);
+                        logger.debug("No users found for group id : " + searchCriteria.getParamValue("xGroupId"));
 		}
 		return vXUserList;
-	}
-
-	// FIXME Hack : Unnecessary, to be removed after discussion.
-	private void setUserDesc(VXUser vXUser) {
-		vXUser.setDescription(vXUser.getName());
 	}
 
 	@Override
 	public VXGroup updateXGroup(VXGroup vXGroup) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
 		XXGroup xGroup = daoManager.getXXGroup().getById(vXGroup.getId());
+		if (vXGroup != null && xGroup != null && !vXGroup.getName().equals(xGroup.getName())) {
+			throw restErrorUtil.createRESTException(
+					"group name updates are not allowed.",
+					MessageEnums.INVALID_INPUT_DATA);
+		}
 		List<XXTrxLog> trxLogList = xGroupService.getTransactionLog(vXGroup,
 				xGroup, "update");
 		xaBizUtil.createTrxLog(trxLogList);
 		vXGroup = (VXGroup) xGroupService.updateResource(vXGroup);
+		if (vXGroup != null) {
+			updateXgroupUserForGroupUpdate(vXGroup);
+			RangerServicePoliciesCache.sInstance=null;
+		}
 		return vXGroup;
 	}
+
+	protected void updateXgroupUserForGroupUpdate(VXGroup vXGroup) {
+		List<XXGroupUser> grpUsers = daoManager.getXXGroupUser().findByGroupId(vXGroup.getId());
+		if(CollectionUtils.isNotEmpty(grpUsers)){
+			for (XXGroupUser grpUser : grpUsers) {
+				VXGroupUser vXGroupUser = xGroupUserService.populateViewBean(grpUser);
+				vXGroupUser.setName(vXGroup.getName());
+				updateXGroupUser(vXGroupUser);
+			}
+		}
+	}
+
 	public VXGroupUser updateXGroupUser(VXGroupUser vXGroupUser) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
 		return super.updateXGroupUser(vXGroupUser);
 	}
 
 	public void deleteXGroupUser(Long id, boolean force) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
 		super.deleteXGroupUser(id, force);
 	}
 
 	public VXGroupGroup createXGroupGroup(VXGroupGroup vXGroupGroup){
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
 		return super.createXGroupGroup(vXGroupGroup);
 	}
 
 	public VXGroupGroup updateXGroupGroup(VXGroupGroup vXGroupGroup) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
 		return super.updateXGroupGroup(vXGroupGroup);
 	}
 
 	public void deleteXGroupGroup(Long id, boolean force) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
 		super.deleteXGroupGroup(id, force);
 	}
 
 	public void deleteXPermMap(Long id, boolean force) {
+                xaBizUtil.blockAuditorRoleUser();
 		if (force) {
 			XXPermMap xPermMap = daoManager.getXXPermMap().getById(id);
 			if (xPermMap != null) {
@@ -902,6 +1030,7 @@ public class XUserMgr extends XUserMgrBase {
 	}
 
 	public void deleteXAuditMap(Long id, boolean force) {
+                xaBizUtil.blockAuditorRoleUser();
 		if (force) {
 			XXAuditMap xAuditMap = daoManager.getXXAuditMap().getById(id);
 			if (xAuditMap != null) {
@@ -925,6 +1054,7 @@ public class XUserMgr extends XUserMgrBase {
 
 	public void modifyUserVisibility(HashMap<Long, Integer> visibilityMap) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
 		Set<Map.Entry<Long, Integer>> entries = visibilityMap.entrySet();
 		for (Map.Entry<Long, Integer> entry : entries) {
 			XXUser xUser = daoManager.getXXUser().getById(entry.getKey());
@@ -936,6 +1066,7 @@ public class XUserMgr extends XUserMgrBase {
 
 	public void modifyGroupsVisibility(HashMap<Long, Integer> groupVisibilityMap) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
 		Set<Map.Entry<Long, Integer>> entries = groupVisibilityMap.entrySet();
 		for (Map.Entry<Long, Integer> entry : entries) {
 			XXGroup xGroup = daoManager.getXXGroup().getById(entry.getKey());
@@ -970,6 +1101,9 @@ public class XUserMgr extends XUserMgrBase {
 		List<VXUserPermission> userPermListOld = new ArrayList<VXUserPermission>();
 
 		XXModuleDef xModuleDef = daoManager.getXXModuleDef().getById(vXModuleDef.getId());
+		if(!StringUtils.equals(xModuleDef.getModule(), vXModuleDef.getModule())) {
+			throw restErrorUtil.createRESTException("Module name change is not allowed!", MessageEnums.DATA_NOT_UPDATABLE);
+		}
 		VXModuleDef vModuleDefPopulateOld = xModuleDefService.populateViewBean(xModuleDef);
 
 		List<XXGroupPermission> xgroupPermissionList = daoManager.getXXGroupPermission().findByModuleId(vXModuleDef.getId(), true);
@@ -1226,10 +1360,8 @@ public class XUserMgr extends XUserMgrBase {
 	}
 
 	public VXPermMapList searchXPermMaps(SearchCriteria searchCriteria) {
-
-		VXPermMapList returnList;
+		VXPermMapList returnList = null;
 		UserSessionBase currentUserSession = ContextUtil.getCurrentUserSession();
-		// If user is system admin
 		if (currentUserSession != null && currentUserSession.isUserAdmin()) {
 			returnList = super.searchXPermMaps(searchCriteria);
 		} else {
@@ -1272,13 +1404,12 @@ public class XUserMgr extends XUserMgrBase {
 
 	public VXAuditMapList searchXAuditMaps(SearchCriteria searchCriteria) {
 
-		VXAuditMapList returnList;
+		VXAuditMapList returnList=new VXAuditMapList();
 		UserSessionBase currentUserSession = ContextUtil.getCurrentUserSession();
 		// If user is system admin
 		if (currentUserSession != null && currentUserSession.isUserAdmin()) {
 			returnList = super.searchXAuditMaps(searchCriteria);
 		} else {
-			returnList = new VXAuditMapList();
 			int startIndex = searchCriteria.getStartIndex();
 			int pageSize = searchCriteria.getMaxRows();
 			searchCriteria.setStartIndex(0);
@@ -1363,6 +1494,7 @@ public class XUserMgr extends XUserMgrBase {
 	}
 
 	public VXStringList setUserRolesByExternalID(Long userId, List<VXString> vStringRolesList) {
+                xaBizUtil.blockAuditorRoleUser();
 		List<String> roleListNewProfile = new ArrayList<String>();
 		if(vStringRolesList!=null){
 			for (VXString vXString : vStringRolesList) {
@@ -1375,6 +1507,7 @@ public class XUserMgr extends XUserMgrBase {
 		if(vXUser!=null && roleListNewProfile.size()>0){
 			VXPortalUser oldUserProfile = userMgr.getUserProfileByLoginId(vXUser.getName());
 			if(oldUserProfile!=null){
+				denySelfRoleChange(oldUserProfile.getLoginId());
 				updateUserRolesPermissions(oldUserProfile,roleListNewProfile);
 				portalUserRoleList = daoManager.getXXPortalUserRole().findByUserId(oldUserProfile.getId());
 				return getStringListFromUserRoleList(portalUserRoleList);
@@ -1387,6 +1520,7 @@ public class XUserMgr extends XUserMgrBase {
 	}
 
 	public VXStringList setUserRolesByName(String userName, List<VXString> vStringRolesList) {
+                xaBizUtil.blockAuditorRoleUser();
 		List<String> roleListNewProfile = new ArrayList<String>();
 		if(vStringRolesList!=null){
 			for (VXString vXString : vStringRolesList) {
@@ -1397,6 +1531,7 @@ public class XUserMgr extends XUserMgrBase {
 		if(userName!=null && roleListNewProfile.size()>0){
 			VXPortalUser oldUserProfile = userMgr.getUserProfileByLoginId(userName);
 			if(oldUserProfile!=null){
+				denySelfRoleChange(oldUserProfile.getLoginId());
 				updateUserRolesPermissions(oldUserProfile,roleListNewProfile);
 				List<XXPortalUserRole> portalUserRoleList = daoManager.getXXPortalUserRole().findByUserId(oldUserProfile.getId());
 				return getStringListFromUserRoleList(portalUserRoleList);
@@ -1531,6 +1666,7 @@ public class XUserMgr extends XUserMgrBase {
 		VXUser vXUserExactMatch = null;
 		try{
 			VXUserList vXUserListSort = new VXUserList();
+			
 			if(searchCriteria.getParamList() != null && searchCriteria.getParamList().get("name") != null){
 				searchCriteria.setSortBy("name");
 				vXUserListSort = xUserService.searchXUsers(searchCriteria);
@@ -1563,8 +1699,8 @@ public class XUserMgr extends XUserMgrBase {
 							}
 							break;
 						case "emailaddress":
-							String email = vXUserExactMatch.getEmailAddress();
-							if(email != null && !email.equals(entry.getValue())){
+							String email = (String)entry.getValue();
+							if(email != null && !email.equals(vXUserExactMatch.getEmailAddress())){
 								vXUserExactMatchwithSearchCriteria = -1;
 							}
 							break;
@@ -1631,8 +1767,10 @@ public class XUserMgr extends XUserMgrBase {
 		} catch (Exception e){
 			logger.error("Error getting the exact match of user =>"+e);
 		}
-		if(vXUserList.getVXUsers().isEmpty()) {
-			searchCriteria.setSortBy("id");
+		if (vXUserList.getVXUsers().isEmpty()) {
+			if (StringUtils.isBlank(searchCriteria.getSortBy())) {
+				searchCriteria.setSortBy("id");
+			}
 			vXUserList = xUserService.searchXUsers(searchCriteria);
 		}
 		if(vXUserList!=null && !hasAccessToModule(RangerConstants.MODULE_USER_GROUPS)){
@@ -1652,12 +1790,28 @@ public class XUserMgr extends XUserMgrBase {
 	public VXGroupList searchXGroups(SearchCriteria searchCriteria) {
 		VXGroupList vXGroupList= new VXGroupList();
 		VXGroup vXGroupExactMatch = null;
+		VXUser loggedInVXUser = null;
 		try{
+			//In case of user we need to fetch only its associated groups.
+			UserSessionBase userSession = ContextUtil.getCurrentUserSession();
+			if (userSession != null
+					&& userSession.getUserRoleList().size() == 1
+					&& userSession.getUserRoleList().contains(
+							RangerConstants.ROLE_USER)
+					&& userSession.getLoginId() != null) {
+				loggedInVXUser = xUserService.getXUserByUserName(userSession
+						.getLoginId());
+				if (loggedInVXUser != null) {
+					searchCriteria.addParam("userId", loggedInVXUser.getId());
+				}
+
+			}
+			
 			VXGroupList vXGroupListSort= new VXGroupList();
 			if(searchCriteria.getParamList() != null && searchCriteria.getParamList().get("name") != null){
 				searchCriteria.setSortBy("name");
 				vXGroupListSort = xGroupService.searchXGroups(searchCriteria);
-				vXGroupExactMatch = getGroupByGroupName((String)searchCriteria.getParamList().get("name"));
+				vXGroupExactMatch = getGroupByGroupName((String) searchCriteria.getParamList().get("name"));
 			}
 			int vXGroupExactMatchwithSearchCriteria = 0;
 			if(vXGroupExactMatch != null){
@@ -1678,6 +1832,18 @@ public class XUserMgr extends XUserMgrBase {
 								vXGroupExactMatchwithSearchCriteria = -1;
 							}
 							break;
+						//Its required because we need to filter groups for user role
+						case "userid":
+							if (loggedInVXUser != null) {
+									List<Long> listGroupId = daoManager
+											.getXXGroupUser()
+											.findGroupIdListByUserId(loggedInVXUser.getId());
+									if (!listGroupId.contains(vXGroupExactMatch.getId())) {
+										vXGroupExactMatchwithSearchCriteria = -1;
+									}
+							}
+	
+							break;
 						default:
 							logger.warn("XUserMgr.searchXGroups: unexpected searchCriteriaParam:" + caseKey);
 							break;
@@ -1687,6 +1853,7 @@ public class XUserMgr extends XUserMgrBase {
 					}
 				}
 			}
+			
 			if(vXGroupExactMatchwithSearchCriteria == 1){
 				List<VXGroup> vXGroups = new ArrayList<VXGroup>();
 				if(searchCriteria.getStartIndex() == 0){
@@ -1711,9 +1878,12 @@ public class XUserMgr extends XUserMgrBase {
 			logger.error("Error getting the exact match of group =>"+e);
 		}
 		if(vXGroupList.getList().isEmpty()) {
-			searchCriteria.setSortBy("id");
+			if(StringUtils.isBlank(searchCriteria.getSortBy())) {
+				searchCriteria.setSortBy("id");
+			}
 			vXGroupList=xGroupService.searchXGroups(searchCriteria);
 		}
+		
 		if(vXGroupList!=null && !hasAccessToModule(RangerConstants.MODULE_USER_GROUPS)){
 			if(vXGroupList!=null && vXGroupList.getListSize()>0){
 				List<VXGroup> listMasked=new ArrayList<VXGroup>();
@@ -1725,6 +1895,101 @@ public class XUserMgr extends XUserMgrBase {
 			}
 		}
 		return vXGroupList;
+	}
+
+	public VXGroupList lookupXGroups(SearchCriteria searchCriteria) {
+		VXGroupList ret = null;
+
+		try {
+			HashMap<String, Object> searchParams  = searchCriteria.getParamList();
+			String                  nameToLookFor = searchParams != null ? (String) searchParams.get("name") : null;
+			VXGroup                 exactMatch    = null;
+
+			if (StringUtils.isEmpty(searchCriteria.getSortBy())) {
+				searchCriteria.setSortBy(nameToLookFor != null ? "name" : "id");
+			}
+
+			if(nameToLookFor != null) {
+				exactMatch = getGroupByGroupName(nameToLookFor);
+
+				for (Map.Entry<String, Object> entry : searchParams.entrySet()) {
+					if(exactMatch == null) {
+						break;
+					}
+
+					String paramName  = entry.getKey();
+					Object paramValue = entry.getValue();
+
+					switch (paramName.toLowerCase()) {
+						case "isvisible":
+							if (!Objects.equals(exactMatch.getIsVisible(), paramValue)) {
+								exactMatch = null;
+							}
+							break;
+
+						case "groupsource":
+							if (!Objects.equals(exactMatch.getGroupSource(), paramValue)) {
+								exactMatch = null;
+							}
+							break;
+
+						default:
+							// ignore
+							break;
+					}
+				}
+			}
+
+			VXGroupList searchResult = xGroupService.searchXGroups(searchCriteria);
+
+			if (exactMatch != null && exactMatch.getId() != null) {
+				List<VXGroup> groups = searchResult.getList();
+
+				if (!groups.isEmpty()) { // remove exactMatch from groups if it is present
+					boolean removed = false;
+
+					for (Iterator<VXGroup> iter = groups.iterator(); iter.hasNext(); ) {
+						VXGroup group = iter.next();
+
+						if (group != null && exactMatch.getId().equals(group.getId())) {
+							iter.remove();
+							removed = true;
+
+							break;
+						}
+					}
+
+					if (!removed) { // remove the last entry, if exactMatch was not removed above - to accomodate for add() below
+						groups.remove(groups.size() - 1);
+					}
+				}
+
+				groups.add(0, exactMatch);
+
+				ret = new VXGroupList(groups);
+
+				ret.setStartIndex(searchCriteria.getStartIndex());
+				ret.setTotalCount(searchResult.getTotalCount());
+				ret.setPageSize(searchCriteria.getMaxRows());
+				ret.setSortBy(searchCriteria.getSortBy());
+				ret.setSortType(searchCriteria.getSortType());
+			} else {
+				ret = searchResult;
+			}
+		} catch (Exception e) {
+			logger.error("Error getting the exact match of group =>"+e);
+		}
+		if(ret == null || ret.getList().isEmpty()) {
+			searchCriteria.setSortBy("id");
+			ret=xGroupService.searchXGroups(searchCriteria);
+		}
+		if (ret != null && ret.getListSize() > 0 && !hasAccessToModule(RangerConstants.MODULE_USER_GROUPS)) {
+			for(VXGroup vXGroup : ret.getList()) {
+				getMaskedVXGroup(vXGroup);
+			}
+		}
+
+		return ret;
 	}
 
 	public Collection<String> getMaskedCollection(Collection<String> listunMasked){
@@ -1753,10 +2018,12 @@ public class XUserMgr extends XUserMgrBase {
 
 	public void deleteXGroup(Long id, boolean force) {
 		checkAdminAccess();
+		blockIfZoneGroup(id);
+                xaBizUtil.blockAuditorRoleUser();
 		XXGroupDao xXGroupDao = daoManager.getXXGroup();
 		XXGroup xXGroup = xXGroupDao.getById(id);
 		VXGroup vXGroup = xGroupService.populateViewBean(xXGroup);
-		if (vXGroup == null || StringUtil.isEmpty(vXGroup.getName())) {
+		if (vXGroup == null || StringUtils.isEmpty(vXGroup.getName())) {
 			throw restErrorUtil.createRESTException("Group ID doesn't exist.", MessageEnums.INVALID_INPUT_DATA);
 		}
 		if(logger.isDebugEnabled()){
@@ -1919,12 +2186,31 @@ public class XUserMgr extends XUserMgrBase {
 		}
 	}
 
-        public synchronized void deleteXUser(Long id, boolean force) {
+        private void blockIfZoneGroup(Long grpId) {
+		List<XXSecurityZoneRefGroup> zoneRefGrpList = daoManager.getXXSecurityZoneRefGroup().findByGroupId(grpId);
+		if (CollectionUtils.isNotEmpty(zoneRefGrpList)) {
+			StringBuilder zones = new StringBuilder();
+			for(XXSecurityZoneRefGroup zoneRefGrp : zoneRefGrpList) {
+				XXSecurityZone xSecZone=daoManager.getXXSecurityZoneDao().getById(zoneRefGrp.getZoneId());
+				if(zones.indexOf(xSecZone.getName())<0)
+				zones.append(", " + xSecZone.getName());
+			}
+			logger.info("Can Not Delete Group :" + zoneRefGrpList.get(0).getGroupName() + "' as its already present in Zone " +zones);
+			VXResponse vXResponse = new VXResponse();
+			vXResponse.setStatusCode(HttpServletResponse.SC_BAD_REQUEST);
+			vXResponse.setMsgDesc(
+					"Can Not Delete Group '" + zoneRefGrpList.get(0).getGroupName() + "' as its already present in Zone " +zones);
+			throw restErrorUtil.generateRESTException(vXResponse);
+		}
+		}
+
+		public synchronized void deleteXUser(Long id, boolean force) {
 		checkAdminAccess();
+                xaBizUtil.blockAuditorRoleUser();
 		XXUserDao xXUserDao = daoManager.getXXUser();
 		XXUser xXUser =	xXUserDao.getById(id);
 		VXUser vXUser =	xUserService.populateViewBean(xXUser);
-		if(vXUser==null ||StringUtil.isEmpty(vXUser.getName())){
+		if(vXUser==null || StringUtils.isEmpty(vXUser.getName())){
 			throw restErrorUtil.createRESTException("No user found with id=" + id);
 		}
 		XXPortalUserDao xXPortalUserDao=daoManager.getXXPortalUser();
@@ -1933,13 +2219,14 @@ public class XUserMgr extends XUserMgrBase {
 		if(xXPortalUser!=null){
 			vXPortalUser=xPortalUserService.populateViewBean(xXPortalUser);
 		}
-		if(vXPortalUser==null ||StringUtil.isEmpty(vXPortalUser.getLoginId())){
+		if(vXPortalUser==null || StringUtils.isEmpty(vXPortalUser.getLoginId())){
 			throw restErrorUtil.createRESTException("No user found with id=" + id);
 		}
 		if (logger.isDebugEnabled()) {
 			logger.debug("Force delete status="+force+" for user="+vXUser.getName());
 		}
 		restrictSelfAccountDeletion(vXUser.getName().trim());
+		blockIfZoneUser(id);
 		SearchCriteria searchCriteria = new SearchCriteria();
 		searchCriteria.addParam("xUserId", id);
 		VXGroupUserList vxGroupUserList = searchXGroupUsers(searchCriteria);
@@ -2104,13 +2391,31 @@ public class XUserMgr extends XUserMgrBase {
 		}
 	}
 
+	private void blockIfZoneUser(Long id) {
+		List<XXSecurityZoneRefUser> zoneRefUserList = daoManager.getXXSecurityZoneRefUser().findByUserId(id);
+		if (CollectionUtils.isNotEmpty(zoneRefUserList)) {
+			StringBuilder zones = new StringBuilder();
+			for(XXSecurityZoneRefUser zoneRefUser :zoneRefUserList ) {
+				XXSecurityZone xSecZone = daoManager.getXXSecurityZoneDao().getById(zoneRefUser.getZoneId());
+				if(zones.indexOf(xSecZone.getName())<0)
+				zones.append(", " + xSecZone.getName());
+			}
+			logger.info("Can Not Delete User :" + zoneRefUserList.get(0).getUserName());
+			VXResponse vXResponse = new VXResponse();
+			vXResponse.setStatusCode(HttpServletResponse.SC_BAD_REQUEST);
+			vXResponse.setMsgDesc(
+					"Can Not Delete User '"+ zoneRefUserList.get(0).getUserName() +"' as its already present in Zone" + zones);
+			throw restErrorUtil.generateRESTException(vXResponse);
+		}
+		}
+
 	private <T extends RangerPolicyItem> void removeUserGroupReferences(List<T> policyItems, String user, String group) {
 		List<T> itemsToRemove = null;
 		for(T policyItem : policyItems) {
-			if(!StringUtil.isEmpty(user)) {
+			if(StringUtils.isNotEmpty(user)) {
 				policyItem.getUsers().remove(user);
 			}
-			if(!StringUtil.isEmpty(group)) {
+			if(StringUtils.isNotEmpty(group)) {
 				policyItem.getGroups().remove(group);
 			}
 			if(policyItem.getUsers().isEmpty() && policyItem.getGroups().isEmpty()) {
@@ -2129,10 +2434,16 @@ public class XUserMgr extends XUserMgrBase {
 		UserSessionBase session = ContextUtil.getCurrentUserSession();
 		if (session != null) {
 			if (!session.isUserAdmin()) {
-				throw restErrorUtil.create403RESTException("Operation denied. LoggedInUser= "+session.getXXPortalUser().getLoginId() + " isn't permitted to perform the action.");
+				VXResponse vXRes = new VXResponse();
+				vXRes.setStatusCode(HttpServletResponse.SC_FORBIDDEN );
+				vXRes.setMsgDesc("Operation denied. LoggedInUser= "+session.getXXPortalUser().getLoginId() + " isn't permitted to perform the action.");
+				throw restErrorUtil.generateRESTException(vXRes);
 			}else{
-				if(!StringUtil.isEmpty(loginID) && loginID.equals(session.getLoginId())){
-					throw restErrorUtil.create403RESTException("Operation denied. LoggedInUser= "+session.getXXPortalUser().getLoginId() + " isn't permitted to delete his own profile.");
+				if(StringUtils.isNotEmpty(loginID) && loginID.equals(session.getLoginId())){
+					VXResponse vXResponse = new VXResponse();
+					vXResponse.setStatusCode(HttpServletResponse.SC_FORBIDDEN );
+					vXResponse.setMsgDesc("Operation denied. LoggedInUser= "+session.getXXPortalUser().getLoginId() + " isn't permitted to delete his own profile.");
+					throw restErrorUtil.generateRESTException(vXResponse);
 				}
 			}
 		} else {
@@ -2149,6 +2460,7 @@ public class XUserMgr extends XUserMgrBase {
 			logger.error("User Name: "+userName);
 			throw restErrorUtil.createRESTException("Please provide a valid username.",MessageEnums.INVALID_INPUT_DATA);
 		}
+
 		VXUser vXUser = null;
 		VXPortalUser vXPortalUser=null;
 		XXUser xxUser = daoManager.getXXUser().findByUserName(userName);
@@ -2180,11 +2492,11 @@ public class XUserMgr extends XUserMgrBase {
 			xXPortalUser=userMgr.createUser(xXPortalUser, RangerCommonEnums.STATUS_ENABLED, roleList);
 		}
 		VXUser createdXUser=null;
-		if(xxUser==null && vXUser!=null){
-			try{
+		if (xxUser == null && vXUser != null) {
+			try {
 				createdXUser = xUserService.createResource(vXUser);
-			}catch(Exception ex){
-				logger.error("Error creating user: "+createdXUser.getName(),ex);
+			} catch (Exception ex) {
+				logger.error("Error creating user: " + vXUser.getName(), ex);
 			}
 		}
 		if(createdXUser!=null){
@@ -2210,7 +2522,7 @@ public class XUserMgr extends XUserMgrBase {
 		}
 		return createdXUser;
         }
-        private void validatePassword(VXUser vXUser) {
+        protected void validatePassword(VXUser vXUser) {
                 if (vXUser.getPassword() != null && !vXUser.getPassword().isEmpty()) {
                         boolean checkPassword = false;
                         String pattern = "(?=.*[0-9])(?=.*[a-zA-Z]).{8,}";
@@ -2224,4 +2536,455 @@ public class XUserMgr extends XUserMgrBase {
                         throw restErrorUtil.createRESTException("serverMsg.xuserMgrValidatePassword", MessageEnums.INVALID_PASSWORD, null, "Password cannot be blank/null", null);
                 }
         }
+
+        public void denySelfRoleChange(String userName) {
+            UserSessionBase session = ContextUtil.getCurrentUserSession();
+            if (session != null && session.getXXPortalUser()!=null) {
+                if (userName.equals(session.getXXPortalUser().getLoginId())) {
+                    throw restErrorUtil.create403RESTException("Permission"
+                            + " denied. LoggedInUser="
+                            + (session != null ? session.getXXPortalUser().getId()
+                                    : "Not Logged In")
+                            + " ,isn't permitted to change its own role.");
+                }
+            }
+	}
+
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
+	public synchronized VXUgsyncAuditInfo postUserGroupAuditInfo(
+			VXUgsyncAuditInfo vxUgsyncAuditInfo) {
+		checkAdminAccess();
+		//logger.info("post usersync audit info");
+		vxUgsyncAuditInfo = xUgsyncAuditInfoService.createUgsyncAuditInfo(vxUgsyncAuditInfo);
+		return vxUgsyncAuditInfo;
+	}
+
+	public Long getUserStoreVersion() {
+		return daoManager.getXXGlobalState().getAppDataVersion(RANGER_USER_GROUP_GLOBAL_STATE_NAME);
+	}
+
+	public Set<UserInfo> getUsers() {
+		return new HashSet<>(xUserService.getUsers());
+	}
+
+	public Set<GroupInfo> getGroups() {
+		return  new HashSet<>(xGroupService.getGroups());
+	}
+
+	public Map<String, Set<String>> getUserGroups() {
+		return daoManager.getXXUser().findGroupsByUserIds();
+	}
+
+	public RangerUserStore getRangerUserStore(Long lastKnownUserStoreVersion) throws Exception {
+		RangerUserStore ret                   = null;
+		Long        rangerUserStoreVersionInDB = getUserStoreVersion();
+
+		if (logger.isDebugEnabled()) {
+			logger.debug("==> XUserMgr.getRangerUserStore() lastKnownUserStoreVersion= " + lastKnownUserStoreVersion + " rangerUserStoreVersionInDB= " + rangerUserStoreVersionInDB);
+		}
+
+		if (rangerUserStoreVersionInDB != null) {
+			ret = RangerUserStoreCache.getInstance().getLatestRangerUserStoreOrCached(this, lastKnownUserStoreVersion, rangerUserStoreVersionInDB);
+		}
+
+		if (logger.isDebugEnabled()) {
+			logger.debug("<= XUserMgr.getRangerUserStore() lastKnownUserStoreVersion= " + lastKnownUserStoreVersion + " rangerUserStoreVersionInDB= " + rangerUserStoreVersionInDB + " RangerRoles= " + ret);
+		}
+
+		return ret;
+	}
+
+	public int createOrUpdateXUsers(VXUserList users) {
+		xaBizUtil.blockAuditorRoleUser();
+		int ret = 0;
+
+		for (VXUser vXUser : users.getList()) {
+			if (vXUser == null || vXUser.getName() == null
+					|| "null".equalsIgnoreCase(vXUser.getName())
+					|| vXUser.getName().trim().isEmpty()) {
+				throw restErrorUtil.createRESTException("Please provide a valid "
+						+ "username.", MessageEnums.INVALID_INPUT_DATA);
+			}
+			checkAccess(vXUser.getName());
+
+			String username = vXUser.getName();
+			VXPortalUser vXPortalUser = userMgr.getUserProfileByLoginId(username);
+			if (vXPortalUser == null) {
+				vXPortalUser = new VXPortalUser();
+				vXPortalUser.setLoginId(username);
+				vXPortalUser.setFirstName(vXUser.getFirstName());
+				if ("null".equalsIgnoreCase(vXPortalUser.getFirstName())) {
+					vXPortalUser.setFirstName("");
+				}
+				vXPortalUser.setLastName(vXUser.getLastName());
+				if ("null".equalsIgnoreCase(vXPortalUser.getLastName())) {
+					vXPortalUser.setLastName("");
+				}
+
+				String emailAddress = vXUser.getEmailAddress();
+				if (StringUtils.isNotEmpty(emailAddress) && !stringUtil.validateEmail(emailAddress)) {
+					logger.warn("Invalid email address:" + emailAddress);
+					throw restErrorUtil.createRESTException("Please provide valid email address.",
+							MessageEnums.INVALID_INPUT_DATA);
+				}
+				vXPortalUser.setEmailAddress(emailAddress);
+
+				if (vXPortalUser.getFirstName() != null
+						&& vXPortalUser.getLastName() != null
+						&& !vXPortalUser.getFirstName().trim().isEmpty()
+						&& !vXPortalUser.getLastName().trim().isEmpty()) {
+					vXPortalUser.setPublicScreenName(vXPortalUser.getFirstName() + " "
+							+ vXPortalUser.getLastName());
+				} else {
+					vXPortalUser.setPublicScreenName(vXUser.getName());
+				}
+
+				vXPortalUser.setStatus(RangerCommonEnums.STATUS_ENABLED);
+				vXPortalUser.setUserSource(RangerCommonEnums.USER_EXTERNAL);
+				String saltEncodedpasswd = userMgr.encrypt(username,
+						vXUser.getPassword());
+				vXPortalUser.setPassword(saltEncodedpasswd);
+				vXPortalUser.setUserRoleList(vXUser.getUserRoleList());
+				XXPortalUser user = userMgr.mapVXPortalUserToXXPortalUser(vXPortalUser);
+
+				user = daoManager.getXXPortalUser().create(user);
+
+				// Create the UserRole for this user
+				Collection<String> userRoleList = vXUser.getUserRoleList();
+				if (userRoleList != null) {
+					for (String userRole : userRoleList) {
+						userMgr.addUserRole(user.getId(),
+								userRole);
+					}
+				}
+
+				vXUser = xUserService.createResource(vXUser);
+				List<XXTrxLog> trxLogList = xUserService.getTransactionLog(
+						vXUser, "create");
+
+				if (vXPortalUser != null) {
+					assignPermissionToUser(vXPortalUser.getUserRoleList(), vXPortalUser.getId(), vXUser.getId(), true);
+				}
+				xaBizUtil.createTrxLog(trxLogList);
+			} else {
+				if (logger.isDebugEnabled()) {
+					logger.debug("Update user " + username);
+				}
+				updateXUser(vXUser, vXPortalUser);
+			}
+			ret++;
+		}
+
+		try {
+			daoManager.getXXGlobalState().onGlobalAppDataChange(RANGER_USER_GROUP_GLOBAL_STATE_NAME);
+		} catch (Exception excp) {
+			logger.error("createOrUpdateXGroups() failed", excp);
+		}
+
+		return ret;
+	}
+
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
+	public int createOrUpdateXGroups(VXGroupList groups) {
+		for (VXGroup vXGroup : groups.getList()) {
+			createXGroupWithoutLogin(vXGroup);
+		}
+		try {
+			daoManager.getXXGlobalState().onGlobalAppDataChange(RANGER_USER_GROUP_GLOBAL_STATE_NAME);
+		} catch (Exception excp) {
+			logger.error("createOrUpdateXGroups() failed", excp);
+		}
+		return groups.getListSize();
+	}
+
+	@Transactional(readOnly = false, propagation = Propagation.REQUIRED)
+	private void createOrDeleteXGroupUsers(GroupUserInfo groupUserInfo, Map<String, Long> usersFromDB) {
+		checkAdminAccess();
+		xaBizUtil.blockAuditorRoleUser();
+		String groupName = groupUserInfo.getGroupName();
+		if (CollectionUtils.isEmpty(groupUserInfo.getAddUsers()) && CollectionUtils.isEmpty(groupUserInfo.getDelUsers())) {
+			logger.info("Group memberships for source are empty for " + groupName);
+			return;
+		}
+		Set<String> groupUsers = groupUserInfo.getAddUsers();
+		if (CollectionUtils.isNotEmpty(groupUsers)) {
+			xGroupUserService.createOrUpdateXGroupUsers(groupName, groupUsers, usersFromDB);
+		}
+
+		if (CollectionUtils.isNotEmpty(groupUserInfo.getDelUsers())) {
+			for (String username : groupUserInfo.getDelUsers()) {
+				deleteXGroupAndXUser(groupName, username);
+			}
+		}
+	}
+
+	public int createOrDeleteXGroupUserList(List<GroupUserInfo> groupUserInfoList) {
+		int updatedGroups = 0;
+		if (CollectionUtils.isNotEmpty(groupUserInfoList)) {
+			Map<String, Long> usersFromDB = daoManager.getXXUser().getAllUserIds();
+			if (MapUtils.isNotEmpty(usersFromDB)) {
+				for (GroupUserInfo groupUserInfo : groupUserInfoList) {
+					createOrDeleteXGroupUsers(groupUserInfo, usersFromDB);
+				}
+				updatedGroups = groupUserInfoList.size();
+			}
+		}
+		return updatedGroups;
+	}
+
+	public List<String> updateUserRoleAssignments(UsersGroupRoleAssignments ugRoleAssignments) {
+		List<String> updatedUsers = new ArrayList<>();
+		// For each user get groups and compute roles based on group role assignments
+		for (String userName : ugRoleAssignments.getUsers()) {
+			VXPortalUser vXPortalUser = userMgr.getUserProfileByLoginId(userName);
+			if (vXPortalUser == null) {
+				logger.info(userName + " doesn't exist and hence ignoring role assignments");
+				continue;
+			}
+			if (vXPortalUser.getUserSource() != RangerCommonEnums.USER_EXTERNAL){
+				logger.info(userName + " is internal to ranger admin and hence ignoring role assignments");
+				continue;
+			}
+			String userRole = RangerConstants.ROLE_USER;
+			Map<String, String> userMap = ugRoleAssignments.getUserRoleAssignments();
+			if (!userMap.isEmpty() && userMap.containsKey(userName)) {
+				// Add the user role that is defined in user role assignments
+				userRole = userMap.get(userName);
+			} else {
+				Map<String, String> groupMap = ugRoleAssignments.getGroupRoleAssignments();
+
+				if (!groupMap.isEmpty()) {
+					for (String group : getGroupsForUser(userName)) {
+						String value = groupMap.get(group);
+						if (value != null) {
+							userRole = value;
+						}
+					}
+				}
+			}
+
+			if (!vXPortalUser.getUserRoleList().contains(userRole)) {
+				//Update the role of the user only if newly computed role is different from the existing role.
+				String updatedUser = setRolesByUserName(userName, Collections.singletonList(userRole));
+				if (updatedUser != null) {
+					updatedUsers.add(updatedUser);
+				}
+			}
+		}
+		return updatedUsers;
+	}
+
+	private String setRolesByUserName(String userName, List<String> roleListNewProfile) {
+		if (logger.isDebugEnabled()) {
+			logger.debug("==> XUserMgr.setRolesByUserName(" + userName + ", " + roleListNewProfile + ")");
+		}
+		String ret = null;
+		xaBizUtil.blockAuditorRoleUser();
+		if (roleListNewProfile == null) {
+			roleListNewProfile = new ArrayList<String>();
+		}
+
+		if(userName!=null && roleListNewProfile.size()>0){
+			checkAccessRoles(roleListNewProfile);
+			VXPortalUser oldUserProfile = userMgr.getUserProfileByLoginId(userName);
+			if(oldUserProfile!=null){
+				denySelfRoleChange(oldUserProfile.getLoginId());
+				updateUserRolesPermissions(oldUserProfile,roleListNewProfile);
+				logger.info("<== XUserMgr.setRolesByUserName returned roles for " + userName + " are: " + roleListNewProfile );
+				ret = userName;
+			}else{
+				logger.error(userName + "doesn't exist.");
+			}
+		}else{
+			logger.error(userName + "doesn't exist or new role assignments are empty");
+		}
+		if (logger.isDebugEnabled()) {
+			logger.debug("<== XUserMgr.setRolesByUserName(" + userName + ", " + roleListNewProfile + ") ret = " + ret);
+		}
+		return ret;
+	}
+
+	private void assignPermissionToUser(Collection<String> vXPortalUserList, Long vXPortalUserId, Long xUserId, boolean isCreate) {
+		HashMap<String, Long> moduleNameId = getAllModuleNameAndIdMap();
+		if(moduleNameId!=null){
+			if(CollectionUtils.isNotEmpty(vXPortalUserList)){
+				for (String role : vXPortalUserList) {
+
+					if (role.equals(RangerConstants.ROLE_USER)) {
+
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_RESOURCE_BASED_POLICIES), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_REPORTS), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_SECURITY_ZONE), isCreate);
+					} else if (role.equals(RangerConstants.ROLE_SYS_ADMIN)) {
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_REPORTS), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_RESOURCE_BASED_POLICIES), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_AUDIT), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_USER_GROUPS), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_TAG_BASED_POLICIES), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_SECURITY_ZONE), isCreate);
+					} else if (role.equals(RangerConstants.ROLE_KEY_ADMIN)) {
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_AUDIT), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_USER_GROUPS),isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_KEY_MANAGER), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_REPORTS), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_RESOURCE_BASED_POLICIES), isCreate);
+					} else if (role.equals(RangerConstants.ROLE_KEY_ADMIN_AUDITOR)) {
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_AUDIT), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_USER_GROUPS), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_KEY_MANAGER), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_REPORTS), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_RESOURCE_BASED_POLICIES), isCreate);
+					} else if (role.equals(RangerConstants.ROLE_ADMIN_AUDITOR)) {
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_REPORTS), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_RESOURCE_BASED_POLICIES), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_AUDIT), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_USER_GROUPS), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_TAG_BASED_POLICIES), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerAPIMapping.TAB_PERMISSIONS), isCreate);
+						createOrUpdateUserPermisson(vXPortalUserId, xUserId, moduleNameId.get(RangerConstants.MODULE_SECURITY_ZONE), isCreate);
+					}
+
+				}
+			}
+		}
+	}
+
+	private void createOrUpdateUserPermisson(Long portalUserId, Long xUserId, Long moduleId, boolean isCreate) {
+		VXUserPermission vXUserPermission;
+		XXUserPermission xUserPermission = daoManager.getXXUserPermission().findByModuleIdAndPortalUserId(portalUserId, moduleId);
+		if (xUserPermission == null) {
+			vXUserPermission = new VXUserPermission();
+
+			// When Creating XXUserPermission UI sends xUserId, to keep it consistent here xUserId should be used
+			vXUserPermission.setUserId(xUserId);
+
+			vXUserPermission.setIsAllowed(RangerCommonEnums.IS_ALLOWED);
+			vXUserPermission.setModuleId(moduleId);
+			try {
+				vXUserPermission = this.createXUserPermission(vXUserPermission);
+				logger.info("Permission assigned to user: [" + vXUserPermission.getUserName() + "] For Module: [" + vXUserPermission.getModuleName() + "]");
+			} catch (Exception e) {
+				logger.error("Error while assigning permission to user: [" + portalUserId + "] for module: [" + moduleId + "]", e);
+			}
+		} else if (isCreate) {
+			vXUserPermission = xUserPermissionService.populateViewBean(xUserPermission);
+			vXUserPermission.setIsAllowed(RangerCommonEnums.IS_ALLOWED);
+			vXUserPermission = this.updateXUserPermission(vXUserPermission);
+			logger.info("Permission Updated for user: [" + vXUserPermission.getUserName() + "] For Module: [" + vXUserPermission.getModuleName() + "]");
+		}
+	}
+
+	public VXUser updateXUser(VXUser vXUser, VXPortalUser oldUserProfile) {
+		VXPortalUser vXPortalUser = new VXPortalUser();
+		if (oldUserProfile != null && oldUserProfile.getId() != null) {
+			vXPortalUser.setId(oldUserProfile.getId());
+		}
+
+		vXPortalUser.setFirstName(vXUser.getFirstName());
+		if("null".equalsIgnoreCase(vXPortalUser.getFirstName())){
+			vXPortalUser.setFirstName("");
+		}
+		vXPortalUser.setLastName(vXUser.getLastName());
+		if("null".equalsIgnoreCase(vXPortalUser.getLastName())){
+			vXPortalUser.setLastName("");
+		}
+		vXPortalUser.setEmailAddress(vXUser.getEmailAddress());
+		vXPortalUser.setLoginId(vXUser.getName());
+		vXPortalUser.setStatus(vXUser.getStatus());
+		vXPortalUser.setUserRoleList(vXUser.getUserRoleList());
+		if (vXPortalUser.getFirstName() != null
+				&& vXPortalUser.getLastName() != null
+				&& !vXPortalUser.getFirstName().trim().isEmpty()
+				&& !vXPortalUser.getLastName().trim().isEmpty()) {
+			vXPortalUser.setPublicScreenName(vXPortalUser.getFirstName() + " "
+					+ vXPortalUser.getLastName());
+		} else {
+			vXPortalUser.setPublicScreenName(vXUser.getName());
+		}
+		vXPortalUser.setUserSource(oldUserProfile.getUserSource());
+
+		String hiddenPasswordString = PropertiesUtil.getProperty("ranger.password.hidden", "*****");
+		String password = vXUser.getPassword();
+		if (oldUserProfile != null && password != null
+				&& password.equals(hiddenPasswordString)) {
+			vXPortalUser.setPassword(oldUserProfile.getPassword());
+		}
+		else if(oldUserProfile != null && oldUserProfile.getUserSource() == RangerCommonEnums.USER_EXTERNAL && password != null){
+			vXPortalUser.setPassword(oldUserProfile.getPassword());
+			logger.debug("User is trrying to change external user password which we are not allowing it to change");
+		}
+		else if(password != null){
+			validatePassword(vXUser);
+			vXPortalUser.setPassword(password);
+		}
+		XXPortalUser xXPortalUser = new XXPortalUser();
+		xXPortalUser = userMgr.updateUserWithPass(vXPortalUser);
+
+		//update permissions start
+		Collection<String> roleListUpdatedProfile =new ArrayList<String>();
+		if (oldUserProfile != null && oldUserProfile.getId() != null) {
+			if(vXUser!=null && vXUser.getUserRoleList()!=null){
+				Collection<String> roleListOldProfile = oldUserProfile.getUserRoleList();
+				Collection<String> roleListNewProfile = vXUser.getUserRoleList();
+				if(roleListNewProfile!=null && roleListOldProfile!=null){
+					for (String role : roleListNewProfile) {
+						if(role!=null && !roleListOldProfile.contains(role)){
+							roleListUpdatedProfile.add(role);
+						}
+					}
+
+				}
+			}
+		}
+		if(roleListUpdatedProfile!=null && roleListUpdatedProfile.size()>0){
+			vXPortalUser.setUserRoleList(roleListUpdatedProfile);
+			List<XXUserPermission> xuserPermissionList = daoManager
+					.getXXUserPermission()
+					.findByUserPermissionId(vXPortalUser.getId());
+			if (xuserPermissionList!=null && xuserPermissionList.size()>0){
+				for (XXUserPermission xXUserPermission : xuserPermissionList) {
+					if (xXUserPermission != null) {
+						try {
+							xUserPermissionService.deleteResource(xXUserPermission.getId());
+						} catch (Exception e) {
+							logger.error(e.getMessage());
+						}
+					}
+				}
+			}
+		}
+		//update permissions end
+		Collection<String> roleList = new ArrayList<String>();
+		if (xXPortalUser != null) {
+			roleList = userMgr.getRolesForUser(xXPortalUser);
+		}
+		if (roleList == null || roleList.size() == 0) {
+			roleList = new ArrayList<String>();
+			roleList.add(RangerConstants.ROLE_USER);
+		}
+
+		// TODO I've to get the transaction log from here.
+		// There is nothing to log anything in XXUser so far.
+		vXUser = xUserService.updateResource(vXUser);
+		vXUser.setUserRoleList(roleList);
+		if (oldUserProfile != null) {
+			if (oldUserProfile.getUserSource() == RangerCommonEnums.USER_APP) {
+				vXUser.setPassword(password);
+			}
+			else if (oldUserProfile.getUserSource() == RangerCommonEnums.USER_EXTERNAL) {
+				vXUser.setPassword(oldUserProfile.getPassword());
+			}
+		}
+
+		List<XXTrxLog> trxLogList = xUserService.getTransactionLog(vXUser,
+				oldUserProfile, "update");
+		vXUser.setPassword(hiddenPasswordString);
+
+		Long userId = vXUser.getId();
+		assignPermissionToUser(vXPortalUser.getUserRoleList(), vXPortalUser.getId(), userId, true);
+
+		xaBizUtil.createTrxLog(trxLogList);
+
+		return vXUser;
+	}
 }

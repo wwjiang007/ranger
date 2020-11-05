@@ -94,9 +94,9 @@ public class XTrxLogService extends XTrxLogServiceBase<XXTrxLog, VXTrxLog> {
 
 		selectCQ.where(predicate);
 		if ("asc".equalsIgnoreCase(searchCriteria.getSortType())) {
-			selectCQ.orderBy(criteriaBuilder.asc(rootEntityType.get("createTime")));
+			selectCQ.orderBy(criteriaBuilder.asc(rootEntityType.get("id")));
 		} else {
-			selectCQ.orderBy(criteriaBuilder.desc(rootEntityType.get("createTime")));
+			selectCQ.orderBy(criteriaBuilder.desc(rootEntityType.get("id")));
 		}
 		int startIndex = searchCriteria.getStartIndex();
 		int pageSize = searchCriteria.getMaxRows();
@@ -111,6 +111,9 @@ public class XTrxLogService extends XTrxLogServiceBase<XXTrxLog, VXTrxLog> {
 		if (session != null && session.isKeyAdmin()) {
 			resultList = em.createQuery(selectCQ).setFirstResult(minRowSize).setMaxResults(maxRowSize).getResultList();
 		}
+                if (session != null && session.isAuditKeyAdmin()) {
+                        resultList = em.createQuery(selectCQ).setFirstResult(minRowSize).setMaxResults(maxRowSize).getResultList();
+                }
 
 		List<VXTrxLog> trxLogList = new ArrayList<VXTrxLog>();
 		for (VXXTrxLog xTrxLog : resultList) {
@@ -127,7 +130,7 @@ public class XTrxLogService extends XTrxLogServiceBase<XXTrxLog, VXTrxLog> {
 		}
 
 		List<VXTrxLog> keyAdminTrxLogList = new ArrayList<VXTrxLog>();
-                if (session != null && session.isKeyAdmin() && xxServiceDef != null) {
+                if (session != null && xxServiceDef != null && (session.isKeyAdmin()|| session.isAuditKeyAdmin())) {
 			List<VXTrxLog> vXTrxLogs = new ArrayList<VXTrxLog>();
 			for (VXTrxLog xTrxLog : trxLogList) {
 				int parentObjectClassType = xTrxLog.getParentObjectClassType();
@@ -157,7 +160,7 @@ public class XTrxLogService extends XTrxLogServiceBase<XXTrxLog, VXTrxLog> {
 						List<XXPortalUserRole> xxPortalUserRole = daoManager.getXXPortalUserRole()
 								.findByUserId(xxPortalUser.getId());
 						if (xxPortalUserRole != null
-								&& xxPortalUserRole.get(0).getUserRole().equalsIgnoreCase("ROLE_KEY_ADMIN")) {
+                                                                && (xxPortalUserRole.get(0).getUserRole().equalsIgnoreCase("ROLE_KEY_ADMIN") || xxPortalUserRole.get(0).getUserRole().equalsIgnoreCase("ROLE_KEY_ADMIN_AUDITOR"))) {
 							vXTrxLogs.add(xTrxLog);
 						}
 					}
@@ -176,7 +179,9 @@ public class XTrxLogService extends XTrxLogServiceBase<XXTrxLog, VXTrxLog> {
 		VXTrxLogList vxTrxLogList = new VXTrxLogList();
 		vxTrxLogList.setStartIndex(startIndex);
 		vxTrxLogList.setPageSize(pageSize);
-		if (session != null && session.isKeyAdmin()) {
+                vxTrxLogList.setSortBy(searchCriteria.getSortBy());
+                vxTrxLogList.setSortType(searchCriteria.getSortType());
+                if (session != null && (session.isKeyAdmin() || session.isAuditKeyAdmin()) ) {
 			vxTrxLogList.setVXTrxLogs(keyAdminTrxLogList);
 		} else {
 			vxTrxLogList.setVXTrxLogs(trxLogList);
@@ -205,6 +210,9 @@ public class XTrxLogService extends XTrxLogServiceBase<XXTrxLog, VXTrxLog> {
 		if (session != null && session.isKeyAdmin()) {
 			count = keyadminCount;
 		}
+                if (session != null && session.isAuditKeyAdmin()) {
+                        count = keyadminCount;
+                }
 		return count;
 	}
 
@@ -323,47 +331,49 @@ public class XTrxLogService extends XTrxLogServiceBase<XXTrxLog, VXTrxLog> {
 	
 	@Override
 	protected XXTrxLog mapViewToEntityBean(VXTrxLog vObj, XXTrxLog mObj, int OPERATION_CONTEXT) {
+	    XXTrxLog ret = null;
 		if(vObj!=null && mObj!=null){
-			super.mapViewToEntityBean(vObj, mObj, OPERATION_CONTEXT);
+			ret = super.mapViewToEntityBean(vObj, mObj, OPERATION_CONTEXT);
 			XXPortalUser xXPortalUser=null;
-			if(mObj.getAddedByUserId()==null || mObj.getAddedByUserId()==0){
+			if(ret.getAddedByUserId()==null || ret.getAddedByUserId()==0){
 				if(!stringUtil.isEmpty(vObj.getOwner())){
 					xXPortalUser=daoManager.getXXPortalUser().findByLoginId(vObj.getOwner());
 					if(xXPortalUser!=null){
-						mObj.setAddedByUserId(xXPortalUser.getId());
+						ret.setAddedByUserId(xXPortalUser.getId());
 					}
 				}
 			}
-			if(mObj.getUpdatedByUserId()==null || mObj.getUpdatedByUserId()==0){
+			if(ret.getUpdatedByUserId()==null || ret.getUpdatedByUserId()==0){
 				if(!stringUtil.isEmpty(vObj.getUpdatedBy())){
 					xXPortalUser= daoManager.getXXPortalUser().findByLoginId(vObj.getUpdatedBy());
 					if(xXPortalUser!=null){
-						mObj.setUpdatedByUserId(xXPortalUser.getId());
+						ret.setUpdatedByUserId(xXPortalUser.getId());
 					}		
 				}
 			}
 		}
-		return mObj;
+		return ret;
 	}
 
 	@Override
 	protected VXTrxLog mapEntityToViewBean(VXTrxLog vObj, XXTrxLog mObj) {
+	    VXTrxLog ret = null;
         if(mObj!=null && vObj!=null){
-            super.mapEntityToViewBean(vObj, mObj);
+            ret = super.mapEntityToViewBean(vObj, mObj);
             XXPortalUser xXPortalUser=null;
-            if(stringUtil.isEmpty(vObj.getOwner())){
+            if(stringUtil.isEmpty(ret.getOwner())){
                 xXPortalUser= daoManager.getXXPortalUser().getById(mObj.getAddedByUserId());
                 if(xXPortalUser!=null){
-                    vObj.setOwner(xXPortalUser.getLoginId());
+                    ret.setOwner(xXPortalUser.getLoginId());
                 }
             }
-            if(stringUtil.isEmpty(vObj.getUpdatedBy())){
+            if(stringUtil.isEmpty(ret.getUpdatedBy())){
                 xXPortalUser= daoManager.getXXPortalUser().getById(mObj.getUpdatedByUserId());
                 if(xXPortalUser!=null){
-                    vObj.setUpdatedBy(xXPortalUser.getLoginId());
+                    ret.setUpdatedBy(xXPortalUser.getLoginId());
                 }
             }
         }
-        return vObj;
+        return ret;
 	}
 }

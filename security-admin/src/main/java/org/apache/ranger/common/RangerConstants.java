@@ -23,6 +23,10 @@
 
 package org.apache.ranger.common;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
 public class RangerConstants extends RangerCommonEnums {
 
 	// Default Roles
@@ -36,6 +40,9 @@ public class RangerConstants extends RangerCommonEnums {
 	public final static String ROLE_ANON = "ROLE_ANON";
 	public final static String ROLE_OTHER = "ROLE_OTHER";
 	public final static String GROUP_PUBLIC = "public";
+    public final static String ROLE_ADMIN_AUDITOR = "ROLE_ADMIN_AUDITOR";
+    public final static String ROLE_KEY_ADMIN_AUDITOR = "ROLE_KEY_ADMIN_AUDITOR";
+    public final static String ROLE_FIELD = "Roles";
 	// Action constants
 	public final static String ACTION_EDIT = "edit";
 	public final static String ACTION_CHANGE = "change";
@@ -73,6 +80,7 @@ public class RangerConstants extends RangerCommonEnums {
 	public static final String MODULE_PERMISSION="Permissions";
 	public static final String MODULE_KEY_MANAGER="Key Manager";
 	public static final String MODULE_TAG_BASED_POLICIES="Tag Based Policies";
+        public static final String MODULE_SECURITY_ZONE="Security Zone";
 
 	// User create validation errors
 	public enum ValidationUserProfile {
@@ -167,11 +175,19 @@ public class RangerConstants extends RangerCommonEnums {
 	public static final int EMAIL_TYPE_USER_ROLE_UPDATED = 9;
 	public static final int EMAIL_TYPE_USER_GRP_ADD = 10;
 
+        //Constant for Tag_Service Type.
+        public final static int TAG_SERVICE_TYPE = 100;
+
+	public static final List<String> VALID_USER_ROLE_LIST = new ArrayList<String>(Arrays.asList(RangerConstants.ROLE_USER,
+			RangerConstants.ROLE_SYS_ADMIN, RangerConstants.ROLE_KEY_ADMIN, RangerConstants.ROLE_ADMIN_AUDITOR,
+			RangerConstants.ROLE_KEY_ADMIN_AUDITOR));
+
 	public static enum RBAC_PERM {
 		ALLOW_NONE,
 		ALLOW_READ,
 		ALLOW_WRITE,
 		ALLOW_DELETE
 	}
-
+	//HTTP STATUS code for authentication timeout
+		public static final int SC_AUTHENTICATION_TIMEOUT = 419;
 }

@@ -23,7 +23,7 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.ranger.authorization.hadoop.config.RangerConfiguration;
+import org.apache.ranger.authorization.hadoop.config.RangerAdminConfig;
 import org.apache.ranger.plugin.model.RangerBaseModelObject;
 import org.apache.ranger.plugin.model.RangerPolicy;
 import org.apache.ranger.plugin.model.RangerService;
@@ -42,15 +42,21 @@ public abstract class AbstractServiceStore implements ServiceStore {
 
 	public static final String COMPONENT_ACCESSTYPE_SEPARATOR = ":";
 
-	private static final String AUTOPROPAGATE_ROWFILTERDEF_TO_TAG_PROP = "ranger.servicedef.autopropagate.rowfilterdef.to.tag";
+	public static final String AUTOPROPAGATE_ROWFILTERDEF_TO_TAG_PROP = "ranger.servicedef.autopropagate.rowfilterdef.to.tag";
 
-	private static final boolean AUTOPROPAGATE_ROWFILTERDEF_TO_TAG_PROP_DEFAULT = false;
+	public static final boolean AUTOPROPAGATE_ROWFILTERDEF_TO_TAG_PROP_DEFAULT = false;
 
 	private static final int MAX_ACCESS_TYPES_IN_SERVICE_DEF = 1000;
+
+	private final RangerAdminConfig config;
 
 	// when a service-def is updated, the updated service-def should be made available to plugins
 	//   this is achieved by incrementing policyVersion of all its services
 	protected abstract void updateServicesForServiceDefUpdate(RangerServiceDef serviceDef) throws Exception;
+
+	protected AbstractServiceStore() {
+		this.config = RangerAdminConfig.getInstance();
+	}
 
 	@Override
 	public void updateTagServiceDefForAccessTypes() throws Exception {
@@ -138,7 +144,7 @@ public abstract class AbstractServiceStore implements ServiceStore {
 		}
 	}
 
-	protected final long getNextVersion(Long currentVersion) {
+	public static long getNextVersion(Long currentVersion) {
 		return currentVersion == null ? 1L : currentVersion + 1;
 	}
 
@@ -515,7 +521,7 @@ public abstract class AbstractServiceStore implements ServiceStore {
 		}
 		boolean ret = false;
 
-		boolean autopropagateRowfilterdefToTag = RangerConfiguration.getInstance().getBoolean(AUTOPROPAGATE_ROWFILTERDEF_TO_TAG_PROP, AUTOPROPAGATE_ROWFILTERDEF_TO_TAG_PROP_DEFAULT);
+		boolean autopropagateRowfilterdefToTag = config.getBoolean(AUTOPROPAGATE_ROWFILTERDEF_TO_TAG_PROP, AUTOPROPAGATE_ROWFILTERDEF_TO_TAG_PROP_DEFAULT);
 
 		if (autopropagateRowfilterdefToTag) {
 			RangerServiceDef.RangerRowFilterDef svcRowFilterDef = serviceDef.getRowFilterDef();
@@ -571,10 +577,15 @@ public abstract class AbstractServiceStore implements ServiceStore {
 		}
 		boolean ret = false;
 
-		RangerServiceDef.RangerResourceDef tagResource = new RangerServiceDef.RangerResourceDef();
-		tagResource.setName(RangerServiceTag.TAG_RESOURCE_NAME);
-		List<RangerServiceDef.RangerResourceDef> resources = new ArrayList<>();
-		resources.add(tagResource);
+		final RangerServiceDef.RangerResourceDef accessPolicyTagResource = getResourceDefForTagResource(tagServiceDef.getResources());
+
+		final List<RangerServiceDef.RangerResourceDef> resources = new ArrayList<>();
+
+		if (accessPolicyTagResource == null) {
+			LOG.warn("Resource with name :[" + RangerServiceTag.TAG_RESOURCE_NAME + "] not found in  tag-service-definition!!");
+		} else {
+			resources.add(accessPolicyTagResource);
+		}
 
 		RangerServiceDef.RangerDataMaskDef dataMaskDef = tagServiceDef.getDataMaskDef();
 
@@ -595,7 +606,7 @@ public abstract class AbstractServiceStore implements ServiceStore {
 		RangerServiceDef.RangerRowFilterDef rowFilterDef = tagServiceDef.getRowFilterDef();
 
 		if (rowFilterDef != null) {
-			boolean autopropagateRowfilterdefToTag = RangerConfiguration.getInstance().getBoolean(AUTOPROPAGATE_ROWFILTERDEF_TO_TAG_PROP, AUTOPROPAGATE_ROWFILTERDEF_TO_TAG_PROP_DEFAULT);
+			boolean autopropagateRowfilterdefToTag = config.getBoolean(AUTOPROPAGATE_ROWFILTERDEF_TO_TAG_PROP, AUTOPROPAGATE_ROWFILTERDEF_TO_TAG_PROP_DEFAULT);
 			if (autopropagateRowfilterdefToTag) {
 				if (CollectionUtils.isNotEmpty(rowFilterDef.getAccessTypes())) {
 					if (CollectionUtils.isEmpty(rowFilterDef.getResources())) {
@@ -613,6 +624,20 @@ public abstract class AbstractServiceStore implements ServiceStore {
 
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("<== AbstractServiceStore.updateResourceInTagServiceDef(" + tagServiceDef + ") : " + ret);
+		}
+		return ret;
+	}
+
+	private RangerServiceDef.RangerResourceDef getResourceDefForTagResource(List<RangerServiceDef.RangerResourceDef> resourceDefs) {
+		RangerServiceDef.RangerResourceDef ret = null;
+
+		if (CollectionUtils.isNotEmpty(resourceDefs)) {
+			for (RangerServiceDef.RangerResourceDef resourceDef : resourceDefs) {
+				if (resourceDef.getName().equals(RangerServiceTag.TAG_RESOURCE_NAME)) {
+					ret = resourceDef;
+					break;
+				}
+			}
 		}
 		return ret;
 	}

@@ -25,6 +25,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+import javax.annotation.Nonnull;
 import javax.persistence.EntityManager;
 import javax.persistence.Query;
 import javax.servlet.http.HttpServletRequest;
@@ -32,6 +33,7 @@ import javax.servlet.http.HttpServletRequest;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.Validate;
 import org.apache.log4j.Logger;
 import org.apache.ranger.plugin.util.SearchFilter;
 import org.springframework.stereotype.Component;
@@ -40,11 +42,8 @@ import org.springframework.stereotype.Component;
 public class RangerSearchUtil extends SearchUtil {
 	final static Logger logger = Logger.getLogger(RangerSearchUtil.class);
 	
-	public SearchFilter getSearchFilter(HttpServletRequest request, List<SortField> sortFields) {
-		if (request == null) {
-			return null;
-		}
-
+	public SearchFilter getSearchFilter(@Nonnull HttpServletRequest request, List<SortField> sortFields) {
+		Validate.notNull(request, "request");
 		SearchFilter ret = new SearchFilter();
 
 		if (MapUtils.isEmpty(request.getParameterMap())) {
@@ -52,9 +51,12 @@ public class RangerSearchUtil extends SearchUtil {
 		}
 
 		ret.setParam(SearchFilter.SERVICE_TYPE, request.getParameter(SearchFilter.SERVICE_TYPE));
+		ret.setParam(SearchFilter.SERVICE_TYPE_DISPLAY_NAME, request.getParameter(SearchFilter.SERVICE_TYPE_DISPLAY_NAME));
 		ret.setParam(SearchFilter.SERVICE_TYPE_ID, request.getParameter(SearchFilter.SERVICE_TYPE_ID));
 		ret.setParam(SearchFilter.SERVICE_NAME, request.getParameter(SearchFilter.SERVICE_NAME));
+		ret.setParam(SearchFilter.SERVICE_DISPLAY_NAME, request.getParameter(SearchFilter.SERVICE_DISPLAY_NAME));
 		ret.setParam(SearchFilter.SERVICE_NAME_PARTIAL, request.getParameter(SearchFilter.SERVICE_NAME_PARTIAL));
+		ret.setParam(SearchFilter.SERVICE_DISPLAY_NAME_PARTIAL, request.getParameter(SearchFilter.SERVICE_DISPLAY_NAME_PARTIAL));
 		ret.setParam(SearchFilter.SERVICE_ID, request.getParameter(SearchFilter.SERVICE_ID));
 		ret.setParam(SearchFilter.POLICY_NAME, request.getParameter(SearchFilter.POLICY_NAME));
 		ret.setParam(SearchFilter.POLICY_NAME_PARTIAL, request.getParameter(SearchFilter.POLICY_NAME_PARTIAL));
@@ -63,15 +65,28 @@ public class RangerSearchUtil extends SearchUtil {
 		ret.setParam(SearchFilter.IS_RECURSIVE, request.getParameter(SearchFilter.IS_RECURSIVE));
 		ret.setParam(SearchFilter.USER, request.getParameter(SearchFilter.USER));
 		ret.setParam(SearchFilter.GROUP, request.getParameter(SearchFilter.GROUP));
+		ret.setParam(SearchFilter.ROLE, request.getParameter(SearchFilter.ROLE));
 		ret.setParam(SearchFilter.POL_RESOURCE, request.getParameter(SearchFilter.POL_RESOURCE));
 		ret.setParam(SearchFilter.RESOURCE_SIGNATURE, request.getParameter(SearchFilter.RESOURCE_SIGNATURE));
 		ret.setParam(SearchFilter.POLICY_TYPE, request.getParameter(SearchFilter.POLICY_TYPE));
-
+		ret.setParam(SearchFilter.POLICY_LABEL, request.getParameter(SearchFilter.POLICY_LABEL));
+		ret.setParam(SearchFilter.POLICY_LABELS_PARTIAL, request.getParameter(SearchFilter.POLICY_LABELS_PARTIAL));
 		ret.setParam(SearchFilter.PLUGIN_HOST_NAME, request.getParameter(SearchFilter.PLUGIN_HOST_NAME));
 		ret.setParam(SearchFilter.PLUGIN_APP_TYPE, request.getParameter(SearchFilter.PLUGIN_APP_TYPE));
 		ret.setParam(SearchFilter.PLUGIN_ENTITY_TYPE, request.getParameter(SearchFilter.PLUGIN_ENTITY_TYPE));
 		ret.setParam(SearchFilter.PLUGIN_IP_ADDRESS, request.getParameter(SearchFilter.PLUGIN_IP_ADDRESS));
-
+		ret.setParam(SearchFilter.ZONE_NAME, request.getParameter(SearchFilter.ZONE_NAME));
+		ret.setParam(SearchFilter.TAG_SERVICE_ID, request.getParameter(SearchFilter.TAG_SERVICE_ID));
+		ret.setParam(SearchFilter.ROLE_NAME, request.getParameter(SearchFilter.ROLE_NAME));
+		ret.setParam(SearchFilter.ROLE_ID, request.getParameter(SearchFilter.ROLE_ID));
+		ret.setParam(SearchFilter.GROUP_NAME, request.getParameter(SearchFilter.GROUP_NAME));
+		ret.setParam(SearchFilter.USER_NAME, request.getParameter(SearchFilter.USER_NAME));
+		ret.setParam(SearchFilter.ROLE_NAME_PARTIAL, request.getParameter(SearchFilter.ROLE_NAME_PARTIAL));
+		ret.setParam(SearchFilter.GROUP_NAME_PARTIAL, request.getParameter(SearchFilter.GROUP_NAME_PARTIAL));
+		ret.setParam(SearchFilter.USER_NAME_PARTIAL, request.getParameter(SearchFilter.USER_NAME_PARTIAL));
+		ret.setParam(SearchFilter.CLUSTER_NAME, request.getParameter(SearchFilter.CLUSTER_NAME));
+		ret.setParam(SearchFilter.FETCH_ZONE_UNZONE_POLICIES, request.getParameter(SearchFilter.FETCH_ZONE_UNZONE_POLICIES));
+		ret.setParam(SearchFilter.FETCH_TAG_POLICIES, request.getParameter(SearchFilter.FETCH_TAG_POLICIES));
 		for (Map.Entry<String, String[]> e : request.getParameterMap().entrySet()) {
 			String name = e.getKey();
 			String[] values = e.getValue();
@@ -113,10 +128,7 @@ public class RangerSearchUtil extends SearchUtil {
 
 
 	public SearchFilter getSearchFilterFromLegacyRequest(HttpServletRequest request, List<SortField> sortFields) {
-		if (request == null) {
-			return null;
-		}
-
+		Validate.notNull(request, "request");
 		SearchFilter ret = new SearchFilter();
 
 		if (MapUtils.isEmpty(request.getParameterMap())) {
@@ -202,19 +214,16 @@ public class RangerSearchUtil extends SearchUtil {
 	public Query createSearchQuery(EntityManager em, String queryStr, String sortClause,
 			SearchFilter searchCriteria, List<SearchField> searchFields,
 			boolean isCountQuery) {
-		return createSearchQuery(em, queryStr, sortClause, searchCriteria, searchFields, -1, false, isCountQuery);
+		return createSearchQuery(em, queryStr, sortClause, searchCriteria, searchFields, false, isCountQuery);
 	}
 	
 	public Query createSearchQuery(EntityManager em, String queryStr, String sortClause,
 			SearchFilter searchCriteria, List<SearchField> searchFields,
-			int objectClassType, boolean hasAttributes, boolean isCountQuery) {
+			boolean hasAttributes, boolean isCountQuery) {
 
 		StringBuilder queryClause = buildWhereClause(searchCriteria, searchFields);
-
 		super.addOrderByClause(queryClause, sortClause);
-
 		Query query = em.createQuery(queryStr + queryClause);
-
 		resolveQueryParams(query, searchCriteria, searchFields);
 
 		if (!isCountQuery) {

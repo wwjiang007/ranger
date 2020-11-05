@@ -51,6 +51,8 @@ delimiter ;
 call add_datamask_options_to_x_resource_def_table();
 drop procedure if exists add_datamask_options_to_x_resource_def_table;
 
+DROP TABLE IF EXISTS `x_policy_item_rowfilter`;
+DROP TABLE IF EXISTS `x_policy_item_datamask`;
 DROP TABLE IF EXISTS `x_datamask_type_def`;
 CREATE TABLE `x_datamask_type_def` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
@@ -68,7 +70,7 @@ CREATE TABLE `x_datamask_type_def` (
 `datamask_options` varchar(1024) NULL DEFAULT NULL,
 `rb_key_label` varchar(1024) NULL DEFAULT NULL,
 `rb_key_description` varchar(1024) DEFAULT NULL,
-`sort_order` tinyint(3) DEFAULT '0',
+`sort_order` int DEFAULT 0,
 primary key (`id`),      
 CONSTRAINT `x_datamask_type_def_FK_def_id` FOREIGN KEY (`def_id`) REFERENCES `x_service_def` (`id`) ,
 CONSTRAINT `x_datamask_type_def_FK_added_by_id` FOREIGN KEY (`added_by_id`) REFERENCES `x_portal_user` (`id`),
@@ -76,7 +78,6 @@ CONSTRAINT `x_datamask_type_def_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENC
 )ROW_FORMAT=DYNAMIC;
 CREATE INDEX x_datamask_type_def_IDX_def_id ON x_datamask_type_def(def_id);
 
-DROP TABLE IF EXISTS `x_policy_item_datamask`;
 CREATE TABLE `x_policy_item_datamask` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(64) NULL DEFAULT NULL,
@@ -96,7 +97,6 @@ CONSTRAINT `x_policy_item_datamask_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFER
 )ROW_FORMAT=DYNAMIC;
 CREATE INDEX x_policy_item_datamask_IDX_policy_item_id ON x_policy_item_datamask(policy_item_id);
 
-DROP TABLE IF EXISTS `x_policy_item_rowfilter`;
 CREATE TABLE `x_policy_item_rowfilter` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(64) NULL DEFAULT NULL,

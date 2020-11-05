@@ -17,13 +17,16 @@
  * under the License.
  */
 
- package org.apache.ranger.rest;
+package org.apache.ranger.rest;
 
 import java.util.HashMap;
 import java.util.List;
-import java.util.Random;
+import java.util.Set;
+import java.util.ArrayList;
+import java.util.Map;
 
 import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
 import javax.ws.rs.DELETE;
 import javax.ws.rs.GET;
 import javax.ws.rs.POST;
@@ -32,21 +35,36 @@ import javax.ws.rs.Path;
 import javax.ws.rs.PathParam;
 import javax.ws.rs.Produces;
 import javax.ws.rs.core.Context;
+import javax.ws.rs.QueryParam;
+import javax.ws.rs.DefaultValue;
 
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.log4j.Logger;
 import org.apache.ranger.biz.RangerBizUtil;
 import org.apache.ranger.biz.SessionMgr;
 import org.apache.ranger.biz.XUserMgr;
+import org.apache.ranger.biz.AssetMgr;
+import org.apache.ranger.biz.ServiceDBStore;
+import org.apache.ranger.common.ServiceUtil;
+import org.apache.ranger.common.ContextUtil;
 import org.apache.ranger.common.MessageEnums;
 import org.apache.ranger.common.RESTErrorUtil;
 import org.apache.ranger.common.RangerConstants;
 import org.apache.ranger.common.SearchCriteria;
 import org.apache.ranger.common.SearchUtil;
 import org.apache.ranger.common.StringUtil;
+import org.apache.ranger.common.UserSessionBase;
 import org.apache.ranger.common.annotation.RangerAnnotationClassName;
 import org.apache.ranger.common.annotation.RangerAnnotationJSMgrName;
 import org.apache.ranger.db.RangerDaoManager;
+import org.apache.ranger.entity.XXService;
+import org.apache.ranger.entity.XXServiceDef;
+import org.apache.ranger.plugin.model.RangerPluginInfo;
+import org.apache.ranger.plugin.model.RangerService;
+import org.apache.ranger.plugin.store.EmbeddedServiceDefsUtil;
+import org.apache.ranger.plugin.util.RangerRESTUtils;
+import org.apache.ranger.plugin.util.RangerUserStore;
 import org.apache.ranger.security.context.RangerAPIList;
 import org.apache.ranger.service.AuthSessionService;
 import org.apache.ranger.service.XAuditMapService;
@@ -59,31 +77,9 @@ import org.apache.ranger.service.XPermMapService;
 import org.apache.ranger.service.XResourceService;
 import org.apache.ranger.service.XUserPermissionService;
 import org.apache.ranger.service.XUserService;
-import org.apache.ranger.view.VXAuditMap;
-import org.apache.ranger.view.VXAuditMapList;
-import org.apache.ranger.view.VXAuthSession;
-import org.apache.ranger.view.VXAuthSessionList;
-import org.apache.ranger.view.VXGroup;
-import org.apache.ranger.view.VXGroupGroup;
-import org.apache.ranger.view.VXGroupGroupList;
-import org.apache.ranger.view.VXGroupList;
-import org.apache.ranger.view.VXGroupPermission;
-import org.apache.ranger.view.VXGroupPermissionList;
-import org.apache.ranger.view.VXGroupUser;
-import org.apache.ranger.view.VXGroupUserInfo;
-import org.apache.ranger.view.VXGroupUserList;
-import org.apache.ranger.view.VXLong;
-import org.apache.ranger.view.VXModuleDef;
-import org.apache.ranger.view.VXModuleDefList;
-import org.apache.ranger.view.VXPermMap;
-import org.apache.ranger.view.VXPermMapList;
-import org.apache.ranger.view.VXString;
-import org.apache.ranger.view.VXStringList;
-import org.apache.ranger.view.VXUser;
-import org.apache.ranger.view.VXUserGroupInfo;
-import org.apache.ranger.view.VXUserList;
-import org.apache.ranger.view.VXUserPermission;
-import org.apache.ranger.view.VXUserPermissionList;
+import org.apache.ranger.ugsyncutil.model.GroupUserInfo;
+import org.apache.ranger.ugsyncutil.model.UsersGroupRoleAssignments;
+import org.apache.ranger.view.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -98,6 +94,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RangerAnnotationJSMgrName("XUserMgr")
 @Transactional(propagation = Propagation.REQUIRES_NEW)
 public class XUserREST {
+
+	public static final String USERSTORE_DOWNLOAD_USERS = "userstore.download.auth.users";
 
 	@Autowired
 	SearchUtil searchUtil;
@@ -149,6 +147,20 @@ public class XUserREST {
 	
 	@Autowired
 	XResourceService xResourceService;
+	
+	@Autowired
+	StringUtil stringUtil;
+
+	@Autowired
+	AssetMgr assetMgr;
+
+	@Autowired
+	ServiceUtil serviceUtil;
+
+	@Autowired
+	ServiceDBStore svcStore;
+	
+	static final Logger logger = Logger.getLogger(XUserMgr.class);
 
 	// Handle XGroup
 	@GET
@@ -242,8 +254,8 @@ public class XUserREST {
 				request, xGroupService.sortFields);
 		searchUtil.extractString(request, searchCriteria, "name", "group name", null);
 		searchUtil.extractInt(request, searchCriteria, "isVisible", "Group Visibility");
-		searchUtil.extractString(request, searchCriteria, "groupSource", "group source", null);
-//		searchUtil.extractInt(request, searchCriteria, "groupSource", "group source");
+//		searchUtil.extractString(request, searchCriteria, "groupSource", "group source", null);
+		searchUtil.extractInt(request, searchCriteria, "groupSource", "group source");
 		return xUserMgr.searchXGroups(searchCriteria);
 	}
 
@@ -282,6 +294,14 @@ public class XUserREST {
 	public VXUser createXUser(VXUser vXUser) {
 		return xUserMgr.createXUserWithOutLogin(vXUser);
 	}
+
+	@POST
+	@Path("/users/external")
+	@Produces({ "application/xml", "application/json" })
+	@PreAuthorize("hasRole('ROLE_SYS_ADMIN')")
+	public VXUser createExternalUser(VXUser vXUser) {
+		return xUserMgr.createExternalUser(vXUser.getName());
+	}
 	
 	@POST
 	@Path("/users/userinfo")
@@ -290,7 +310,7 @@ public class XUserREST {
 	public VXUserGroupInfo createXUserGroupFromMap(VXUserGroupInfo vXUserGroupInfo) {
 		return  xUserMgr.createXUserGroupFromMap(vXUserGroupInfo);
 	}
-	
+
 	@POST
 	@Path("/secure/users")
 	@Produces({ "application/xml", "application/json" })
@@ -305,6 +325,7 @@ public class XUserREST {
 	@Path("/users")
 	@Produces({ "application/xml", "application/json" })
 	public VXUser updateXUser(VXUser vXUser) {
+                bizUtil.checkUserAccessible(vXUser);
 		return xUserMgr.updateXUser(vXUser);
 	}
 	
@@ -365,7 +386,8 @@ public class XUserREST {
 		searchUtil.extractInt(request, searchCriteria, "status", "User Status");
 		List<String> userRolesList = searchUtil.extractStringList(request, searchCriteria, "userRoleList", "User Role List", "userRoleList", null,
 				null);
-		searchUtil.extractString(request, searchCriteria, "userRole", "UserRole", null);
+		searchUtil.extractRoleString(request, searchCriteria, "userRole", "Role", null);
+
 		if (CollectionUtils.isNotEmpty(userRolesList) && CollectionUtils.size(userRolesList) == 1 && userRolesList.get(0).equalsIgnoreCase(UserRoleParamName)) {
 			if (!(searchCriteria.getParamList().containsKey("name"))) {
 				searchCriteria.addParam("name", userName);
@@ -373,13 +395,92 @@ public class XUserREST {
 			else if ((searchCriteria.getParamList().containsKey("name")) && userName!= null && userName.contains((String) searchCriteria.getParamList().get("name"))) {
 				searchCriteria.addParam("name", userName);
 			}
-			else {
-				String randomString = new Random().toString();
-				searchCriteria.addParam("name", randomString);
+		}
+		
+		
+		UserSessionBase userSession = ContextUtil.getCurrentUserSession();
+		if (userSession != null && userSession.getLoginId() != null) {
+			VXUser loggedInVXUser = xUserService.getXUserByUserName(userSession
+					.getLoginId());
+			if (loggedInVXUser != null) {
+				if (loggedInVXUser.getUserRoleList().size() == 1
+						&& loggedInVXUser.getUserRoleList().contains(
+								RangerConstants.ROLE_USER)) {
+					logger.info("Logged-In user having user role will be able to fetch his own user details.");
+					if (!searchCriteria.getParamList().containsKey("name")) {
+						searchCriteria.addParam("name", loggedInVXUser.getName());
+					}else if(searchCriteria.getParamList().containsKey("name")
+							&& !stringUtil.isEmpty(searchCriteria.getParamValue("name").toString())
+							&& !searchCriteria.getParamValue("name").toString().equalsIgnoreCase(loggedInVXUser.getName())){
+						throw restErrorUtil.create403RESTException("Logged-In user is not allowed to access requested user data.");
+					}
+									
+				}
 			}
 		}
 
 		return xUserMgr.searchXUsers(searchCriteria);
+	}
+
+	@GET
+	@Path("/lookup/users")
+	@Produces({ "application/xml", "application/json" })
+	@PreAuthorize("@rangerPreAuthSecurityHandler.isAPIAccessible(\"" + RangerAPIList.GET_USERS_LOOKUP + "\")")
+	public VXStringList getUsersLookup(@Context HttpServletRequest request) {
+		SearchCriteria searchCriteria = searchUtil.extractCommonCriterias(
+				request, xUserService.sortFields);
+		VXStringList ret = new VXStringList();
+		List<VXString> vXList = new ArrayList<>();
+		searchUtil.extractString(request, searchCriteria, "name", "User name",null);
+		searchUtil.extractInt(request, searchCriteria, "isVisible", "User Visibility");
+		try {
+			VXUserList vXUserList = xUserMgr.searchXUsers(searchCriteria);
+			VXString VXString = null;
+			for (VXUser vxUser : vXUserList.getList()) {
+				VXString = new VXString();
+				VXString.setValue(vxUser.getName());
+				vXList.add(VXString);
+			}
+			ret.setVXStrings(vXList);
+			ret.setPageSize(vXUserList.getPageSize());
+			ret.setTotalCount(vXUserList.getTotalCount());
+			ret.setSortType(vXUserList.getSortType());
+			ret.setSortBy(vXUserList.getSortBy());
+		}
+		catch(Throwable excp){
+			throw restErrorUtil.createRESTException(excp.getMessage());
+		}
+		return ret;
+	}
+
+	@GET
+	@Path("/lookup/groups")
+	@Produces({ "application/xml", "application/json" })
+	@PreAuthorize("@rangerPreAuthSecurityHandler.isAPIAccessible(\"" + RangerAPIList.GET_GROUPS_LOOKUP + "\")")
+	public VXStringList getGroupsLookup(@Context HttpServletRequest request) {
+		VXStringList ret = new VXStringList();
+		SearchCriteria searchCriteria = searchUtil.extractCommonCriterias(
+				request, xGroupService.sortFields);
+		List<VXString> vXList = new ArrayList<>();
+		searchUtil.extractString(request, searchCriteria, "name", "group name", null);
+		searchUtil.extractInt(request, searchCriteria, "isVisible", "Group Visibility");
+		try {
+			VXGroupList vXGroupList = xUserMgr.lookupXGroups(searchCriteria);
+			for (VXGroup vxGroup : vXGroupList.getList()) {
+				VXString VXString = new VXString();
+				VXString.setValue(vxGroup.getName());
+				vXList.add(VXString);
+			}
+			ret.setVXStrings(vXList);
+			ret.setPageSize(vXGroupList.getPageSize());
+			ret.setTotalCount(vXGroupList.getTotalCount());
+			ret.setSortType(vXGroupList.getSortType());
+			ret.setSortBy(vXGroupList.getSortBy());
+		}
+		catch(Throwable excp){
+			throw restErrorUtil.createRESTException(excp.getMessage());
+		}
+		return ret;
 	}
 
 	@GET
@@ -567,14 +668,17 @@ public class XUserREST {
 	@Produces({ "application/xml", "application/json" })
 	@PreAuthorize("@rangerPreAuthSecurityHandler.isAPIAccessible(\"" + RangerAPIList.UPDATE_X_PERM_MAP + "\")")
 	public VXPermMap updateXPermMap(VXPermMap vXPermMap) {
-
+		VXPermMap vXPermMapRet = null;
 		if (vXPermMap != null) {
 			if (xResourceService.readResource(vXPermMap.getResourceId()) == null) {
 				throw restErrorUtil.createRESTException("Invalid Input Data - No resource found with Id: " + vXPermMap.getResourceId());
 			}
+			else{
+				vXPermMapRet = xUserMgr.updateXPermMap(vXPermMap);
+			}
 		}
 
-		return xUserMgr.updateXPermMap(vXPermMap);
+			return vXPermMapRet;
 	}
 
 	@DELETE
@@ -651,14 +755,17 @@ public class XUserREST {
 	@Produces({ "application/xml", "application/json" })
 	@PreAuthorize("@rangerPreAuthSecurityHandler.isAPIAccessible(\"" + RangerAPIList.UPDATE_X_AUDIT_MAP + "\")")
 	public VXAuditMap updateXAuditMap(VXAuditMap vXAuditMap) {
-
+		VXAuditMap vXAuditMapRet = null;
 		if (vXAuditMap != null) {
 			if (xResourceService.readResource(vXAuditMap.getResourceId()) == null) {
 				throw restErrorUtil.createRESTException("Invalid Input Data - No resource found with Id: " + vXAuditMap.getResourceId(), MessageEnums.INVALID_INPUT_DATA);
 			}
+			else{
+				vXAuditMapRet = xUserMgr.updateXAuditMap(vXAuditMap);
+			}
 		}
 
-		return xUserMgr.updateXAuditMap(vXAuditMap);
+		return vXAuditMapRet;
 	}
 
 	@DELETE
@@ -770,7 +877,10 @@ public class XUserREST {
 	@PreAuthorize("@rangerPreAuthSecurityHandler.isAPIAccessible(\"" + RangerAPIList.GET_X_GROUP_USERS + "\")")
 	public VXUserList getXGroupUsers(@Context HttpServletRequest request,
 			@PathParam("groupId") Long id){
-		return xUserMgr.getXGroupUsers(id);
+                SearchCriteria searchCriteria = searchUtil.extractCommonCriterias(
+                                request, xGroupUserService.sortFields);
+                searchCriteria.addParam("xGroupId", id);
+                return xUserMgr.getXGroupUsers(searchCriteria);
 	}
 
 	@GET
@@ -811,6 +921,7 @@ public class XUserREST {
 	@PreAuthorize("@rangerPreAuthSecurityHandler.isAPIAccessible(\"" + RangerAPIList.CREATE_X_MODULE_DEF_PERMISSION + "\")")
 	public VXModuleDef createXModuleDefPermission(VXModuleDef vXModuleDef) {
 		xUserMgr.checkAdminAccess();
+                bizUtil.blockAuditorRoleUser();
 		return xUserMgr.createXModuleDefPermission(vXModuleDef);
 	}
 
@@ -828,6 +939,7 @@ public class XUserREST {
 	@PreAuthorize("@rangerPreAuthSecurityHandler.isAPIAccessible(\"" + RangerAPIList.UPDATE_X_MODULE_DEF_PERMISSION + "\")")
 	public VXModuleDef updateXModuleDefPermission(VXModuleDef vXModuleDef) {
 		xUserMgr.checkAdminAccess();
+                bizUtil.blockAuditorRoleUser();
 		return xUserMgr.updateXModuleDefPermission(vXModuleDef);
 	}
 
@@ -838,6 +950,7 @@ public class XUserREST {
 			@Context HttpServletRequest request) {
 		boolean force = true;
 		xUserMgr.checkAdminAccess();
+                bizUtil.blockAuditorRoleUser();
 		xUserMgr.deleteXModuleDefPermission(id, force);
 	}
 
@@ -880,6 +993,7 @@ public class XUserREST {
 	public VXUserPermission createXUserPermission(
 			VXUserPermission vXUserPermission) {
 		xUserMgr.checkAdminAccess();
+                bizUtil.blockAuditorRoleUser();
 		return xUserMgr.createXUserPermission(vXUserPermission);
 	}
 
@@ -898,6 +1012,7 @@ public class XUserREST {
 	public VXUserPermission updateXUserPermission(
 			VXUserPermission vXUserPermission) {
 		xUserMgr.checkAdminAccess();
+                bizUtil.blockAuditorRoleUser();
 		return xUserMgr.updateXUserPermission(vXUserPermission);
 	}
 
@@ -945,6 +1060,7 @@ public class XUserREST {
 	public VXGroupPermission createXGroupPermission(
 			VXGroupPermission vXGroupPermission) {
 		xUserMgr.checkAdminAccess();
+                bizUtil.blockAuditorRoleUser();
 		return xUserMgr.createXGroupPermission(vXGroupPermission);
 	}
 
@@ -963,6 +1079,7 @@ public class XUserREST {
 	public VXGroupPermission updateXGroupPermission(
 			VXGroupPermission vXGroupPermission) {
 		xUserMgr.checkAdminAccess();
+                bizUtil.blockAuditorRoleUser();
 		return xUserMgr.updateXGroupPermission(vXGroupPermission);
 	}
 
@@ -973,6 +1090,7 @@ public class XUserREST {
 			@Context HttpServletRequest request) {
 		boolean force = true;
 		xUserMgr.checkAdminAccess();
+                bizUtil.blockAuditorRoleUser();
 		xUserMgr.deleteXGroupPermission(id, force);
 	}
 
@@ -1152,4 +1270,142 @@ public class XUserREST {
                         xUserMgr.deleteXGroup(groupId, forceDelete);
                 }
         }
+
+	@GET
+	@Path("/secure/download/{serviceName}")
+	@Produces({ "application/xml", "application/json" })
+	public RangerUserStore getSecureRangerUserStoreIfUpdated(@PathParam("serviceName") String serviceName,
+															 @QueryParam("lastKnownUserStoreVersion") Long lastKnownUserStoreVersion,
+															 @DefaultValue("0") @QueryParam("lastActivationTime") Long lastActivationTime,
+															 @QueryParam("pluginId") String pluginId,
+															 @DefaultValue("") @QueryParam("clusterName") String clusterName,
+															 @DefaultValue("") @QueryParam(RangerRESTUtils.REST_PARAM_CAPABILITIES) String pluginCapabilities,
+															 @Context HttpServletRequest request) throws Exception {
+		if (logger.isDebugEnabled()) {
+			logger.debug("==> XUserREST.getSecureRangerUserStoreIfUpdated("
+					+ serviceName + ", " + lastKnownUserStoreVersion + ", " + lastActivationTime + ")");
+		}
+		RangerUserStore ret = null;
+		int     httpCode          = HttpServletResponse.SC_OK;
+		String  logMsg            = null;
+		boolean isAllowed         = false;
+		boolean isAdmin           = bizUtil.isAdmin();
+		boolean isKeyAdmin        = bizUtil.isKeyAdmin();
+		Long    downloadedVersion = null;
+
+		boolean isValid = false;
+		try {
+			XXService xService = rangerDaoManager.getXXService().findByName(serviceName);
+			if (xService != null) {
+				isValid = true;
+			}
+			if (isValid) {
+				if (lastKnownUserStoreVersion == null) {
+					lastKnownUserStoreVersion = Long.valueOf(-1);
+				}
+				XXServiceDef xServiceDef = rangerDaoManager.getXXServiceDef().getById(xService.getType());
+				RangerService rangerService = svcStore.getServiceByName(serviceName);
+
+				if (StringUtils.equals(xServiceDef.getImplclassname(), EmbeddedServiceDefsUtil.KMS_IMPL_CLASS_NAME)) {
+					if (isKeyAdmin) {
+						isAllowed = true;
+					} else {
+						isAllowed = bizUtil.isUserAllowed(rangerService, USERSTORE_DOWNLOAD_USERS);
+					}
+				} else {
+					if (isAdmin) {
+						isAllowed = true;
+					} else {
+						isAllowed = bizUtil.isUserAllowed(rangerService, USERSTORE_DOWNLOAD_USERS);
+					}
+				}
+
+				if (isAllowed) {
+					RangerUserStore rangerUserStore = xUserMgr.getRangerUserStore(lastKnownUserStoreVersion);
+					if (rangerUserStore == null) {
+						downloadedVersion = lastKnownUserStoreVersion;
+						httpCode = HttpServletResponse.SC_NOT_MODIFIED;
+						logMsg = "No change since last update";
+					} else {
+						downloadedVersion = rangerUserStore.getUserStoreVersion();
+						ret = rangerUserStore;
+						httpCode = HttpServletResponse.SC_OK;
+						logMsg = "Returning RangerUserStore =>" + (ret.toString());
+					}
+				} else {
+					logger.error("getSecureRangerUserStoreIfUpdated(" + serviceName + ", " + lastKnownUserStoreVersion + ") failed as User doesn't have permission to download UsersAndGroups");
+					httpCode = HttpServletResponse.SC_UNAUTHORIZED;
+					logMsg = "User doesn't have permission to download UsersAndGroups";
+				}
+			}
+
+		} catch (Throwable excp) {
+			logger.error("getSecureRangerUserStoreIfUpdated(" + serviceName + ", " + lastKnownUserStoreVersion + ", " + lastActivationTime + ") failed", excp);
+			httpCode = HttpServletResponse.SC_BAD_REQUEST;
+			logMsg = excp.getMessage();
+		}
+
+		assetMgr.createPluginInfo(serviceName, pluginId, request, RangerPluginInfo.ENTITY_TYPE_USERSTORE, downloadedVersion, lastKnownUserStoreVersion, lastActivationTime, httpCode, clusterName, pluginCapabilities);
+
+		if (httpCode != HttpServletResponse.SC_OK) {
+			boolean logError = httpCode != HttpServletResponse.SC_NOT_MODIFIED;
+			throw restErrorUtil.createRESTException(httpCode, logMsg, logError);
+		}
+
+		if (logger.isDebugEnabled()) {
+			logger.debug("<== XUserREST.getSecureRangerUserStoreIfUpdated(" + serviceName + ", " + lastKnownUserStoreVersion + ", " + lastActivationTime + ")" + ret);
+		}
+		return ret;
+	}
+
+	@POST
+	@Path("/ugsync/auditinfo")
+	@Produces({ "application/xml", "application/json" })
+	@PreAuthorize("hasRole('ROLE_SYS_ADMIN')")
+	public VXUgsyncAuditInfo postUserGroupAuditInfo(VXUgsyncAuditInfo vxUgsyncAuditInfo) {
+
+		return xUserMgr.postUserGroupAuditInfo(vxUgsyncAuditInfo);
+	}
+
+	@GET
+	@Path("/ugsync/groupusers")
+	@Produces({ "application/xml", "application/json" })
+	@PreAuthorize("hasRole('ROLE_SYS_ADMIN')")
+	public Map<String, Set<String>> getAllGroupUsers() {
+		return rangerDaoManager.getXXGroupUser().findUsersByGroupIds();
+	}
+
+	@POST
+	@Path("/ugsync/users")
+	@Produces({ "application/xml", "application/json" })
+	@PreAuthorize("hasRole('ROLE_SYS_ADMIN')")
+	public String addOrUpdateUsers(VXUserList users) {
+		int ret = xUserMgr.createOrUpdateXUsers(users);
+		return String.valueOf(ret);
+	}
+
+	@POST
+	@Path("/ugsync/groups")
+	@Produces({ "application/xml", "application/json" })
+	@PreAuthorize("hasRole('ROLE_SYS_ADMIN')")
+	public int addOrUpdateGroups(VXGroupList groups) {
+		int ret = xUserMgr.createOrUpdateXGroups(groups);
+		return ret;
+	}
+
+	@POST
+	@Path("/ugsync/groupusers")
+	@Produces({ "application/xml", "application/json" })
+	@PreAuthorize("hasRole('ROLE_SYS_ADMIN')")
+	public int addOrUpdateGroupUsersList(List<GroupUserInfo> groupUserInfoList) {
+		return xUserMgr.createOrDeleteXGroupUserList(groupUserInfoList);
+	}
+
+	@POST
+	@Path("/users/roleassignments")
+	@Produces({ "application/xml", "application/json" })
+	@PreAuthorize("hasRole('ROLE_SYS_ADMIN')")
+	public List<String> setXUserRolesByName(UsersGroupRoleAssignments ugRoleAssignments) {
+		return xUserMgr.updateUserRoleAssignments(ugRoleAssignments);
+	}
 }

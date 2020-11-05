@@ -17,7 +17,7 @@
  * under the License.
  */
 
- 
+
 /* 
  * Repository/Service create view
  */
@@ -31,7 +31,8 @@ define(function(require){
 	var XAEnums			= require('utils/XAEnums');
 	var XALinks 		= require('modules/XALinks');
 	var localization	= require('utils/XALangSupport');
-	
+	var bootbox 		= require('bootbox');
+
 	var ServiceForm		= require('views/service/ServiceForm');
 	var RangerServiceDef	= require('models/RangerServiceDef');
 	var ServiceCreateTmpl = require('hbs!tmpl/service/ServiceCreate_tmpl');
@@ -42,19 +43,19 @@ define(function(require){
 		_viewName : 'ServiceCreate',
 
 		template: ServiceCreateTmpl,
-		
+
 		templateHelpers : function(){
 			return { editService : this.editService};
 		},
-        
+
 		breadCrumbs :function(){
-			var name  = this.rangerServiceDefModel.get('name') != XAEnums.ServiceType.SERVICE_TAG.label ? 'ServiceManager' : 'TagBasedServiceManager'; 
+			var name  = this.rangerServiceDefModel.get('name') != XAEnums.ServiceType.SERVICE_TAG.label ? 'ServiceManager' : 'TagBasedServiceManager';
 			if(this.model.isNew()){
 				return [XALinks.get(name), XALinks.get('ServiceCreate')];
 			} else {
 				return [XALinks.get(name), XALinks.get('ServiceEdit')];
 			}
-		},        
+		},
 
 		/** Layout sub regions */
 		regions: {
@@ -132,7 +133,9 @@ define(function(require){
 			if(! _.isEmpty(errors)){
 				return;
 			}
-			this.form.formValidation();
+			if (!this.form.formValidation()) {
+				return;
+			}
 			this.saveService();
 		},
 		saveService : function(){
@@ -141,12 +144,21 @@ define(function(require){
 			XAUtil.blockUI();
 			this.model.save({},{
 				wait: true,
-				success: function () {
+				success: function (response) {
 					XAUtil.blockUI('unblock');
 					XAUtil.allowNavigation();
 					var msg = that.editService ? 'Service updated successfully' :'Service created successfully';
 					XAUtil.notifySuccess('Success', msg);
-					that.gotoResourceOrTagTab()
+					if(localStorage.getItem('setOldUI') == "false" || localStorage.getItem('setOldUI') == null) {
+						App.rSideBar.currentView.render();
+						if(that.editService) {
+							that.gotoServicePolicyListingPage();
+						} else{
+							that.gotoResourceOrTagNewTab(response);
+						}
+					} else {
+						that.gotoResourceOrTagTab()
+					}
 				},
 				error: function (model, response, options) {
 					XAUtil.blockUI('unblock');
@@ -165,12 +177,15 @@ define(function(require){
 				msg :'Are you sure want to delete ?',
 				callback : function(){
 					XAUtil.blockUI();
-					
+
 					that.model.destroy({
 						success: function(model, response) {
 							XAUtil.blockUI('unblock');
 							XAUtil.allowNavigation();
 							XAUtil.notifySuccess('Success', 'Service delete successfully');
+							if(localStorage.getItem('setOldUI') == "false" || localStorage.getItem('setOldUI') == null) {
+								App.rSideBar.currentView.render();
+							}
 							that.gotoResourceOrTagTab()
 						},
 						error: function (model, response, options) {
@@ -182,13 +197,16 @@ define(function(require){
 							}
 						}
 					});
-					
+
 				}
 			});
 		},
 		onTestConnection : function(){
 			var errors = this.form.commit({validate : false});
 			if(! _.isEmpty(errors)){
+				return;
+			}
+			if (!this.form.formValidation()) {
 				return;
 			}
 			this.form.beforeSave();
@@ -226,7 +244,10 @@ define(function(require){
                             		   		}];
                             	   }
                                    var msgHtml = '<b>Connection Failed.</b></br>'+msResponse.msgDesc;
-                                   bootbox.dialog(msgHtml, popupBtnOpts);
+                                    bootbox.dialog({
+                                        message : msgHtml,
+                                        buttons: popupBtnOpts
+                                    });
 								} else {
 										bootbox.alert("Connection Failed.");
 								}
@@ -242,7 +263,7 @@ define(function(require){
                                                         XAUtil.defaultErrorHandler(options , msResponse);
                                                 }
 						bootbox.alert("Connection Failed.");
-					}	
+					}
 				});
 		},
 		gotoResourceOrTagTab : function(){
@@ -252,13 +273,31 @@ define(function(require){
 			}
 			App.appRouter.navigate("#!/policymanager/resource",{trigger: true});
 		},
+		gotoResourceOrTagNewTab : function (response) {
+			var Url = '#!/service/'+response.id+'/policies/0';
+			App.appRouter.navigate(Url,{trigger: true});
+		},
+
+		gotoServicePolicyListingPage : function () {
+			var Url = '#!/service/'+this.model.id+'/policies/0';
+			App.appRouter.navigate(Url,{trigger: true});
+		},
 		onCancel : function(){
 			XAUtil.allowNavigation();
-			this.gotoResourceOrTagTab();
+			if(localStorage.getItem('setOldUI') == "false" || localStorage.getItem('setOldUI') == null) {
+				if(this.editService) {
+					this.gotoServicePolicyListingPage();
+				} else{
+					this.gotoResourceOrTagTab();
+				}
+			} else {
+				this.gotoResourceOrTagTab();
+			}
 		},
 		/** on close */
 		onClose: function(){
-			XAUtil.allowNavigation();
+            XAUtil.removeUnwantedDomElement();
+            XAUtil.allowNavigation();
 		}
 	});
 

@@ -37,7 +37,7 @@ public abstract class BaseClient {
 
 
 	private static final String DEFAULT_NAME_RULE = "DEFAULT";
-	private static final String DEFAULT_ERROR_MESSAGE = " You can still save the repository and start creating "
+	protected static final String DEFAULT_ERROR_MESSAGE = " You can still save the repository and start creating "
 				+ "policies, but you would not be able to use autocomplete for "
 				+ "resource names. Check ranger_admin.log for more info.";
 
@@ -104,15 +104,19 @@ public abstract class BaseClient {
 				 else {
 					 String encryptedPwd = configHolder.getPassword();
 					 String password = null;
-					 try {
-					     password = PasswordUtils.decryptPassword(encryptedPwd);
-					 } catch(Exception ex) {
-					     LOG.info("Password decryption failed; trying connection with received password string");
-					     password = null;
-					 } finally {
-					     if (password == null) {
-					         password = encryptedPwd;
+					 if (encryptedPwd != null) {
+					     try {
+					         password = PasswordUtils.decryptPassword(encryptedPwd);
+					     } catch(Exception ex) {
+					         LOG.info("Password decryption failed; trying connection with received password string");
+					         password = null;
+					     } finally {
+					         if (password == null) {
+					             password = encryptedPwd;
+					         }
 					     }
+					 } else {
+					     LOG.info("Password decryption failed: no password was configured");
 					 }
 					 if ( configHolder.isKerberosAuthentication() ) {
 						 LOG.info("Init Login: using username/password");

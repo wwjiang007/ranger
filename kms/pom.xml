@@ -24,15 +24,29 @@
     <parent>
         <groupId>org.apache.ranger</groupId>
         <artifactId>ranger</artifactId>
-        <version>1.0.0-SNAPSHOT</version>
+        <version>3.0.0-SNAPSHOT</version>
     </parent>
     <dependencies>
         <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-kms</artifactId>
             <version>${hadoop.version}</version>
-            <type>war</type>
         </dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-core</artifactId>
+			<version>${fasterxml.jackson.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-annotations</artifactId>
+			<version>${fasterxml.jackson.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.fasterxml.jackson.core</groupId>
+			<artifactId>jackson-databind</artifactId>
+			<version>${fasterxml.jackson.databind.version}</version>
+		</dependency>
         <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-common</artifactId>
@@ -107,15 +121,33 @@
             <artifactId>mockito-core</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-all</artifactId>
+            <version>${mockito.all.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>javax.annotation</groupId>
+            <artifactId>jsr250-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
             <groupId>org.apache.hadoop</groupId>
             <artifactId>hadoop-auth</artifactId>
             <version>${hadoop.version}</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-common</artifactId>
+            <version>${hadoop.version}</version>
+            <scope>test</scope>
+            <type>test-jar</type>
+        </dependency>
+        <dependency>
             <groupId>com.google.guava</groupId>
             <artifactId>guava</artifactId>
-            <version>${guava.version}</version>
+            <version>${google.guava.version}</version>
             <scope>compile</scope>
         </dependency>
         <dependency>
@@ -253,6 +285,56 @@
             <scope>test</scope>
         </dependency>
         <dependency>
+		    <groupId>com.microsoft.azure</groupId>
+		    <artifactId>azure</artifactId>
+		    <version>${com.microsoft.azure.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.microsoft.azure</groupId>
+			<artifactId>azure-keyvault</artifactId>
+			<version>${com.microsoft.azure.azure-keyvault.version}</version>
+		</dependency>
+		<dependency>
+		    <groupId>com.microsoft.azure</groupId>
+		    <artifactId>azure-mgmt-keyvault</artifactId>
+		    <version>${com.microsoft.azure.azure-mgmt-keyvault.version}</version>
+		</dependency>
+		<dependency>
+		    <groupId>com.microsoft.rest</groupId>
+		    <artifactId>client-runtime</artifactId>
+		    <version>${com.microsoft.rest.client-runtime.version}</version>
+		</dependency>
+		<dependency>
+		    <groupId>com.microsoft.azure</groupId>
+		    <artifactId>azure-client-runtime</artifactId>
+		    <version>${com.microsoft.azure.azure-client-runtime.version}</version>
+		</dependency>
+		<dependency>
+		    <groupId>com.microsoft.azure</groupId>
+   			<artifactId>adal4j</artifactId>
+    		<version>${com.microsoft.azure.adal4j.version}</version>
+		</dependency>
+		<dependency>
+		    <groupId>io.reactivex</groupId>
+		    <artifactId>rxjava</artifactId>
+		    <version>${io.reactivex.rxjava.version}</version>
+		</dependency>
+		<dependency>
+		    <groupId>net.minidev</groupId>
+		    <artifactId>asm</artifactId>
+		    <version>${net.minidev.asm.version}</version>
+		</dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk15on</artifactId>
+            <version>${org.bouncycastle.bcprov-jdk15on}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpkix-jdk15on</artifactId>
+            <version>${org.bouncycastle.bcpkix-jdk15on}</version>
+        </dependency>
+        <dependency>
             <groupId>org.apache.directory.api</groupId>
             <artifactId>api-i18n</artifactId>
             <version>1.0.0-M20</version>
@@ -260,6 +342,16 @@
         <dependency>
             <groupId>com.webcohesion.enunciate</groupId>
             <artifactId>enunciate-core-annotations</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.zookeeper</groupId>
+            <artifactId>zookeeper</artifactId>
+            <version>${zookeeper.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <version>${commons.codec.version}</version>
         </dependency>
     </dependencies>
     <build>
@@ -274,11 +366,8 @@
                     <groupId>com.webcohesion.enunciate</groupId>
                     <artifactId>enunciate-maven-plugin</artifactId>
                     <configuration>
-                        <configFile>enunciate.xml</configFile>
-                        <enunciateArtifactId/>
-                        <docsDir>docs/target/kms/</docsDir>
-                        <source>1.8</source>
-                        <target>1.8</target>
+                        <configFile>${basedir}/../enunciate.xml</configFile>
+                        <docsDir>${basedir}/../docs/target/kms/</docsDir>
                     </configuration>
                 </plugin>
             </plugins>

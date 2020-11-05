@@ -61,8 +61,11 @@ public class RangerPolicyenginePerfTester {
             policyEngineOptions.evaluatorType = RangerPolicyEvaluator.EVALUATOR_TYPE_OPTIMIZED;
             policyEngineOptions.cacheAuditResults = false;
             policyEngineOptions.disableTrieLookupPrefilter = perfTestOptions.getIsTrieLookupPrefixDisabled();
+            policyEngineOptions.optimizeTrieForRetrieval = perfTestOptions.getIsOnDemandTriePostSetupDisabled();
 
-            PerfTestEngine perfTestEngine = new PerfTestEngine(servicePoliciesFileURL, policyEngineOptions, perfTestOptions.getIsDynamicReorderingDisabled());
+            URL configurationFileURL = perfTestOptions.getPerfConfigurationFileURL();
+
+            PerfTestEngine perfTestEngine = new PerfTestEngine(servicePoliciesFileURL, policyEngineOptions, configurationFileURL);
             if (!perfTestEngine.init()) {
                 LOG.error("Error initializing test data. Existing...");
                 System.exit(1);
@@ -154,8 +157,6 @@ public class RangerPolicyenginePerfTester {
             }
 
             LOG.info("Completed performance-run");
-
-            perfTestEngine.cleanup();
 
             PerfDataRecorder.printStatistics();
         }

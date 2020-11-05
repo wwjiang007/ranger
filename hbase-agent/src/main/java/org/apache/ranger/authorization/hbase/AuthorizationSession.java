@@ -19,6 +19,7 @@
 package org.apache.ranger.authorization.hbase;
 
 
+import java.util.Date;
 import java.util.List;
 import java.util.Set;
 
@@ -34,7 +35,7 @@ import org.apache.ranger.plugin.policyengine.RangerAccessResourceImpl;
 import org.apache.ranger.plugin.policyengine.RangerAccessResult;
 import org.apache.ranger.plugin.service.RangerBasePlugin;
 
-import com.google.common.base.Objects;
+import com.google.common.base.MoreObjects;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 
@@ -55,7 +56,6 @@ public class AuthorizationSession {
 	String _column;
 	String _columnFamily;
 	String _remoteAddress;
-	String _clusterName;
 
 	User _user;
 	Set<String> _groups; // this exits to avoid having to get group for a user repeatedly.  It is kept in sync with _user;
@@ -89,11 +89,6 @@ public class AuthorizationSession {
 	
 	AuthorizationSession access(String anAccess) {
 		_access = anAccess;
-		return this;
-	}
-	
-	AuthorizationSession clusterName(String clusterName) {
-		_clusterName = clusterName;
 		return this;
 	}
 
@@ -173,7 +168,8 @@ public class AuthorizationSession {
 				StringUtils.equals(_operation, "deleteNamespace") ||
 				StringUtils.equals(_operation, "modifyNamespace") ||
 				StringUtils.equals(_operation, "setUserNamespaceQuota") ||
-				StringUtils.equals(_operation, "setNamespaceQuota");
+				StringUtils.equals(_operation, "setNamespaceQuota") ||
+				StringUtils.equals(_operation, "getUserPermissionForNamespace");
 	}
 
 	AuthorizationSession buildRequest() {
@@ -182,23 +178,23 @@ public class AuthorizationSession {
 		// session can be reused so reset its state
 		zapAuthorizationState();
 		// TODO get this via a factory instead
-		RangerAccessResourceImpl resource = new RangerAccessResourceImpl();
+		RangerAccessResourceImpl resource = new RangerHBaseResource();
 		// policy engine should deal sensibly with null/empty values, if any
 		if (isNameSpaceOperation() && StringUtils.isNotBlank(_otherInformation)) {
-				resource.setValue("table", _otherInformation + ":");
+				resource.setValue(RangerHBaseResource.KEY_TABLE, _otherInformation + RangerHBaseResource.NAMESPACE_SEPARATOR);
 		} else {
-			resource.setValue("table", _table);
+			resource.setValue(RangerHBaseResource.KEY_TABLE, _table);
 		}
-		resource.setValue("column-family", _columnFamily);
-		resource.setValue("column", _column);
+		resource.setValue(RangerHBaseResource.KEY_COLUMN_FAMILY, _columnFamily);
+		resource.setValue(RangerHBaseResource.KEY_COLUMN, _column);
 		
 		String user = _userUtils.getUserAsString(_user);
-		RangerAccessRequestImpl request = new RangerAccessRequestImpl(resource, _access, user, _groups);
+		RangerAccessRequestImpl request = new RangerAccessRequestImpl(resource, _access, user, _groups, null);
 		request.setAction(_operation);
 		request.setRequestData(_otherInformation);
 		request.setClientIPAddress(_remoteAddress);
 		request.setResourceMatchingScope(_resourceMatchingScope);
-		request.setClusterName(_clusterName);
+		request.setAccessTime(new Date());
 		
 		_request = request;
 		if (LOG.isDebugEnabled()) {
@@ -331,16 +327,16 @@ public class AuthorizationSession {
 	}
 	
 	String requestToString() {
-		return Objects.toStringHelper(_request.getClass())
+		return MoreObjects.toStringHelper(_request.getClass())
 			.add("operation", _operation)
 			.add("otherInformation", _otherInformation)
 			.add("access", _access)
 			.add("user", _user == null ? null : _user.getName())
 			.add("groups", _groups)
 			.add("auditHandler", _auditHandler == null ? null : _auditHandler.getClass().getSimpleName())
-			.add("table", _table)
-			.add("column", _column)
-			.add("column-family", _columnFamily)
+			.add(RangerHBaseResource.KEY_TABLE, _table)
+			.add(RangerHBaseResource.KEY_COLUMN, _column)
+			.add(RangerHBaseResource.KEY_COLUMN_FAMILY, _columnFamily)
 			.add("resource-matching-scope", _resourceMatchingScope)
 			.toString();
 	}

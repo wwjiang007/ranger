@@ -38,6 +38,7 @@ public class RangerAccessRequestImpl implements RangerAccessRequest {
 	private String               accessType;
 	private String               user;
 	private Set<String>          userGroups;
+	private Set<String>          userRoles;
 	private Date                 accessTime;
 	private String               clientIPAddress;
 	private List<String>         forwardedAddresses;
@@ -48,20 +49,22 @@ public class RangerAccessRequestImpl implements RangerAccessRequest {
 	private String               sessionId;
 	private Map<String, Object>  context;
 	private String				 clusterName;
+	private String				 clusterType;
 
 	private boolean isAccessTypeAny;
 	private boolean isAccessTypeDelegatedAdmin;
 	private ResourceMatchingScope resourceMatchingScope = ResourceMatchingScope.SELF;
 
 	public RangerAccessRequestImpl() {
-		this(null, null, null, null);
+		this(null, null, null, null, null);
 	}
 
-	public RangerAccessRequestImpl(RangerAccessResource resource, String accessType, String user, Set<String> userGroups) {
+	public RangerAccessRequestImpl(RangerAccessResource resource, String accessType, String user, Set<String> userGroups, Set<String> userRoles) {
 		setResource(resource);
 		setAccessType(accessType);
 		setUser(user);
 		setUserGroups(userGroups);
+		setUserRoles(userRoles);
 		setForwardedAddresses(null);
 
 		// set remaining fields to default value
@@ -93,6 +96,11 @@ public class RangerAccessRequestImpl implements RangerAccessRequest {
 	@Override
 	public Set<String> getUserGroups() {
 		return userGroups;
+	}
+
+	@Override
+	public Set<String> getUserRoles() {
+		return userRoles;
 	}
 
 	@Override
@@ -173,8 +181,12 @@ public class RangerAccessRequestImpl implements RangerAccessRequest {
 		this.userGroups = (userGroups == null) ? new HashSet<String>() : userGroups;
 	}
 
+	public void setUserRoles(Set<String> userRoles) {
+		this.userRoles = (userRoles == null) ? new HashSet<String>() : userRoles;
+	}
+
 	public void setAccessTime(Date accessTime) {
-		this.accessTime = (accessTime == null) ? new Date() : accessTime;
+		this.accessTime = accessTime;
 	}
 
 	public void setClientIPAddress(String ipAddress) {
@@ -213,13 +225,21 @@ public class RangerAccessRequestImpl implements RangerAccessRequest {
 		this.clusterName = clusterName;
 	}
 
+	public String getClusterType() {
+		return clusterType;
+	}
+
+	public void setClusterType(String clusterType) {
+		this.clusterType = clusterType;
+	}
+
 	public void setResourceMatchingScope(ResourceMatchingScope scope) { this.resourceMatchingScope = scope; }
 
 	public void setContext(Map<String, Object> context) {
 		this.context = (context == null) ? new HashMap<String, Object>() : context;
 	}
 
-	protected void extractAndSetClientIPAddress(boolean useForwardedIPAddress, String[]trustedProxyAddresses) {
+	public void extractAndSetClientIPAddress(boolean useForwardedIPAddress, String[]trustedProxyAddresses) {
 		String ip = getRemoteIPAddress();
 		if (ip == null) {
 			ip = getClientIPAddress();
@@ -281,6 +301,14 @@ public class RangerAccessRequestImpl implements RangerAccessRequest {
 		}
 		sb.append("} ");
 
+		sb.append("userRoles={");
+		if(userRoles != null) {
+			for(String role : userRoles) {
+				sb.append(role).append(" ");
+			}
+		}
+		sb.append("} ");
+
 		sb.append("accessTime={").append(accessTime).append("} ");
 		sb.append("clientIPAddress={").append(getClientIPAddress()).append("} ");
 		sb.append("forwardedAddresses={").append(StringUtils.join(forwardedAddresses, " ")).append("} ");
@@ -291,6 +319,7 @@ public class RangerAccessRequestImpl implements RangerAccessRequest {
 		sb.append("sessionId={").append(sessionId).append("} ");
 		sb.append("resourceMatchingScope={").append(resourceMatchingScope).append("} ");
 		sb.append("clusterName={").append(clusterName).append("} ");
+		sb.append("clusterType={").append(clusterType).append("} ");
 
 		sb.append("context={");
 		if(context != null) {

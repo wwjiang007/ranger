@@ -73,8 +73,6 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 	public static final int OPERATION_CREATE_CONTEXT = 1;
 	public static final int OPERATION_UPDATE_CONTEXT = 2;
 
-	static HashMap<Integer, AbstractBaseResourceService<?, ?>> serviceList = new HashMap<Integer, AbstractBaseResourceService<?, ?>>();
-	static List<AbstractBaseResourceService<?, ?>> preServiceList = new ArrayList<AbstractBaseResourceService<?, ?>>();
 	protected Class<T> tEntityClass;
 	protected Class<V> tViewClass;
 
@@ -94,6 +92,7 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 		tEntityValueMap.put(XXDBBase.class, "Base");
 	}
 
+	@Autowired
 	BaseDao<T> entityDao;
 
 	@Autowired
@@ -126,30 +125,6 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 
 	protected abstract V mapEntityToViewBean(V viewBean, T t);
 
-	public static void registerService(
-			AbstractBaseResourceService<?, ?> baseService) {
-		preServiceList.add(baseService);
-	}
-
-	static public AbstractBaseResourceService<?, ?> getService(int classType) {
-		AbstractBaseResourceService<?, ?> service = serviceList.get(classType);
-		if (service == null) {
-			for (AbstractBaseResourceService<?, ?> myService : preServiceList) {
-				if (myService.getClassType() == classType) {
-					serviceList.put(myService.getClassType(), myService);
-					service = myService;
-					break;
-				}
-			}
-		}
-
-		if (service == null) {
-			logger.error("Service not found for classType=" + classType,
-					new Throwable());
-		}
-		return service;
-	}
-
 	protected String getResourceName() {
 
 		String resourceName = tEntityValueMap.get(tEntityClass);
@@ -166,12 +141,9 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 		// return className;
 	}
 
-	@SuppressWarnings("unchecked")
 	protected BaseDao<T> getDao() {
 		if (entityDao == null) {
-			entityDao = (BaseDao<T>) daoManager.getDaoForClassName(tEntityClass
-					.getSimpleName());
-
+			throw new NullPointerException("entityDao is not injected by Spring!");
 		}
 		return entityDao;
 	}
@@ -195,12 +167,6 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 		}
 		return null;
 	}
-
-	protected int getClassType() {
-		return bizUtil.getClassType(tEntityClass);
-	}
-
-	protected int ownerRatingWeight;
 
 	/**
 	 * constructor
@@ -239,7 +205,6 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 				+ className + " obj ";
 		distinctQueryStr = "SELECT distinct obj FROM " + className + " obj ";
 		sortFields.add(new SortField("id", "obj.id",true,SORT_ORDER.ASC));
-		registerService(this);
 	}
 
 	// ----------------------------------------------------------------------------------
@@ -289,8 +254,6 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 					+ ", className=" + resource.getClass().getName()
 					+ ", objectId=" + resource.getId());
 		}
-
-		bizUtil.updateCloneReferences(resource);
 
 		resource = getDao().create(resource);
 
@@ -429,7 +392,6 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 		}
 		// Need to delete all dependent common objects like Notes and
 		// UserDataPref
-		bizUtil.deleteReferencedObjects(resource);
 		try {
 			result = getDao().remove(resource);
 		} catch (Exception e) {
@@ -463,8 +425,7 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 	public V populateViewBean(T resource) {
 		V viewBean = createViewObject();
 		populateViewBean(resource, viewBean);
-		mapEntityToViewBean(viewBean, resource);
-		return viewBean;
+		return mapEntityToViewBean(viewBean, resource);
 	}
 
 	protected V populateViewBean(T resource, V viewBean) {
@@ -556,7 +517,7 @@ public abstract class AbstractBaseResourceService<T extends XXDBBase, V extends 
 		EntityManager em = getDao().getEntityManager();
 		
 		Query query = searchUtil.createSearchQuery(em, searchString, sortString,
-				searchCriteria, searchFieldList, getClassType(), false,
+				searchCriteria, searchFieldList, false,
 				isCountQuery);
 		return query;
 	}

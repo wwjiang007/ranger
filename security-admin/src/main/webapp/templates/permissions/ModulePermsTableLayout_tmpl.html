@@ -14,14 +14,16 @@
   See the License for the specific language governing permissions and
   limitations under the License.
 --}}
-<h3 class="wrap-header bold"> {{tt 'lbl.permissions'}}</h3>
+{{#if setOldUi}}
+  <h3 class="wrap-header bold"> {{tt 'lbl.permissions'}}</h3>
+{{/if}}
 <div class="wrap non-collapsible m-height ">
 	<div>
-		<div class="span9">
+		<div class="col-md-9">
 			<div class="visual_search"></div><br/><br/>
 
 		</div>
 		<div class="clearfix"></div>
-		<div data-id="r_table" class="clickable"></div>
+                <div data-id="r_table"></div>
 	</div>
 </div>

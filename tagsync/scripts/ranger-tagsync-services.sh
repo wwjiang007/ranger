@@ -26,6 +26,7 @@ realScriptPath=`readlink -f $0`
 realScriptDir=`dirname $realScriptPath`
 cd $realScriptDir
 cdir=`pwd`
+ranger_tagsync_max_heap_size=1g
 
 for custom_env_script in `find ${cdir}/conf/ -name "ranger-tagsync-env*"`; do
         if [ -f $custom_env_script ]; then
@@ -47,6 +48,8 @@ pidf=${TAGSYNC_PID_DIR_PATH}/${TAGSYNC_PID_NAME}
 if [ -z "${UNIX_TAGSYNC_USER}" ]; then
         UNIX_TAGSYNC_USER=ranger
 fi
+
+JAVA_OPTS=" ${JAVA_OPTS} -XX:MetaspaceSize=100m -XX:MaxMetaspaceSize=200m -Xmx${ranger_tagsync_max_heap_size} -Xms1g "
 
 if [ "${action}" == "START" ]; then
 
@@ -81,14 +84,14 @@ if [ "${action}" == "START" ]; then
 		if  ps -p $pid > /dev/null
 		then
 			echo "Apache Ranger Tagsync Service is already running [pid={$pid}]"
-			exit 1
+			exit ;
 		else
 			rm -rf $pidf
 		fi
 	fi
 
 	cd ${cdir}
-	umask 0077
+
 	SLEEP_TIME_AFTER_START=5
 	nohup java -Dproc_rangertagsync ${JAVA_OPTS} -Dlogdir="${RANGER_TAGSYNC_LOG_DIR}" -Dlog4j.configuration=file:/etc/ranger/tagsync/conf/log4j.properties -cp "${cp}" org.apache.ranger.tagsync.process.TagSynchronizer  > ${RANGER_TAGSYNC_LOG_DIR}/tagsync.out 2>&1 &
 	VALUE_OF_PID=$!
@@ -111,17 +114,41 @@ elif [ "${action}" == "STOP" ]; then
 	NR_ITER_FOR_SHUTDOWN_CHECK=15
 	if [ -f "$pidf" ] ; then
 		pid=`cat $pidf` > /dev/null 2>&1
-		echo "Found Apache Ranger TagSync Service with pid $pid, Stopping..."
-		kill -9 $pid > /dev/null 2>&1
-		sleep 1 #Give kill -9 sometime to "kill"
-		if ps -p $pid > /dev/null; then
-			echo "Wow, even kill -9 failed, giving up! Sorry.."
-                else
-			rm -f $pidf
-			echo "Apache Ranger Tagsync Service pid = ${pid} has been stopped."
-                fi
+		echo "Getting pid from $pidf .."
 	else
-            echo "Ranger Tagsync Service not running"
+		pid=`ps -ef | grep java | grep -- '-Dproc_rangertagsync' | grep -v grep | awk '{ print $2 }'`
+		if [ "$pid" != "" ];then
+			echo "pid file($pidf) not present, taking pid from \'ps\' command.."
+		else
+			echo "Apache Ranger Tagsync Service is not running"
+			return	
+		fi
+	fi
+	echo "Found Apache Ranger Tagsync Service with pid $pid, Stopping it..."
+	kill -15 $pid
+	for ((i=0; i<$NR_ITER_FOR_SHUTDOWN_CHECK; i++))
+	do
+		sleep $WAIT_TIME_FOR_SHUTDOWN
+		if ps -p $pid > /dev/null ; then
+			echo "Shutdown in progress. Will check after $WAIT_TIME_FOR_SHUTDOWN secs again.."
+			continue;
+		else
+			break;
+		fi
+	done
+	# if process is still around, use kill -9
+	if ps -p $pid > /dev/null ; then
+		echo "Initial kill failed, getting serious now..."
+		kill -9 $pid
+	fi
+	sleep 1 #give kill -9  sometime to "kill"
+	if ps -p $pid > /dev/null ; then
+		echo "Wow, even kill -9 failed, giving up! Sorry.."
+		exit 1
+
+	else
+		rm -rf $pidf
+		echo "Apache Ranger Tagsync Service with pid ${pid} has been stopped."
 	fi
 	exit;
 	

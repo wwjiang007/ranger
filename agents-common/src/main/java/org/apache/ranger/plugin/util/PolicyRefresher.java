@@ -24,12 +24,15 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.Reader;
 import java.io.Writer;
+import java.util.Timer;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.ranger.admin.client.RangerAdminClient;
-import org.apache.ranger.authorization.hadoop.config.RangerConfiguration;
+import org.apache.ranger.authorization.hadoop.config.RangerPluginConfig;
 import org.apache.ranger.plugin.service.RangerBasePlugin;
 
 import com.google.gson.Gson;
@@ -41,53 +44,57 @@ public class PolicyRefresher extends Thread {
 
 	private static final Log PERF_POLICYENGINE_INIT_LOG = RangerPerfTracer.getPerfLogger("policyengine.init");
 
-	private final RangerBasePlugin  plugIn;
-	private final String            serviceType;
-	private final String            serviceName;
-	private final RangerAdminClient rangerAdmin;
-	private final String            cacheFileName;
-	private final String            cacheDir;
-	private final Gson              gson;
-	private final boolean           disableCacheIfServiceNotFound;
+	private final RangerBasePlugin               plugIn;
+	private final String                         serviceType;
+	private final String                         serviceName;
+	private final RangerAdminClient              rangerAdmin;
+	private final RangerRolesProvider            rolesProvider;
+	private final long                           pollingIntervalMs;
+	private final String                         cacheFileName;
+	private final String                         cacheDir;
+	private final Gson                           gson;
+	private final BlockingQueue<DownloadTrigger> policyDownloadQueue = new LinkedBlockingQueue<>();
+	private       Timer                          policyDownloadTimer;
+	private       long                           lastKnownVersion    = -1L;
+	private       long                           lastActivationTimeInMillis;
+	private       boolean                        policiesSetInPlugin;
+	private       boolean                        serviceDefSetInPlugin;
 
-	private long 	pollingIntervalMs   = 30 * 1000;
-	private long 	lastKnownVersion    = -1L;
-	private long	lastActivationTimeInMillis;
-	private boolean policiesSetInPlugin;
-	private boolean serviceDefSetInPlugin;
 
-	public PolicyRefresher(RangerBasePlugin plugIn, String serviceType, String appId, String serviceName, RangerAdminClient rangerAdmin, long pollingIntervalMs, String cacheDir) {
+	public PolicyRefresher(RangerBasePlugin plugIn) {
 		if(LOG.isDebugEnabled()) {
-			LOG.debug("==> PolicyRefresher(serviceName=" + serviceName + ").PolicyRefresher()");
+			LOG.debug("==> PolicyRefresher(serviceName=" + plugIn.getServiceName() + ").PolicyRefresher()");
 		}
 
-		this.plugIn            = plugIn;
-		this.serviceType       = serviceType;
-		this.serviceName       = serviceName;
-		this.rangerAdmin       = rangerAdmin;
-		this.pollingIntervalMs = pollingIntervalMs;
+		RangerPluginConfig pluginConfig   = plugIn.getConfig();
+		String             propertyPrefix = pluginConfig.getPropertyPrefix();
 
-		if(StringUtils.isEmpty(appId)) {
-			appId = serviceType;
-		}
+		this.plugIn      = plugIn;
+		this.serviceType = plugIn.getServiceType();
+		this.serviceName = plugIn.getServiceName();
+		this.cacheDir    = pluginConfig.get(propertyPrefix + ".policy.cache.dir");
 
+		String appId         = StringUtils.isEmpty(plugIn.getAppId()) ? serviceType : plugIn.getAppId();
 		String cacheFilename = String.format("%s_%s.json", appId, serviceName);
+
 		cacheFilename = cacheFilename.replace(File.separatorChar,  '_');
 		cacheFilename = cacheFilename.replace(File.pathSeparatorChar,  '_');
 
 		this.cacheFileName = cacheFilename;
-		this.cacheDir = cacheDir;
 
 		Gson gson = null;
 		try {
-			gson = new GsonBuilder().setDateFormat("yyyyMMdd-HH:mm:ss.SSS-Z").setPrettyPrinting().create();
+			gson = new GsonBuilder().setDateFormat("yyyyMMdd-HH:mm:ss.SSS-Z").create();
 		} catch(Throwable excp) {
 			LOG.fatal("PolicyRefresher(): failed to create GsonBuilder object", excp);
 		}
-		this.gson = gson;
 
-		String propertyPrefix    = "ranger.plugin." + serviceType;
-		disableCacheIfServiceNotFound = RangerConfiguration.getInstance().getBoolean(propertyPrefix + ".disable.cache.if.servicenotfound", true);
+		this.gson                          = gson;
+		this.rangerAdmin                   = RangerBasePlugin.createAdminClient(pluginConfig);
+		this.rolesProvider                 = new RangerRolesProvider(getServiceType(), appId, getServiceName(), rangerAdmin,  cacheDir, pluginConfig);
+		this.pollingIntervalMs             = pluginConfig.getLong(propertyPrefix + ".policy.pollIntervalMs", 30 * 1000);
+
+		setName("PolicyRefresher(serviceName=" + serviceName + ")-" + getId());
 
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("<== PolicyRefresher(serviceName=" + serviceName + ").PolicyRefresher()");
@@ -122,20 +129,6 @@ public class PolicyRefresher extends Thread {
 		return rangerAdmin;
 	}
 
-	/**
-	 * @return the pollingIntervalMilliSeconds
-	 */
-	public long getPollingIntervalMs() {
-		return pollingIntervalMs;
-	}
-
-	/**
-	 * @param pollingIntervalMilliSeconds the pollingIntervalMilliSeconds to set
-	 */
-	public void setPollingIntervalMilliSeconds(long pollingIntervalMilliSeconds) {
-		this.pollingIntervalMs = pollingIntervalMilliSeconds;
-	}
-
 	public long getLastActivationTimeInMillis() {
 		return lastActivationTimeInMillis;
 	}
@@ -145,20 +138,58 @@ public class PolicyRefresher extends Thread {
 	}
 
 	public void startRefresher() {
-
+		loadRoles();
 		loadPolicy();
 
 		super.start();
+
+		policyDownloadTimer = new Timer("policyDownloadTimer", true);
+
+		try {
+			policyDownloadTimer.schedule(new DownloaderTask(policyDownloadQueue), pollingIntervalMs, pollingIntervalMs);
+
+			if (LOG.isDebugEnabled()) {
+				LOG.debug("Scheduled policyDownloadRefresher to download policies every " + pollingIntervalMs + " milliseconds");
+			}
+		} catch (IllegalStateException exception) {
+			LOG.error("Error scheduling policyDownloadTimer:", exception);
+			LOG.error("*** Policies will NOT be downloaded every " + pollingIntervalMs + " milliseconds ***");
+
+			policyDownloadTimer = null;
+		}
+
 	}
 
 	public void stopRefresher() {
-		super.interrupt();
 
-	    try {
-	        super.join();
-	      } catch (InterruptedException excp) {
-	        LOG.warn("PolicyRefresher(serviceName=" + serviceName + "): error while waiting for thread to exit", excp);
-	      }
+		Timer policyDownloadTimer = this.policyDownloadTimer;
+
+		this.policyDownloadTimer = null;
+
+		if (policyDownloadTimer != null) {
+			policyDownloadTimer.cancel();
+		}
+
+		if (super.isAlive()) {
+			super.interrupt();
+
+			boolean setInterrupted = false;
+			boolean isJoined = false;
+
+			while (!isJoined) {
+				try {
+					super.join();
+					isJoined = true;
+				} catch (InterruptedException excp) {
+					LOG.warn("PolicyRefresher(serviceName=" + serviceName + "): error while waiting for thread to exit", excp);
+					LOG.warn("Retrying Thread.join(). Current thread will be marked as 'interrupted' after Thread.join() returns");
+					setInterrupted = true;
+				}
+			}
+			if (setInterrupted) {
+				Thread.currentThread().interrupt();
+			}
+		}
 	}
 
 	public void run() {
@@ -168,18 +199,29 @@ public class PolicyRefresher extends Thread {
 		}
 
 		while(true) {
-			loadPolicy();
+			DownloadTrigger trigger = null;
 			try {
-				Thread.sleep(pollingIntervalMs);
+				trigger = policyDownloadQueue.take();
+				loadRoles();
+				loadPolicy();
 			} catch(InterruptedException excp) {
 				LOG.info("PolicyRefresher(serviceName=" + serviceName + ").run(): interrupted! Exiting thread", excp);
 				break;
+			} finally {
+				if (trigger != null) {
+					trigger.signalCompletion();
+				}
 			}
 		}
 
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("<== PolicyRefresher(serviceName=" + serviceName + ").run()");
 		}
+	}
+
+	public void syncPoliciesWithAdmin(DownloadTrigger token) throws InterruptedException {
+		policyDownloadQueue.put(token);
+		token.waitForCompletion();
 	}
 
 	private void loadPolicy() {
@@ -206,11 +248,7 @@ public class PolicyRefresher extends Thread {
 				if (!policiesSetInPlugin) {
 					svcPolicies = loadFromCache();
 				}
-			} else {
-				saveToCache(svcPolicies);
 			}
-
-			RangerPerfTracer.log(perf);
 
 			if (PERF_POLICYENGINE_INIT_LOG.isDebugEnabled()) {
 				long freeMemory = Runtime.getRuntime().freeMemory();
@@ -221,8 +259,9 @@ public class PolicyRefresher extends Thread {
 			if (svcPolicies != null) {
 				plugIn.setPolicies(svcPolicies);
 				policiesSetInPlugin = true;
+				serviceDefSetInPlugin = false;
 				setLastActivationTimeInMillis(System.currentTimeMillis());
-				lastKnownVersion = svcPolicies.getPolicyVersion();
+				lastKnownVersion = svcPolicies.getPolicyVersion() != null ? svcPolicies.getPolicyVersion() : -1L;
 			} else {
 				if (!policiesSetInPlugin && !serviceDefSetInPlugin) {
 					plugIn.setPolicies(null);
@@ -230,16 +269,18 @@ public class PolicyRefresher extends Thread {
 				}
 			}
 		} catch (RangerServiceNotFoundException snfe) {
-			if (disableCacheIfServiceNotFound) {
+			if (!serviceDefSetInPlugin) {
 				disableCache();
 				plugIn.setPolicies(null);
+				serviceDefSetInPlugin = true;
 				setLastActivationTimeInMillis(System.currentTimeMillis());
 				lastKnownVersion = -1;
-				serviceDefSetInPlugin = true;
 			}
 		} catch (Exception excp) {
 			LOG.error("Encountered unexpected exception, ignoring..", excp);
 		}
+
+		RangerPerfTracer.log(perf);
 
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("<== PolicyRefresher(serviceName=" + serviceName + ").loadPolicy()");
@@ -356,7 +397,7 @@ public class PolicyRefresher extends Thread {
 		return policies;
 	}
 	
-	private void saveToCache(ServicePolicies policies) {
+	public void saveToCache(ServicePolicies policies) {
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("==> PolicyRefresher(serviceName=" + serviceName + ").saveToCache()");
 		}
@@ -439,6 +480,19 @@ public class PolicyRefresher extends Thread {
 
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("<== PolicyRefresher.disableCache(serviceName=" + serviceName + ")");
+		}
+	}
+
+	private void loadRoles() {
+		if(LOG.isDebugEnabled()) {
+			LOG.debug("==> PolicyRefresher(serviceName=" + serviceName + ").loadRoles()");
+		}
+
+		//Load the Ranger UserGroup Roles
+		rolesProvider.loadUserGroupRoles(plugIn);
+
+		if(LOG.isDebugEnabled()) {
+			LOG.debug("<== PolicyRefresher(serviceName=" + serviceName + ").loadRoles()");
 		}
 	}
 }

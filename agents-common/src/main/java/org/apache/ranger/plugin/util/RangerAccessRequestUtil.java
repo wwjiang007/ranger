@@ -19,6 +19,7 @@
 
 package org.apache.ranger.plugin.util;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
@@ -37,8 +38,12 @@ public class RangerAccessRequestUtil {
 	public static final String KEY_CONTEXT_TAG_OBJECT          = "TAG_OBJECT";
 	public static final String KEY_CONTEXT_RESOURCE            = "RESOURCE";
 	public static final String KEY_CONTEXT_REQUESTED_RESOURCES = "REQUESTED_RESOURCES";
+	public static final String KEY_CONTEXT_USERSTORE           = "USERSTORE";
 	public static final String KEY_TOKEN_NAMESPACE = "token:";
 	public static final String KEY_USER = "USER";
+	public static final String KEY_OWNER = "OWNER";
+	public static final String KEY_ROLES = "ROLES";
+	public static final String KEY_CONTEXT_ACCESSTYPES = "ACCESSTYPES";
 
 	public static void setRequestTagsInContext(Map<String, Object> context, Set<RangerTagForEval> tags) {
 		if(CollectionUtils.isEmpty(tags)) {
@@ -131,7 +136,9 @@ public class RangerAccessRequestUtil {
 	public static void setCurrentUserInContext(Map<String, Object> context, String user) {
 		setTokenInContext(context, KEY_USER, user);
 	}
-
+	public static void setOwnerInContext(Map<String, Object> context, String owner) {
+		setTokenInContext(context, KEY_OWNER, owner);
+	}
 	public static String getCurrentUserFromContext(Map<String, Object> context) {
 		Object ret = getTokenFromContext(context, KEY_USER);
 		return ret != null ? ret.toString() : "";
@@ -144,5 +151,28 @@ public class RangerAccessRequestUtil {
 	public static Object getTokenFromContext(Map<String, Object> context, String tokenName) {
 		String tokenNameWithNamespace = KEY_TOKEN_NAMESPACE + tokenName;
 		return MapUtils.isNotEmpty(context) ? context.get(tokenNameWithNamespace) : null;
+	}
+
+	public static void setCurrentUserRolesInContext(Map<String, Object> context, Set<String> roles) {
+		setTokenInContext(context, KEY_ROLES, roles);
+	}
+	public static Set<String> getCurrentUserRolesFromContext(Map<String, Object> context) {
+		Object ret = getTokenFromContext(context, KEY_ROLES);
+		return ret != null ? (Set<String>) ret : Collections.EMPTY_SET;
+	}
+
+	public static void setRequestUserStoreInContext(Map<String, Object> context, RangerUserStore rangerUserStore) {
+		context.put(KEY_CONTEXT_USERSTORE, rangerUserStore);
+	}
+
+	public static RangerUserStore getRequestUserStoreFromContext(Map<String, Object> context) {
+		RangerUserStore ret = null;
+		Object    val = context.get(KEY_CONTEXT_USERSTORE);
+
+		if(val instanceof RangerUserStore) {
+			ret = (RangerUserStore) val;
+		}
+
+		return ret;
 	}
 }

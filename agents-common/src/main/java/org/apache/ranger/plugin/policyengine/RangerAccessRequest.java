@@ -37,6 +37,8 @@ public interface RangerAccessRequest {
 
 	Set<String> getUserGroups();
 
+	Set<String> getUserRoles();
+
 	Date getAccessTime();
 
 	String getClientIPAddress();
@@ -54,6 +56,8 @@ public interface RangerAccessRequest {
 	String getSessionId();
 	
 	String getClusterName();
+
+	String getClusterType();
 
 	Map<String, Object> getContext();
 

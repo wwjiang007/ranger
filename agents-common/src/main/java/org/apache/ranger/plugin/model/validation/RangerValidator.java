@@ -33,8 +33,11 @@ import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
+import org.apache.ranger.plugin.errors.ValidationErrorCode;
 import org.apache.ranger.plugin.model.RangerPolicy;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerPolicyResource;
+import org.apache.ranger.plugin.model.RangerRole;
+import org.apache.ranger.plugin.model.RangerSecurityZone;
 import org.apache.ranger.plugin.model.RangerService;
 import org.apache.ranger.plugin.model.RangerServiceDef;
 import org.apache.ranger.plugin.model.RangerServiceDef.RangerAccessTypeDef;
@@ -42,14 +45,15 @@ import org.apache.ranger.plugin.model.RangerServiceDef.RangerEnumDef;
 import org.apache.ranger.plugin.model.RangerServiceDef.RangerEnumElementDef;
 import org.apache.ranger.plugin.model.RangerServiceDef.RangerResourceDef;
 import org.apache.ranger.plugin.model.RangerServiceDef.RangerServiceConfigDef;
+import org.apache.ranger.plugin.store.RoleStore;
 import org.apache.ranger.plugin.store.ServiceStore;
 import org.apache.ranger.plugin.util.RangerObjectFactory;
-import org.apache.ranger.plugin.util.SearchFilter;
 
 public abstract class RangerValidator {
 	
 	private static final Log LOG = LogFactory.getLog(RangerValidator.class);
 
+	RoleStore 	 _roleStore;
 	ServiceStore _store;
 	RangerObjectFactory _factory = new RangerObjectFactory();
 
@@ -62,6 +66,13 @@ public abstract class RangerValidator {
 			throw new IllegalArgumentException("ServiceValidator(): store is null!");
 		}
 		_store = store;
+	}
+
+	protected RangerValidator(RoleStore roleStore) {
+		if (roleStore == null) {
+			throw new IllegalArgumentException("ServiceValidator(): store is null!");
+		}
+		_roleStore = roleStore;
 	}
 
 	public void validate(Long id, Action action) throws Exception {
@@ -80,6 +91,22 @@ public abstract class RangerValidator {
 			throw new Exception(message);
 		}
 	}
+    public void validate(String name, Action action) throws Exception {
+        if(LOG.isDebugEnabled()) {
+            LOG.debug("==> RangerValidator.validate(" + name + ")");
+        }
+
+        List<ValidationFailureDetails> failures = new ArrayList<>();
+        if (isValid(name, action, failures)) {
+            if(LOG.isDebugEnabled()) {
+                LOG.debug("<== RangerValidator.validate(" + name + "): valid");
+            }
+        } else {
+            String message = serializeFailures(failures);
+            LOG.debug("<== RangerValidator.validate(" + name + "): invalid, reason[" + message + "]");
+            throw new Exception(message);
+        }
+    }
 	
 	/**
 	 * This method is expected to be overridden by sub-classes.  Default implementation provided to not burden implementers from having to implement methods that they know would never be called.
@@ -96,7 +123,15 @@ public abstract class RangerValidator {
 		return false;
 	}
 
-	String serializeFailures(List<ValidationFailureDetails> failures) {
+    boolean isValid(String name, Action action, List<ValidationFailureDetails> failures) {
+        failures.add(new ValidationFailureDetailsBuilder()
+                .isAnInternalError()
+                .becauseOf("unimplemented method called")
+                .build());
+        return false;
+    }
+
+	public static String serializeFailures(List<ValidationFailureDetails> failures) {
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("==> RangerValidator.getFailureMessage()");
 		}
@@ -175,7 +210,7 @@ public abstract class RangerValidator {
 	}
 
 	RangerServiceDef getServiceDef(String type) {
-		
+
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("==> RangerValidator.getServiceDef(" + type + ")");
 		}
@@ -192,8 +227,30 @@ public abstract class RangerValidator {
 		return result;
 	}
 
+	/**
+	 * @param displayName
+	 * @return {@link RangerServiceDef} - service using display name if present, <code>null</code> otherwise.
+	 */
+	RangerServiceDef getServiceDefByDisplayName(final String displayName) {
+
+		if(LOG.isDebugEnabled()) {
+			LOG.debug("==> RangerValidator.getServiceDefByDisplayName(" + displayName + ")");
+		}
+		RangerServiceDef result = null;
+		try {
+			result = _store.getServiceDefByDisplayName(displayName);
+		} catch (Exception e) {
+			LOG.debug("Encountered exception while retrieving service definition from service store!", e);
+		}
+
+		if(LOG.isDebugEnabled()) {
+			LOG.debug("<== RangerValidator.getServiceDefByDisplayName(" + displayName + "): " + result);
+		}
+		return result;
+	}
+
 	RangerService getService(Long id) {
-		
+
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("==> RangerValidator.getService(" + id + ")");
 		}
@@ -228,8 +285,34 @@ public abstract class RangerValidator {
 		return result;
 	}
 
+	RangerService getServiceByDisplayName(final String displayName) {
+		if(LOG.isDebugEnabled()) {
+			LOG.debug("==> RangerValidator.getService(" + displayName + ")");
+		}
+		RangerService result = null;
+		try {
+			result = _store.getServiceByDisplayName(displayName);
+		} catch (Exception e) {
+			LOG.debug("Encountred exception while retrieving service from service store!", e);
+		}
+
+		if(LOG.isDebugEnabled()) {
+			LOG.debug("<== RangerValidator.getService(" + displayName + "): " + result);
+		}
+		return result;
+	}
+
+	boolean policyExists(Long id) {
+		try {
+			return _store.policyExists(id);
+		} catch (Exception e) {
+			LOG.debug("Encountred exception while retrieving policy from service store!", e);
+			return false;
+		}
+	}
+
 	RangerPolicy getPolicy(Long id) {
-		
+
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("==> RangerValidator.getPolicy(" + id + ")");
 		}
@@ -246,29 +329,17 @@ public abstract class RangerValidator {
 		return result;
 	}
 
-	List<RangerPolicy> getPolicies(final String serviceName, final String policyName) {
+	Long getPolicyId(final Long serviceId, final String policyName, final Long zoneId) {
 		if(LOG.isDebugEnabled()) {
-			LOG.debug("==> RangerValidator.getPolicies(" + serviceName + ", " + policyName + ")");
+			LOG.debug("==> RangerValidator.getPolicyId(" + serviceId + ", " + policyName + ", " + zoneId + ")");
 		}
 
-		List<RangerPolicy> policies = null;
-		try {
-			SearchFilter filter = new SearchFilter();
-			if (StringUtils.isNotBlank(policyName)) {
-				filter.setParam(SearchFilter.POLICY_NAME, policyName);
-			}
-			filter.setParam(SearchFilter.SERVICE_NAME, serviceName);
-			
-			policies = _store.getPolicies(filter);
-		} catch (Exception e) {
-			LOG.debug("Encountred exception while retrieving service from service store!", e);
-		}
-		
+		Long policyId = _store.getPolicyId(serviceId, policyName, zoneId);
+
 		if(LOG.isDebugEnabled()) {
-			int count = policies == null ? 0 : policies.size();
-			LOG.debug("<== RangerValidator.getPolicies(" + serviceName + ", " + policyName + "): count[" + count + "], " + policies);
+			LOG.debug("<== RangerValidator.getPolicyId(" + serviceId + ", " + policyName + ", " + zoneId + "): policy-id[" + policyId + "]");
 		}
-		return policies;
+		return policyId;
 	}
 	
 	List<RangerPolicy> getPoliciesForResourceSignature(String serviceName, String policySignature) {
@@ -290,6 +361,45 @@ public abstract class RangerValidator {
 		return policies;
 	}
 
+    RangerSecurityZone getSecurityZone(Long id) {
+        if(LOG.isDebugEnabled()) {
+            LOG.debug("==> RangerValidator.getSecurityZone(" + id + ")");
+        }
+        RangerSecurityZone result = null;
+
+        if (id != null) {
+            try {
+                result = _store.getSecurityZone(id);
+            } catch (Exception e) {
+                LOG.debug("Encountred exception while retrieving security zone from service store!", e);
+            }
+        }
+
+        if(LOG.isDebugEnabled()) {
+            LOG.debug("<== RangerValidator.getSecurityZone(" + id + "): " + result);
+        }
+        return result;
+    }
+
+	RangerSecurityZone getSecurityZone(String name) {
+        if(LOG.isDebugEnabled()) {
+            LOG.debug("==> RangerValidator.getSecurityZone(" + name + ")");
+        }
+        RangerSecurityZone result = null;
+
+        if (StringUtils.isNotEmpty(name)) {
+            try {
+                result = _store.getSecurityZone(name);
+            } catch (Exception e) {
+                LOG.debug("Encountred exception while retrieving security zone from service store!", e);
+            }
+        }
+
+        if(LOG.isDebugEnabled()) {
+            LOG.debug("<== RangerValidator.getSecurityZone(" + name + "): " + result);
+        }
+        return result;
+    }
 	Set<String> getAccessTypes(RangerServiceDef serviceDef) {
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("==> RangerValidator.getAccessTypes(" + serviceDef + ")");
@@ -309,7 +419,7 @@ public abstract class RangerValidator {
 					if (StringUtils.isBlank(accessType)) {
 						LOG.warn("Access type def name was null/empty/blank!");
 					} else {
-						accessTypes.add(accessType.toLowerCase());
+						accessTypes.add(accessType);
 					}
 				}
 			}
@@ -415,22 +525,22 @@ public abstract class RangerValidator {
 		}
 		return resourceNames;
 	}
-	
+
 	/**
-	 * Returns the resource-types defined on the policy converted to lowe-case
+	 * Converts, in place, the resources defined in the policy to have lower-case resource-def-names
 	 * @param policy
 	 * @return
 	 */
-	Set<String> getPolicyResources(RangerPolicy policy) {
-		if (policy == null || policy.getResources() == null || policy.getResources().isEmpty()) {
-			return new HashSet<>();
-		} else {
-			Set<String> result = new HashSet<>();
-			for (String name : policy.getResources().keySet()) {
-				result.add(name.toLowerCase());
+
+	void convertPolicyResourceNamesToLower(RangerPolicy policy) {
+		Map<String, RangerPolicyResource> lowerCasePolicyResources = new HashMap<>();
+		if (policy.getResources() != null) {
+			for (Map.Entry<String, RangerPolicyResource> entry : policy.getResources().entrySet()) {
+				String lowerCasekey = entry.getKey().toLowerCase();
+				lowerCasePolicyResources.put(lowerCasekey, entry.getValue());
 			}
-			return result;
 		}
+		policy.setResources(lowerCasePolicyResources);
 	}
 
 	Map<String, String> getValidationRegExes(RangerServiceDef serviceDef) {
@@ -588,6 +698,37 @@ public abstract class RangerValidator {
 		return valid;
 	}
 
+	/*
+	 * Important: Resource-names are required to be lowercase. This is used in validating policy create/update operations.
+	 * Ref: RANGER-2272
+	 */
+	boolean isValidResourceName(final String value, final String valueContext, final List<ValidationFailureDetails> failures) {
+		boolean ret = true;
+
+		if (value != null && !StringUtils.isEmpty(value)) {
+			int sz = value.length();
+
+			for(int i = 0; i < sz; ++i) {
+				char c = value.charAt(i);
+				if (!(Character.isLowerCase(c) || c == '-' || c == '_')) { // Allow only lowercase, hyphen or underscore characters
+					ret = false;
+					break;
+				}
+			}
+		} else {
+			ret = false;
+		}
+		if (!ret) {
+			ValidationErrorCode errorCode = ValidationErrorCode.SERVICE_DEF_VALIDATION_ERR_NOT_LOWERCASE_NAME;
+			failures.add(new ValidationFailureDetailsBuilder()
+					.errorCode(errorCode.getErrorCode())
+					.field(value)
+					.becauseOf(errorCode.getMessage(valueContext, value))
+					.build());
+		}
+		return ret;
+	}
+
 	boolean isUnique(final String value, final Set<String> alreadySeen, final String valueName, final String collectionName, final List<ValidationFailureDetails> failures) {
 		return isUnique(value, null, alreadySeen, valueName, collectionName, failures);
 	}
@@ -686,5 +827,40 @@ public abstract class RangerValidator {
 			}
 		}
 		return result;
+	}
+
+	RangerRole getRangerRole(Long id) {
+		if(LOG.isDebugEnabled()) {
+			LOG.debug("==> RangerValidator.getRangerRole(" + id + ")");
+		}
+		RangerRole result = null;
+		try {
+			result = _roleStore.getRole(id);
+		} catch (Exception e) {
+			LOG.debug("Encountred exception while retrieving RangerRole from RoleStore store!", e);
+		}
+
+		if(LOG.isDebugEnabled()) {
+			LOG.debug("<== RangerValidator.getRangerRole(" + id + "): " + result);
+		}
+		return result;
+	}
+
+	boolean roleExists(Long id) {
+		try {
+			return _roleStore.roleExists(id);
+		} catch (Exception e) {
+			LOG.debug("Encountred exception while retrieving RangerRole from role store!", e);
+			return false;
+		}
+	}
+
+	boolean roleExists(String name) {
+		try {
+			return _roleStore.roleExists(name);
+		} catch (Exception e) {
+			LOG.debug("Encountred exception while retrieving RangerRole from role store!", e);
+			return false;
+		}
 	}
 }

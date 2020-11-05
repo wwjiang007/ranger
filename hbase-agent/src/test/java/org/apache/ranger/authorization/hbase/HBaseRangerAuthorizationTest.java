@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -40,8 +41,12 @@ import org.apache.hadoop.hbase.client.Delete;
 import org.apache.hadoop.hbase.client.Get;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.SnapshotDescription;
 import org.apache.hadoop.hbase.client.Table;
-import org.apache.hadoop.hbase.protobuf.generated.HBaseProtos;
+import org.apache.hadoop.hbase.security.access.AccessControlClient;
+import org.apache.hadoop.hbase.security.access.NamespacePermission;
+import org.apache.hadoop.hbase.security.access.Permission;
+import org.apache.hadoop.hbase.security.access.UserPermission;
 import org.apache.hadoop.hbase.util.Bytes;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.junit.Assert;
@@ -66,14 +71,14 @@ import org.junit.Test;
  * 
  * http://localhost:6080/service/plugins/policies/download/cl1_hbase
  */
+@org.junit.Ignore
 public class HBaseRangerAuthorizationTest {
 
     private static final Log LOG = LogFactory.getLog(HBaseRangerAuthorizationTest.class.getName());
 
     private static int port;
     private static HBaseTestingUtility utility;
-    
-    
+
     @org.junit.BeforeClass
     public static void setup() throws Exception {
         port = getFreePort();
@@ -106,8 +111,8 @@ public class HBaseRangerAuthorizationTest {
         Admin admin = conn.getAdmin();
 
         // Create a table
-        if (!admin.tableExists(TableName.valueOf("temp"))) {
-            HTableDescriptor tableDescriptor = new HTableDescriptor(TableName.valueOf("temp"));
+        if (!admin.tableExists(TableName.valueOf("default:temp"))) {
+            HTableDescriptor tableDescriptor = new HTableDescriptor(TableName.valueOf("default:temp"));
 
             // Adding column families to table descriptor
             tableDescriptor.addFamily(new HColumnDescriptor("colfam1"));
@@ -115,6 +120,15 @@ public class HBaseRangerAuthorizationTest {
 
             admin.createTable(tableDescriptor);
         }
+
+		if (!admin.tableExists(TableName.valueOf("default:temp5"))) {
+			HTableDescriptor tableDescriptor = new HTableDescriptor(TableName.valueOf("default:temp5"));
+
+			// Adding column families to table descriptor
+			tableDescriptor.addFamily(new HColumnDescriptor("colfam1"));
+
+			admin.createTable(tableDescriptor);
+		}
 
         // Add a new row
         Put put = new Put(Bytes.toBytes("row1"));
@@ -174,7 +188,7 @@ public class HBaseRangerAuthorizationTest {
         for (HTableDescriptor desc : tableDescriptors) {
             LOG.info("Found table:[" + desc.getTableName().getNameAsString() + "]");
         }
-        Assert.assertEquals(2, tableDescriptors.length);
+        Assert.assertEquals(3, tableDescriptors.length);
 
         conn.close();
     }
@@ -324,8 +338,9 @@ public class HBaseRangerAuthorizationTest {
                 // Read a row
                 try {
                     Get get = new Get(Bytes.toBytes("row1"));
-                    table.get(get);
-                    Assert.fail("Failure expected on an unauthorized user");
+                    Result result = table.get(get);
+                    byte[] valResult = result.getValue(Bytes.toBytes("colfam1"), Bytes.toBytes("col1"));
+                    Assert.assertNull("Failure expected on an unauthorized user", valResult);
                 } catch (IOException ex) {
                     // expected
                 }
@@ -533,8 +548,9 @@ public class HBaseRangerAuthorizationTest {
                 // Read a row
                 try {
                     Get get = new Get(Bytes.toBytes("row1"));
-                    table.get(get);
-                    Assert.fail("Failure expected on an unauthorized user");
+                    Result result = table.get(get);
+                    byte[] valResult = result.getValue(Bytes.toBytes("colfam2"), Bytes.toBytes("col1"));
+                    Assert.assertNull("Failure expected on an unauthorized user", valResult);
                 } catch (IOException ex) {
                     // expected
                 }
@@ -629,7 +645,7 @@ public class HBaseRangerAuthorizationTest {
         Connection conn = ConnectionFactory.createConnection(conf);
         Admin admin = conn.getAdmin();
 
-        List<HBaseProtos.SnapshotDescription> snapshots = admin.listSnapshots("test_snapshot");
+        List<SnapshotDescription> snapshots = admin.listSnapshots("test_snapshot");
         if (CollectionUtils.isNotEmpty(snapshots)) {
             admin.deleteSnapshot("test_snapshot");
         }
@@ -683,7 +699,7 @@ public class HBaseRangerAuthorizationTest {
         admin.disableTable(tableName);
 
         // Create a snapshot
-        List<HBaseProtos.SnapshotDescription> snapshots = admin.listSnapshots("test_snapshot");
+        List<SnapshotDescription> snapshots = admin.listSnapshots("test_snapshot");
         if (CollectionUtils.isEmpty(snapshots)) {
             admin.snapshot("test_snapshot", tableName);
         }
@@ -846,8 +862,9 @@ public class HBaseRangerAuthorizationTest {
 
                 Get get = new Get(Bytes.toBytes("row1"));
                 try {
-                    table.get(get);
-                    Assert.fail("Failure expected on an unauthorized user");
+                    Result result = table.get(get);
+                    byte[] valResult = result.getValue(Bytes.toBytes("colfam2"), Bytes.toBytes("col1"));
+                    Assert.assertNull("Failure expected on an unauthorized user", valResult);
                 } catch (IOException ex) {
                     // expected
                 }
@@ -958,11 +975,69 @@ public class HBaseRangerAuthorizationTest {
         conn.close();
     }
 
+	@Test
+	public void testGetUserPermission() throws Throwable {
+		final Configuration conf = HBaseConfiguration.create();
+		conf.set("hbase.zookeeper.quorum", "localhost");
+		conf.set("hbase.zookeeper.property.clientPort", "" + port);
+		conf.set("zookeeper.znode.parent", "/hbase-unsecure");
+		String user = "IT";
+		UserGroupInformation ugi = UserGroupInformation.createUserForTesting(user, new String[] { "IT" });
+		ugi.doAs(new PrivilegedExceptionAction<Void>() {
+			public Void run() throws Exception {
+				try (Connection conn = ConnectionFactory.createConnection(conf)) {
+					AccessControlClient.getUserPermissions(conn, "temp");
+					Assert.fail();
+				} catch (Throwable e) {
+					// expected
+				}
+				return null;
+			}
+
+		});
+
+		user = "QA";
+		ugi = UserGroupInformation.createUserForTesting(user, new String[] { "QA" });
+		ugi.doAs(new PrivilegedExceptionAction<Void>() {
+			public Void run() throws Exception {
+				List<UserPermission> userPermissions;
+				try (Connection conn = ConnectionFactory.createConnection(conf)) {
+					userPermissions = AccessControlClient.getUserPermissions(conn, "@test_namespace");
+				} catch (Throwable e) {
+					throw new Exception(e);
+				}
+				boolean found = false;
+				for (UserPermission namespacePermission : userPermissions) {
+					if (namespacePermission.getPermission() instanceof NamespacePermission) {
+						found = StringUtils.equals(namespacePermission.getUser(), "@QA");
+						if (found) {
+							break;
+						}
+					}
+				}
+				Assert.assertTrue("QA is not found", found);
+				return null;
+			}
+		});
+
+		List<UserPermission> userPermissions;
+		try (Connection conn = ConnectionFactory.createConnection(conf)) {
+			userPermissions = AccessControlClient.getUserPermissions(conn, "temp5");
+		} catch (Throwable e) {
+			throw new Exception(e);
+		}
+
+		UserPermission userPermission = new UserPermission("@IT",
+				Permission.newBuilder(TableName.valueOf("temp5")).withActions(Permission.Action.READ, Permission.Action.WRITE, Permission.Action.EXEC).build());
+
+		Assert.assertTrue("@IT permission should be there", userPermissions.contains(userPermission));
+
+	}
+
     private static int getFreePort() throws IOException {
         ServerSocket serverSocket = new ServerSocket(0);
         int port = serverSocket.getLocalPort();
         serverSocket.close();
         return port;
     }
-
 }

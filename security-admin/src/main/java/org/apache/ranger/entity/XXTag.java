@@ -60,6 +60,12 @@ public class XXTag extends XXDBBase implements Serializable {
 	@Column(name = "owned_by")
 	protected Short owner;
 
+	@Column(name = "policy_options")
+	protected String options;
+
+	@Column(name = "tag_attrs_text")
+	protected String tagAttrs;
+
 	@Override
 	public void setId(Long id) {
 		this.id = id;
@@ -118,7 +124,19 @@ public class XXTag extends XXDBBase implements Serializable {
 	public Short getOwner() { return owner; }
 	public void setOwner(Short owner) { this.owner = owner; }
 
-	@Override
+	public void setOptions(String options) {
+		this.options = options;
+	}
+
+	public String getOptions() {
+		return this.options;
+	}
+
+	public String getTagAttrs() { return tagAttrs; }
+
+	public void setTagAttrs(String tagAttrs) { this.tagAttrs = tagAttrs; }
+
+    @Override
 	public int getMyClassType() {
 		return AppConstants.CLASS_TYPE_XA_TAG;
 	}
@@ -137,6 +155,8 @@ public class XXTag extends XXDBBase implements Serializable {
 		result = prime * result + ((id == null) ? 0 : id.hashCode());
 		result = prime * result + ((type == null) ? 0 : type.hashCode());
 		result = prime * result + ((owner == null) ? 0 : owner.hashCode());
+		result = prime * result + ((options == null) ? 0 : options.hashCode());
+		result = prime * result + ((tagAttrs == null) ? 0 : tagAttrs.hashCode());
 		return result;
 	}
 
@@ -179,6 +199,16 @@ public class XXTag extends XXDBBase implements Serializable {
 				return false;
 		} else if (!owner.equals(other.owner))
 			return false;
+		if (options == null) {
+			if (other.options != null)
+				return false;
+		} else if (!options.equals(other.options))
+
+		if (tagAttrs == null) {
+			if (other.tagAttrs != null)
+				return false;
+		} else if (!tagAttrs.equals(other.tagAttrs))
+			return false;
 		return true;
 	}
 
@@ -201,6 +231,8 @@ public class XXTag extends XXDBBase implements Serializable {
 		sb.append("guid={").append(guid).append("} ");
 		sb.append("type={").append(type).append("} ");
 		sb.append("owned_by={").append(owner).append("} ");
+		sb.append("options={").append(options).append("} ");
+		sb.append("tagAttrs={").append(tagAttrs).append("} ");
 		sb.append(" }");
 
 		return sb;

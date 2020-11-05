@@ -107,6 +107,9 @@ public class KmsKeyMgr {
 	@Autowired
 	RangerDaoManagerBase rangerDaoManagerBase;
 	
+        @Autowired
+        RangerBizUtil rangerBizUtil;
+
 	@SuppressWarnings("unchecked")
 	public VXKmsKeyList searchKeys(HttpServletRequest request, String repoName) throws Exception{
 		String providers[] = null;
@@ -217,6 +220,7 @@ public class KmsKeyMgr {
 
 	public VXKmsKey rolloverKey(String provider, VXKmsKey vXKey) throws Exception{
 		String providers[] = null;
+                rangerBizUtil.blockAuditorRoleUser();
 		try {
 			providers = getKMSURL(provider);
 		} catch (Exception e) {
@@ -272,6 +276,7 @@ public class KmsKeyMgr {
 	
 	public void deleteKey(String provider, String name) throws Exception{
 		String providers[] = null;
+                rangerBizUtil.blockAuditorRoleUser();
 		try {
 			providers = getKMSURL(provider);
 		} catch (Exception e) {
@@ -322,6 +327,7 @@ public class KmsKeyMgr {
 
 	public VXKmsKey createKey(String provider, VXKmsKey vXKey) throws Exception{
 		String providers[] = null;
+                rangerBizUtil.blockAuditorRoleUser();
 		try {
 			providers = getKMSURL(provider);
 		} catch (Exception e) {
@@ -549,27 +555,28 @@ public class KmsKeyMgr {
 		return providers;
 	}
 	
-	private Subject getSubjectForKerberos(String provider) throws Exception{
+	private Subject getSubjectForKerberos(String provider) throws Exception {
 		String userName = getKMSUserName(provider);
 		String password = getKMSPassword(provider);
 		String nameRules = PropertiesUtil.getProperty(NAME_RULES);
-	    if (StringUtils.isEmpty(nameRules)) {
-        	KerberosName.setRules("DEFAULT");
-    	}else{
-    		KerberosName.setRules(nameRules);
-    	}
-	    Subject sub = new Subject();
-	    String rangerPrincipal = SecureClientLogin.getPrincipal(PropertiesUtil.getProperty(ADMIN_USER_PRINCIPAL), PropertiesUtil.getProperty(HOST_NAME));
-	    if (checkKerberos()) {
-	    	if(SecureClientLogin.isKerberosCredentialExists(rangerPrincipal, PropertiesUtil.getProperty(ADMIN_USER_KEYTAB))){
-	    		sub = SecureClientLogin.loginUserFromKeytab(rangerPrincipal, PropertiesUtil.getProperty(ADMIN_USER_KEYTAB), nameRules);
-	    	}else{
-	    		sub = SecureClientLogin.loginUserWithPassword(userName, password);
-	    	}
+		if (StringUtils.isEmpty(nameRules)) {
+			KerberosName.setRules("DEFAULT");
+			nameRules = "DEFAULT";
+		} else {
+			KerberosName.setRules(nameRules);
+		}
+		Subject sub = new Subject();
+		String rangerPrincipal = SecureClientLogin.getPrincipal(PropertiesUtil.getProperty(ADMIN_USER_PRINCIPAL), PropertiesUtil.getProperty(HOST_NAME));
+		if (checkKerberos()) {
+			if (SecureClientLogin.isKerberosCredentialExists(rangerPrincipal, PropertiesUtil.getProperty(ADMIN_USER_KEYTAB))) {
+				sub = SecureClientLogin.loginUserFromKeytab(rangerPrincipal, PropertiesUtil.getProperty(ADMIN_USER_KEYTAB), nameRules);
+			} else {
+				sub = SecureClientLogin.loginUserWithPassword(userName, password);
+			}
 		} else {
 			sub = SecureClientLogin.login(userName);
 		}
-        return sub;
+		return sub;
 	}
 
 	private String getKMSPassword(String srvName) throws Exception {

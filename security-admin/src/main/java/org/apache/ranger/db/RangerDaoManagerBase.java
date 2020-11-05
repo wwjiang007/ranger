@@ -25,349 +25,11 @@
 
 import javax.persistence.EntityManager;
 
-import org.apache.log4j.Logger;
-import org.apache.ranger.common.AppConstants;
-import org.apache.ranger.common.RESTErrorUtil;
-import org.apache.ranger.common.db.BaseDao;
-import org.springframework.beans.factory.annotation.Autowired;
-
-
 public abstract class RangerDaoManagerBase {
-	private static final Logger logger = Logger.getLogger(RangerDaoManagerBase.class);
 
-	@Autowired
-	protected RESTErrorUtil restErrorUtil;
 	abstract public EntityManager getEntityManager();
 
 	public RangerDaoManagerBase() {
-	}
-
-	public BaseDao<?> getDaoForClassType(int classType) {
-		if (classType == AppConstants.CLASS_TYPE_AUTH_SESS) {
-			return getXXAuthSession();
-		}
-		if (classType == AppConstants.CLASS_TYPE_USER_PROFILE) {
-			return getXXPortalUser();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_ASSET) {
-			return getXXAsset();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_RESOURCE) {
-			return getXXResource();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_CRED_STORE) {
-			return getXXCredentialStore();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_GROUP) {
-			return getXXGroup();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_USER) {
-			return getXXUser();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_GROUP_USER) {
-			return getXXGroupUser();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_GROUP_GROUP) {
-			return getXXGroupGroup();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_PERM_MAP) {
-			return getXXPermMap();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_AUDIT_MAP) {
-			return getXXAuditMap();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_POLICY_EXPORT_AUDIT) {
-			return getXXPolicyExportAudit();
-		}
-		if (classType == AppConstants.CLASS_TYPE_TRX_LOG) {
-			return getXXTrxLog();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_ACCESS_AUDIT) {
-			return getXXAccessAudit();
-		}
-
-		if (classType == AppConstants.CLASS_TYPE_RANGER_POLICY) {
-			return getXXPolicy();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_SERVICE) {
-			return getXXService();
-		}
-		if (classType == AppConstants.CLASS_TYPE_RANGER_POLICY_ITEM) {
-			return getXXPolicyItem();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_SERVICE_DEF) {
-			return getXXServiceDef();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_SERVICE_CONFIG_DEF) {
-			return getXXServiceConfigDef();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_RESOURCE_DEF) {
-			return getXXResourceDef();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_ACCESS_TYPE_DEF) {
-			return getXXAccessTypeDef();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_ACCESS_TYPE_DEF_GRANTS) {
-			return getXXAccessTypeDefGrants();
-		}
-		if (classType == AppConstants.CLASS_TYPE_RANGER_POLICY_CONDITION_DEF) {
-			return getXXPolicyConditionDef();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_ENUM_DEF) {
-			return getXXEnumDef();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_ENUM_ELEMENT_DEF) {
-			return getXXEnumElementDef();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_SERVICE_CONFIG_MAP) {
-			return getXXServiceConfigMap();
-		}
-		if (classType == AppConstants.CLASS_TYPE_RANGER_POLICY_RESOURCE) {
-			return getXXPolicyResource();
-		}
-		if (classType == AppConstants.CLASS_TYPE_RANGER_POLICY_RESOURCE_MAP) {
-			return getXXPolicyResourceMap();
-		}
-		if (classType == AppConstants.CLASS_TYPE_RANGER_POLICY_ITEM_ACCESS) {
-			return getXXPolicyItemAccess();
-		}
-		if (classType == AppConstants.CLASS_TYPE_RANGER_POLICY_ITEM_CONDITION) {
-			return getXXPolicyItemCondition();
-		}
-		if (classType == AppConstants.CLASS_TYPE_RANGER_POLICY_ITEM_USER_PERM) {
-			return getXXPolicyItemUserPerm();
-		}
-		if (classType == AppConstants.CLASS_TYPE_RANGER_POLICY_ITEM_GRP_PERM) {
-			return getXXPolicyItemGroupPerm();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_DATA_HIST) {
-			return getXXDataHist();
-		}
-		if (classType == AppConstants.CLASS_TYPE_RANGER_POLICY_WITH_ASSIGNED_ID) {
-			return getXXPolicyWithAssignedId();
-		}
-		if (classType == AppConstants.CLASS_TYPE_RANGER_SERVICE_WITH_ASSIGNED_ID) {
-			return getXXServiceWithAssignedId();
-		}
-		if (classType == AppConstants.CLASS_TYPE_RANGER_MODULE_DEF) {
-			return getXXModuleDef();
-		}
-		if (classType == AppConstants.CLASS_TYPE_RANGER_USER_PERMISSION) {
-			return getXXUserPermission();
-		}
-		if (classType == AppConstants.CLASS_TYPE_RANGER_GROUP_PERMISSION) {
-			return getXXUserPermission();
-		}
-		if (classType == AppConstants.CLASS_TYPE_RANGER_SERVICE_DEF_WITH_ASSIGNED_ID) {
-			return getXXServiceDefWithAssignedId();
-		}
-		
-		if (classType == AppConstants.CLASS_TYPE_XA_TAG_DEF) {
-			return getXXTagDef();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_TAG_ATTR_DEF) {
-			return getXXTagAttributeDef();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_SERVICE_RESOURCE) {
-			return getXXServiceResource();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_SERVICE_RESOURCE_ELEMENT) {
-			return getXXServiceResourceElement();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_SERVICE_RESOURCE_ELEMENT_VALUE) {
-			return getXXServiceResourceElementValue();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_TAG) {
-			return getXXTag();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_TAG_ATTR) {
-			return getXXTagAttribute();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_TAG_RESOURCE_MAP) {
-			return getXXTagResourceMap();
-		}
-		if (classType == AppConstants.CLASS_TYPE_XA_DATAMASK_DEF) {
-			return getXXDataMaskTypeDef();
-		}
-		if (classType == AppConstants.CLASS_TYPE_RANGER_POLICY_ITEM_DATAMASK_INFO) {
-			return getXXPolicyItemDataMaskInfo();
-		}
-		if (classType== AppConstants.CLASS_TYPE_RANGER_POLICY_ITEM_ROWFILTER_INFO) {
-			return getXXPolicyItemRowFilterInfo();
-		}
-		if (classType== AppConstants.CLASS_TYPE_XA_SERVICE_VERSION_INFO) {
-			return getXXServiceVersionInfo();
-		}
-		logger.error("No DaoManager found for classType=" + classType, new Throwable());
-		return null;
-	}
-
-	public BaseDao<?> getDaoForClassName(String className) {
-		if ("XXDBBase".equals(className)) {
-			return getXXDBBase();
-		}
-		if ("XXAuthSession".equals(className)) {
-			return getXXAuthSession();
-		}
-		if ("XXPortalUser".equals(className)) {
-			return getXXPortalUser();
-		}
-		if ("XXPortalUserRole".equals(className)) {
-			return getXXPortalUserRole();
-		}
-		if ("XXAsset".equals(className)) {
-			return getXXAsset();
-		}
-		if ("XXResource".equals(className)) {
-			return getXXResource();
-		}
-		if ("XXCredentialStore".equals(className)) {
-			return getXXCredentialStore();
-		}
-		if ("XXGroup".equals(className)) {
-			return getXXGroup();
-		}
-		if ("XXUser".equals(className)) {
-			return getXXUser();
-		}
-		if ("XXGroupUser".equals(className)) {
-			return getXXGroupUser();
-		}
-		if ("XXGroupGroup".equals(className)) {
-			return getXXGroupGroup();
-		}
-		if ("XXPermMap".equals(className)) {
-			return getXXPermMap();
-		}
-		if ("XXAuditMap".equals(className)) {
-			return getXXAuditMap();
-		}
-		if ("XXPolicyExportAudit".equals(className)) {
-			return getXXPolicyExportAudit();
-		}
-		if ("XXTrxLog".equals(className)) {
-			return getXXTrxLog();
-		}
-		if ("XXAccessAudit".equals(className)) {
-			return getXXAccessAudit();
-		}
-		if ("XXPolicy".equals(className)) {
-			return getXXPolicy();
-		}
-		if ("XXService".equals(className)) {
-			return getXXService();
-		}
-		if ("XXPolicyItem".equals(className)) {
-			return getXXPolicyItem();
-		}
-		if ("XXServiceDef".equals(className)) {
-			return getXXServiceDef();
-		}
-		if ("XXServiceConfigDef".equals(className)) {
-			return getXXServiceConfigDef();
-		}
-		if ("XXResourceDef".equals(className)) {
-			return getXXResourceDef();
-		}
-		if ("XXAccessTypeDef".equals(className)) {
-			return getXXAccessTypeDef();
-		}
-		if ("XXAccessTypeDefGrants".equals(className)) {
-			return getXXAccessTypeDefGrants();
-		}
-		if ("XXPolicyConditionDef".equals(className)) {
-			return getXXPolicyConditionDef();
-		}
-		if ("XXEnumDef".equals(className)) {
-			return getXXEnumDef();
-		}
-		if ("XXEnumElementDef".equals(className)) {
-			return getXXEnumElementDef();
-		}
-		if ("XXServiceConfigMap".equals(className)) {
-			return getXXServiceConfigMap();
-		}
-		if ("XXPolicyResource".equals(className)) {
-			return getXXPolicyResource();
-		}
-		if ("XXPolicyResourceMap".equals(className)) {
-			return getXXPolicyResourceMap();
-		}
-		if ("XXPolicyItemAccess".equals(className)) {
-			return getXXPolicyItemAccess();
-		}
-		if ("XXPolicyItemCondition".equals(className)) {
-			return getXXPolicyItemCondition();
-		}
-		if ("XXPolicyItemUserPerm".equals(className)) {
-			return getXXPolicyItemUserPerm();
-		}
-		if ("XXPolicyItemGroupPerm".equals(className)) {
-			return getXXPolicyItemGroupPerm();
-		}
-		if ("XXDataHist".equals(className)) {
-			return getXXDataHist();
-		}
-		if ("XXPolicyWithAssignedId".equals(className)) {
-			return getXXPolicyWithAssignedId();
-		}
-		if ("XXServiceWithAssignedId".equals(className)) {
-			return getXXServiceWithAssignedId();
-		}
-		if ("XXModuleDef".equals(className)) {
-			return getXXModuleDef();
-		}
-		if ("XXUserPermission".equals(className)) {
-			return getXXUserPermission();
-		}
-		if ("XXGroupPermission".equals(className)) {
-			return getXXGroupPermission();
-		}
-		if ("XXServiceDefWithAssignedId".equals(className)) {
-			return getXXServiceDefWithAssignedId();
-		}
-
-		if ("XXTagDef".equals(className)) {
-			return getXXTagDef();
-		}
-		if ("XXTagAttributeDef".equals(className)) {
-			return getXXTagAttributeDef();
-		}
-		if ("XXServiceResource".equals(className)) {
-			return getXXServiceResource();
-		}
-		if ("XXServiceResourceElement".equals(className)) {
-			return getXXServiceResourceElement();
-		}
-		if ("XXServiceResourceElementValue".equals(className)) {
-			return getXXServiceResourceElementValue();
-		}
-		if ("XXTag".equals(className)) {
-			return getXXTag();
-		}
-		if ("XXTagAttribute".equals(className)) {
-			return getXXTagAttribute();
-		}
-		if ("XXTagResourceMap".equals(className)) {
-			return getXXTagResourceMap();
-		}
-		if ("XXDataMaskTypeDef".equals(className)) {
-			return getXXDataMaskTypeDef();
-		}
-		if ("XXPolicyItemDataMaskInfo".equals(className)) {
-			return getXXPolicyItemDataMaskInfo();
-		}
-		if ("XXPolicyItemRowFilterInfo".equals(className)) {
-			return getXXPolicyItemRowFilterInfo();
-		}
-		if ("XXServiceVersionInfo".equals(className)) {
-			return getXXServiceVersionInfo();
-		}
-		if ("XXPluginInfo".equals(className)) {
-			return getXXPluginInfo();
-		}
-		logger.error("No DaoManager found for className=" + className, new Throwable());
-		return null;
 	}
 
 	public XXDBBaseDao getXXDBBase() {
@@ -460,6 +122,14 @@ public abstract class RangerDaoManagerBase {
 	public XXResourceDefDao getXXResourceDef() {
 		return new XXResourceDefDao(this);
 	}
+
+        public XXPolicyLabelDao getXXPolicyLabels() {
+                return new XXPolicyLabelDao(this);
+        }
+
+        public XXPolicyLabelMapDao getXXPolicyLabelMap() {
+                return new XXPolicyLabelMapDao(this);
+        }
 
 	public XXAccessTypeDefDao getXXAccessTypeDef() {
 		return new XXAccessTypeDefDao(this);
@@ -590,5 +260,68 @@ public abstract class RangerDaoManagerBase {
 	public XXPluginInfoDao getXXPluginInfo() {
 		return new XXPluginInfoDao(this);
 	}
+
+	public XXUgsyncAuditInfoDao getXXUgsyncAuditInfo() {
+		return new XXUgsyncAuditInfoDao(this);
+	}
+
+	public XXPolicyRefConditionDao getXXPolicyRefCondition() {
+		return new XXPolicyRefConditionDao(this);
+	}
+
+	public XXPolicyRefGroupDao getXXPolicyRefGroup() {
+		return new XXPolicyRefGroupDao(this);
+	}
+
+	public XXPolicyRefDataMaskTypeDao getXXPolicyRefDataMaskType() {
+		return new XXPolicyRefDataMaskTypeDao(this);
+	}
+
+	public XXPolicyRefResourceDao getXXPolicyRefResource() {
+		return new XXPolicyRefResourceDao(this);
+	}
+
+	public XXPolicyRefUserDao getXXPolicyRefUser() {
+		return new XXPolicyRefUserDao(this);
+	}
+
+	public XXPolicyRefAccessTypeDao getXXPolicyRefAccessType() {
+		return new XXPolicyRefAccessTypeDao(this);
+	}
+
+	public XXSecurityZoneDao getXXSecurityZoneDao() { return new XXSecurityZoneDao(this); }
+
+	public XXSecurityZoneRefServiceDao getXXSecurityZoneRefService() { return new XXSecurityZoneRefServiceDao(this); }
+
+	public XXSecurityZoneRefTagServiceDao getXXSecurityZoneRefTagService() { return new XXSecurityZoneRefTagServiceDao(this); }
+
+	public XXSecurityZoneRefResourceDao getXXSecurityZoneRefResource() { return new XXSecurityZoneRefResourceDao(this); }
+
+	public XXSecurityZoneRefUserDao getXXSecurityZoneRefUser() { return new XXSecurityZoneRefUserDao(this); }
+
+	public XXSecurityZoneRefGroupDao getXXSecurityZoneRefGroup() { return new XXSecurityZoneRefGroupDao(this); }
+
+	public XXGlobalStateDao getXXGlobalState() { return new XXGlobalStateDao(this); }
+
+	public XXPolicyChangeLogDao getXXPolicyChangeLog() { return new XXPolicyChangeLogDao(this); }
+
+	public XXRoleDao getXXRole() { return new XXRoleDao(this); }
+
+	public XXPolicyRefRoleDao getXXPolicyRefRole() { return new XXPolicyRefRoleDao(this); }
+
+	public XXRoleRefUserDao getXXRoleRefUser() { return new XXRoleRefUserDao(this); }
+
+	public XXRoleRefGroupDao getXXRoleRefGroup() { return new XXRoleRefGroupDao(this); }
+
+	public XXRoleRefRoleDao getXXRoleRefRole() { return new XXRoleRefRoleDao(this); }
+
+	public XXTagChangeLogDao getXXTagChangeLog() { return new XXTagChangeLogDao(this); }
+
+	public XXRMSMappingProviderDao getXXRMSMappingProvider() { return new XXRMSMappingProviderDao(this); }
+	public XXRMSNotificationDao getXXRMSNotification() { return new XXRMSNotificationDao(this); }
+	public XXRMSServiceResourceDao getXXRMSServiceResource() { return new XXRMSServiceResourceDao(this); }
+	public XXRMSResourceMappingDao getXXRMSResourceMapping() { return new XXRMSResourceMappingDao(this); }
+
+
 }
 

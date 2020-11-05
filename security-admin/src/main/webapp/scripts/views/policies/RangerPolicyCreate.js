@@ -44,7 +44,7 @@ define(function(require){
 		
     	template : RangerPolicycreateTmpl,
     	templateHelpers : function(){
-		var infoMsg = '', displayClass = 'hide';
+                var infoMsg = '', displayClass = 'd-none', policyTimeStatus = '', expiredClass = 'd-none';
 		if(XAUtil.isMaskingPolicy(this.model.get('policyType'))){
 			if(XAUtil.isTagBasedDef(this.rangerServiceDefModel)){
 				infoMsg = localization.tt('msg.maskingPolicyInfoMsgForTagBased'), displayClass = 'show';	
@@ -54,18 +54,41 @@ define(function(require){
 		}else if(XAUtil.isRowFilterPolicy(this.model.get('policyType'))){
 			infoMsg = localization.tt('msg.rowFilterPolicyInfoMsg'), displayClass = 'show';
 		}
+        if(this.editPolicy && !_.isEmpty(this.model.get('validitySchedules'))){
+            if(XAUtil.isPolicyExpierd(this.model)){
+                policyTimeStatus = localization.tt('msg.policyExpired'), expiredClass = 'show';
+            }else{
+                expiredClass = 'd-none';
+            }
+                }
     		return {
 			editPolicy : this.editPolicy,
 			infoMsg : infoMsg,
-			displayClass : displayClass
+                        displayClass : displayClass,
+                        policyTimeStatus : policyTimeStatus,
+                        expiredClass : expiredClass
     		};
     	},
     	breadCrumbs :function(){
     		var name  = this.rangerServiceDefModel.get('name') != XAEnums.ServiceType.SERVICE_TAG.label ? 'ServiceManager' : 'TagBasedServiceManager';
     		if(this.model.isNew()){
-    			return [XALinks.get(name),XALinks.get('ManagePolicies',{model : this.rangerService}),XALinks.get('PolicyCreate')];
-    		} else {
-    			return [XALinks.get(name),XALinks.get('ManagePolicies',{model : this.rangerService}),XALinks.get('PolicyEdit')];
+                if(App.vZone && App.vZone.vZoneName){
+                   return [XALinks.get(name, App.vZone.vZoneName), 
+                        XALinks.get('ManagePolicies',{model : this.rangerService}), XALinks.get('PolicyCreate')];
+                }else{
+                    return [XALinks.get(name),XALinks.get('ManagePolicies',{model : this.rangerService}),
+                        XALinks.get('PolicyCreate')];
+                }
+            } else {
+                if(App.vZone && App.vZone.vZoneName){
+                    return [XALinks.get(name, App.vZone.vZoneName),
+                        XALinks.get('ManagePolicies',{model : this.rangerService}), XALinks.get('PolicyEdit')];
+                }else{
+                    return [XALinks.get(name),XALinks.get('ManagePolicies',{model : this.rangerService}),
+                        XALinks.get('PolicyEdit')];
+                }
+                /*return [XALinks.get(name),XALinks.get('ManagePolicies',{model : this.rangerService}),
+                    XALinks.get('PolicyEdit')];*/
     		}
     	} ,        
 
@@ -131,6 +154,11 @@ define(function(require){
 
 		/** on render callback */
 		onRender: function() {
+			// if(localStorage.getItem('setOldUI') == "false" || localStorage.getItem('setOldUI') == null) {
+			// 	App.rContent.$el.addClass('expanded-contant');
+			// } else {
+			// 	App.rContent.$el.removeClass('expanded-contant');
+			// }
 			XAUtil.showAlerForDisabledPolicy(this);
 			this.rForm.show(this.form);
 			this.rForm.$el.dirtyFields();
@@ -165,9 +193,11 @@ define(function(require){
 					  || validateObj3.userPerm || validateObj4.userPerm);
 			var groupPerm = (validateObj1.groupPermSet || validateObj2.groupPermSet 
                                         || validateObj3.groupPermSet || validateObj4.groupPermSet);
+                        var rolePerm = (validateObj1.rolePerm || validateObj2.rolePerm
+                                        || validateObj3.rolePerm || validateObj4.rolePerm);
                         var delegatePerm  = (validateObj1.delegateAdmin || validateObj2.delegateAdmin
                                         || validateObj3.delegateAdmin || validateObj4.delegateAdmin);
-                        if((!validateObj1.auditLoggin) && !(groupPerm || userPerm || delegatePerm )){
+                        if((!validateObj1.auditLoggin) && !(groupPerm || userPerm || delegatePerm || rolePerm)){
 				XAUtil.alertPopup({ msg :localization.tt('msg.yourAuditLogginIsOff') });
 				return;
 			}
@@ -181,18 +211,19 @@ define(function(require){
 		validatePolicyItem : function(validateObj){
 			var that = this, valid = false;
                         //DelegateAdmin checks
-                        if((validateObj.groupSet || validateObj.userSet) && validateObj.delegateAdmin){
+                        if((validateObj.groupSet || validateObj.userSet || validateObj.roleSet) && validateObj.delegateAdmin){
                                 return true;
-                        }else if(validateObj.delegateAdmin && !(validateObj.groupSet || validateObj.userSet)) {
-                                this.popupCallBack(localization.tt('msg.addUserOrGroupForDelegateAdmin'),validateObj);
+                        }else if(validateObj.delegateAdmin && !(validateObj.groupSet || validateObj.userSet || validateObj.roleSet)) {
+                                this.popupCallBack(localization.tt('msg.addUserOrGroupOrRoleForDelegateAdmin'),validateObj);
                                 return false;
                         }
-			valid = (validateObj.groupSet && validateObj.permSet) || (validateObj.userSet && validateObj.userPerm);
+                        valid = (validateObj.groupSet && validateObj.permSet) || (validateObj.userSet && validateObj.userPerm)
+                        || (validateObj.roleSet && validateObj.rolePerm);
 			if(!valid){
-				if((!validateObj.groupSet && !validateObj.userSet) && (validateObj.condSet)) {
-					this.popupCallBack(localization.tt('msg.addUserOrGroupForPC'),validateObj);
-				} else if((!validateObj.groupSet && !validateObj.userSet) && (validateObj.permSet)) {
-					this.popupCallBack(localization.tt('msg.addUserOrGroup'),validateObj);
+                                if((!validateObj.groupSet && !validateObj.userSet && !validateObj.roleSet) && (validateObj.condSet)) {
+                                        this.popupCallBack(localization.tt('msg.addUserOrGroupOrRoleForPC'),validateObj);
+                                } else if((!validateObj.groupSet && !validateObj.userSet && !validateObj.roleSet) && (validateObj.permSet)) {
+                                        this.popupCallBack(localization.tt('msg.addUserOrGroupOrRole'),validateObj);
 					
 				} else if(validateObj.groupSet && (!validateObj.permSet)){
 					this.popupCallBack(localization.tt('msg.addGroupPermission'),validateObj);
@@ -204,6 +235,10 @@ define(function(require){
 				} else if((!validateObj.userSet) && (validateObj.userPerm)) {
 					this.popupCallBack(localization.tt('msg.addUser'),validateObj);
 						
+                                } else if(validateObj.roleSet && (!validateObj.rolePerm)){
+                                        this.popupCallBack(localization.tt('msg.addRolePermission'),validateObj);
+                                } else if((!validateObj.roleSet) && (validateObj.rolePerm)) {
+                                        this.popupCallBack(localization.tt('msg.addRole'),validateObj);
 				} else if((!validateObj.auditLoggin) && (!validateObj.groupPermSet)){
 					return true;
 				}else{
@@ -214,12 +249,14 @@ define(function(require){
 					this.popupCallBack(localization.tt('msg.addGroupPermission'),validateObj);
 				} else if((!validateObj.groupSet) && (validateObj.permSet)) {
 					this.popupCallBack(localization.tt('msg.addGroup'),validateObj);
-						
 				} else if(validateObj.userSet && (!validateObj.userPerm)){
 					this.popupCallBack(localization.tt('msg.addUserPermission'),validateObj);
 				} else if((!validateObj.userSet) && (validateObj.userPerm)) {
 					this.popupCallBack(localization.tt('msg.addUser'),validateObj);
-						
+                                } else if(validateObj.roleSet && (!validateObj.rolePerm)){
+                                        this.popupCallBack(localization.tt('msg.addRolePermission'),validateObj);
+                                } else if((!validateObj.roleSet) && (validateObj.rolePerm)) {
+                                        this.popupCallBack(localization.tt('msg.addRole'),validateObj);
 				} else {
 					return true;
 				}
@@ -266,6 +303,7 @@ define(function(require){
 				callback : function(){
 					XAUtil.blockUI();
 					that.model.destroy({
+						wait: true,
 						success: function(model, response) {
 							XAUtil.blockUI('unblock');
 							XAUtil.allowNavigation();
@@ -289,6 +327,7 @@ define(function(require){
 			XAUtil.allowNavigation();
 //			clear Vent 
 			Vent._events['resourceType:change']=[];
+                XAUtil.removeUnwantedDomElement();
 		}
 	});
 	return RangerPolicyCreate;

@@ -144,25 +144,35 @@ public class MetricUtil extends BaseLoader  {
 						VXGroupList vxGroupList = xUserMgr.searchXGroups(searchCriteria);
 	
 						long groupCount = vxGroupList.getTotalCount();
-	
-						ArrayList<String> userKeyAdminRoleCount = new ArrayList<String>();
-						userKeyAdminRoleCount.add(RangerConstants.ROLE_SYS_ADMIN);
-						long userSysAdminCount = getUserCountBasedOnUserRole(userKeyAdminRoleCount);
-	
+
+                        ArrayList<String> userAdminRoleCount = new ArrayList<String>();
+                        userAdminRoleCount.add(RangerConstants.ROLE_SYS_ADMIN);
+                        long userSysAdminCount = getUserCountBasedOnUserRole(userAdminRoleCount);
+
+                        ArrayList<String> userAdminAuditorRoleCount = new ArrayList<String>();
+                        userAdminAuditorRoleCount.add(RangerConstants.ROLE_ADMIN_AUDITOR);
+                        long userSysAdminAuditorCount = getUserCountBasedOnUserRole(userAdminAuditorRoleCount);
+
 						ArrayList<String> userRoleListKeyRoleAdmin = new ArrayList<String>();
 						userRoleListKeyRoleAdmin.add(RangerConstants.ROLE_KEY_ADMIN);
 						long userKeyAdminCount = getUserCountBasedOnUserRole(userRoleListKeyRoleAdmin);
-	
+
+                        ArrayList<String> userRoleListKeyadminAduitorRole = new ArrayList<String>();
+                        userRoleListKeyadminAduitorRole.add(RangerConstants.ROLE_KEY_ADMIN_AUDITOR);
+                        long userKeyadminAuditorCount = getUserCountBasedOnUserRole(userRoleListKeyadminAduitorRole);
+
 						ArrayList<String> userRoleListUser = new ArrayList<String>();
 						userRoleListUser.add(RangerConstants.ROLE_USER);
 						long userRoleCount = getUserCountBasedOnUserRole(userRoleListUser);
 	
-						long userTotalCount = userSysAdminCount + userKeyAdminCount + userRoleCount;
+                                                long userTotalCount = userSysAdminCount + userKeyAdminCount + userRoleCount + userKeyadminAuditorCount + userSysAdminAuditorCount;
 	
 						VXMetricUserGroupCount metricUserGroupCount = new VXMetricUserGroupCount();
 						metricUserGroupCount.setUserCountOfUserRole(userRoleCount);
 						metricUserGroupCount.setUserCountOfKeyAdminRole(userKeyAdminCount);
 						metricUserGroupCount.setUserCountOfSysAdminRole(userSysAdminCount);
+                                                metricUserGroupCount.setUserCountOfKeyadminAuditorRole(userKeyadminAuditorCount);
+                                                metricUserGroupCount.setUserCountOfSysAdminAuditorRole(userSysAdminAuditorCount);
 						metricUserGroupCount.setUserTotalCount(userTotalCount);
 						metricUserGroupCount.setGroupCount(groupCount);
 						Gson gson = new GsonBuilder().create();
@@ -364,11 +374,11 @@ public class MetricUtil extends BaseLoader  {
 						Map<String, Integer> denyconditionsonMap = new HashMap<String, Integer>();
 						PList<RangerServiceDef> paginatedSvcDefs = svcStore.getPaginatedServiceDefs(policyFilter1);
 						if (paginatedSvcDefs != null) {
-							List<RangerServiceDef> rangerServiceDef = paginatedSvcDefs.getList();
-							if (rangerServiceDef != null && !rangerServiceDef.isEmpty()) {
-								for (int i = 0; i < rangerServiceDef.size(); i++) {
-									if (rangerServiceDef.get(i) != null) {
-										String serviceDef = rangerServiceDef.get(i).getName();
+							List<RangerServiceDef> rangerServiceDefs = paginatedSvcDefs.getList();
+							if (rangerServiceDefs != null && !rangerServiceDefs.isEmpty()) {
+								for (RangerServiceDef rangerServiceDef : rangerServiceDefs) {
+									if (rangerServiceDef != null) {
+										String serviceDef = rangerServiceDef.getName();
 										if (!StringUtils.isEmpty(serviceDef)) {
 											policyFilter1.setParam("serviceType", serviceDef);
 											PList<RangerPolicy> policiesList = svcStore.getPaginatedPolicies(policyFilter1);
@@ -376,9 +386,9 @@ public class MetricUtil extends BaseLoader  {
 												int policyListCount = policiesList.getListSize();
 												if (policyListCount > 0 && policiesList.getList() != null) {
 													List<RangerPolicy> policies = policiesList.getList();
-													for (int j = 0; j < policies.size(); j++) {
-														if (policies.get(j) != null) {
-															List<RangerPolicyItem> policyItem = policies.get(j).getDenyPolicyItems();
+													for (RangerPolicy policy : policies) {
+														if (policy != null) {
+															List<RangerPolicyItem> policyItem = policy.getDenyPolicyItems();
 															if (policyItem != null && !policyItem.isEmpty()) {
 																if (denyconditionsonMap.get(serviceDef) != null) {
 																	denyCount = denyconditionsonMap.get(serviceDef) + denyCount + policyItem.size();
@@ -386,7 +396,7 @@ public class MetricUtil extends BaseLoader  {
 																	denyCount = denyCount + policyItem.size();
 																}
 															}
-															List<RangerPolicyItem> policyItemExclude = policies.get(j).getDenyExceptions();
+															List<RangerPolicyItem> policyItemExclude = policy.getDenyExceptions();
 															if (policyItemExclude != null && !policyItemExclude.isEmpty()) {
 																if (denyconditionsonMap.get(serviceDef) != null) {
 																	denyCount = denyconditionsonMap.get(serviceDef) + denyCount + policyItemExclude.size();

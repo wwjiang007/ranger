@@ -17,7 +17,6 @@
 
 package org.apache.ranger.service;
 
-import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Date;
@@ -46,6 +45,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Service;
 
+import com.google.common.base.Joiner;
+
 @Service
 @Scope("singleton")
 public class RangerServiceService extends RangerServiceServiceBase<XXService, RangerService> {
@@ -61,6 +62,7 @@ public class RangerServiceService extends RangerServiceServiceBase<XXService, Ra
 	String actionDelete;
 	static {
 		trxLogAttrs.put("name", new VTrxLogAttr("name", "Service Name", false));
+		trxLogAttrs.put("displayName", new VTrxLogAttr("displayName", "Service Display Name", false));
 		trxLogAttrs.put("description", new VTrxLogAttr("description", "Service Description", false));
 		trxLogAttrs.put("isEnabled", new VTrxLogAttr("isEnabled", "Service Status", false));
 		trxLogAttrs.put("configs", new VTrxLogAttr("configs", "Connection Configurations", false));
@@ -151,7 +153,7 @@ public class RangerServiceService extends RangerServiceServiceBase<XXService, Ra
 					continue;
 				}
 				XXTrxLog xTrxLog = processFieldToCreateTrxLog(field,
-						objectName, nameField, vObj, mObj, action);
+						objectName, vObj, mObj, action);
 				if (xTrxLog != null) {
 					trxLogList.add(xTrxLog);
 				}
@@ -159,7 +161,7 @@ public class RangerServiceService extends RangerServiceServiceBase<XXService, Ra
 			Field[] superClassFields = vObj.getClass().getSuperclass().getDeclaredFields();
 			for(Field field : superClassFields) {
 				if("isEnabled".equalsIgnoreCase(field.getName())) {
-					XXTrxLog xTrx = processFieldToCreateTrxLog(field, objectName, nameField, vObj, mObj, action);
+					XXTrxLog xTrx = processFieldToCreateTrxLog(field, objectName, vObj, mObj, action);
 					if(xTrx != null) {
 						trxLogList.add(xTrx);
 					}
@@ -176,7 +178,7 @@ public class RangerServiceService extends RangerServiceServiceBase<XXService, Ra
 
 	@SuppressWarnings("unchecked")
 	private XXTrxLog processFieldToCreateTrxLog(Field field, String objectName,
-			Field nameField, RangerService vObj, XXService mObj, int action) {
+			RangerService vObj, XXService mObj, int action) {
 
 		String actionString = "";
 
@@ -191,15 +193,15 @@ public class RangerServiceService extends RangerServiceServiceBase<XXService, Ra
 
 			String value = null;
 			boolean isEnum = vTrxLogAttr.isEnum();
-			if (isEnum) {
-
-			} else if ("configs".equalsIgnoreCase(fieldName)) {
-				Map<String, String> configs = (field.get(vObj) != null) ? (Map<String, String>) field
-						.get(vObj) : new HashMap<String, String>();
-
-						value = jsonUtil.readMapToString(configs);
-			} else {
-				value = "" + field.get(vObj);
+			if (!isEnum) {
+			    if ("configs".equalsIgnoreCase(fieldName)) {
+    				Map<String, String> configs = (field.get(vObj) != null) ? (Map<String, String>) field
+    						.get(vObj) : new HashMap<String, String>();
+    
+    						value = jsonUtil.readMapToString(configs);
+    			} else {
+    				value = "" + field.get(vObj);
+    			}
 			}
 
 			if (action == OPERATION_CREATE_CONTEXT) {
@@ -219,9 +221,7 @@ public class RangerServiceService extends RangerServiceServiceBase<XXService, Ra
 					mField.setAccessible(true);
 					String mFieldName = mField.getName();
 					if (fieldName.equalsIgnoreCase(mFieldName)) {
-						if (isEnum) {
-
-						} else {
+						if (!isEnum) {
 							oldValue = mField.get(mObj) + "";
 						}
 						break;
@@ -292,42 +292,41 @@ public class RangerServiceService extends RangerServiceServiceBase<XXService, Ra
 		return xTrxLog;
 	}
 
-	public Map<String, String> getConfigsWithDecryptedPassword(RangerService service) throws IOException {
+	public Map<String, String> getConfigsWithDecryptedPassword(RangerService service) throws Exception  {
 		Map<String, String> configs = service.getConfigs();
 		
 		String pwd = configs.get(ServiceDBStore.CONFIG_KEY_PASSWORD);
 		if(!stringUtil.isEmpty(pwd) && ServiceDBStore.HIDDEN_PASSWORD_STR.equalsIgnoreCase(pwd)) {
 			XXServiceConfigMap pwdConfig = daoMgr.getXXServiceConfigMap().findByServiceAndConfigKey(service.getId(),
 					ServiceDBStore.CONFIG_KEY_PASSWORD);
-                        if (pwdConfig != null) {
+
+			if (pwdConfig != null) {
 				String encryptedPwd = pwdConfig.getConfigvalue();
-                                String decryptedPwd = "";
-                                String crypt_algo_array[] = null;
-                                if (encryptedPwd.contains(",")) {
-                                        crypt_algo_array = encryptedPwd.split(",");
-                                }
-                                if (crypt_algo_array != null && crypt_algo_array.length > 1) {
-					 String cryptAlgo = null;
-					 String encryptKey = null;
-					 String salt = null;
-					 int iterationCount = 0;
-                                        cryptAlgo = crypt_algo_array[0];
-                                        encryptKey = crypt_algo_array[1];
-                                        salt = crypt_algo_array[2];
-                                        iterationCount = Integer.parseInt(crypt_algo_array[3]);
-
-                                        String paddingString = cryptAlgo + "," +  encryptKey + "," + salt + "," + iterationCount;
-                                        decryptedPwd = PasswordUtils.decryptPassword(encryptedPwd);
-
-                                        if (StringUtils.equalsIgnoreCase(paddingString + "," + PasswordUtils.encryptPassword(paddingString + "," + decryptedPwd), encryptedPwd)) {
-                                                configs.put(ServiceDBStore.CONFIG_KEY_PASSWORD, encryptedPwd);
-                                        }
-                                } else {
-                                        encryptedPwd = pwdConfig.getConfigvalue();
-                                        decryptedPwd = PasswordUtils.decryptPassword(encryptedPwd);
-                                        if (StringUtils.equalsIgnoreCase(PasswordUtils.encryptPassword(decryptedPwd), encryptedPwd)) {
-                                                configs.put(ServiceDBStore.CONFIG_KEY_PASSWORD, encryptedPwd);
-                                        }
+				if (encryptedPwd.contains(",")) {
+					PasswordUtils util = PasswordUtils.build(encryptedPwd);
+					String freeTextPasswordMetaData = Joiner.on(",").skipNulls().join(util.getCryptAlgo(),
+							new String(util.getEncryptKey()), new String(util.getSalt()), util.getIterationCount(),
+							PasswordUtils.needsIv(util.getCryptAlgo()) ? util.getIvAsString() : null);
+					String decryptedPwd = PasswordUtils.decryptPassword(encryptedPwd);
+					if (StringUtils
+							.equalsIgnoreCase(
+									freeTextPasswordMetaData + ","
+											+ PasswordUtils
+													.encryptPassword(freeTextPasswordMetaData + "," + decryptedPwd),
+									encryptedPwd)) {
+						configs.put(ServiceDBStore.CONFIG_KEY_PASSWORD, encryptedPwd); // XXX: method name is
+																						// getConfigsWithDecryptedPassword,
+																						// then why do we store the
+																						// encryptedPwd?
+					}
+				} else {
+					String decryptedPwd = PasswordUtils.decryptPassword(encryptedPwd);
+					if (StringUtils.equalsIgnoreCase(PasswordUtils.encryptPassword(decryptedPwd), encryptedPwd)) {
+						configs.put(ServiceDBStore.CONFIG_KEY_PASSWORD, encryptedPwd); // XXX: method name is
+																						// getConfigsWithDecryptedPassword,
+																						// then why do we store the
+																						// encryptedPwd?
+					}
 				}
 			}
 		}
@@ -340,9 +339,11 @@ public class RangerServiceService extends RangerServiceServiceBase<XXService, Ra
 		serviceVersionInfo.setServiceId(xObj.getId());
 		serviceVersionInfo.setPolicyVersion(1L);
 		serviceVersionInfo.setTagVersion(1L);
+		serviceVersionInfo.setRoleVersion(1L);
 		Date now = new Date();
 		serviceVersionInfo.setPolicyUpdateTime(now);
 		serviceVersionInfo.setTagUpdateTime(now);
+		serviceVersionInfo.setRoleUpdateTime(now);
 
 		XXServiceVersionInfoDao serviceVersionInfoDao = daoMgr.getXXServiceVersionInfo();
 

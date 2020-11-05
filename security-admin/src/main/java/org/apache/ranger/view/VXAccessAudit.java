@@ -83,6 +83,10 @@ public class VXAccessAudit extends VXDataObject implements java.io.Serializable 
 	 */
 	protected String repoName;
 	/**
+	 * Repository Display Name
+	 */
+	protected String repoDisplayName;
+	/**
 	 * Repository Type
 	 */
 	protected int repoType;
@@ -90,6 +94,10 @@ public class VXAccessAudit extends VXDataObject implements java.io.Serializable 
 	 * Service Type ~~ repoType
 	 */
 	protected String serviceType;
+	/**
+	 * Service Type Display Name
+	 */
+	protected String serviceTypeDisplayName;
 	/**
 	 * Reason of result
 	 */
@@ -134,6 +142,18 @@ public class VXAccessAudit extends VXDataObject implements java.io.Serializable 
 	protected String tags;
 	
 	protected String clusterName;
+
+	// Security Zone
+	protected String zoneName;
+	// Host Name
+	protected String agentHost;
+
+	// Policy Version
+
+	protected Long policyVersion;
+
+	// Event ID
+	protected String eventId;
 
 	/**
 	 * Default constructor. This will set all the attributes to default value.
@@ -296,6 +316,23 @@ public class VXAccessAudit extends VXDataObject implements java.io.Serializable 
 	}
 
 	/**
+	 * This method sets the value to the member attribute <b>repoDisplayName</b>.
+	 * You cannot set null to the attribute.
+	 * @param repoDisplayName Value to set member attribute <b>repoDisplayName</b>
+	 */
+	public void setRepoDisplayName(String repoDisplayName) {
+		this.repoDisplayName = repoDisplayName;
+	}
+
+	/**
+	 * Returns the value for the member attribute <b>repoDisplayName</b>
+	 * @return String - value of member attribute <b>repoDisplayName</b>.
+	 */
+	public String getRepoDisplayName() {
+		return repoDisplayName;
+	}
+
+	/**
 	 * This method sets the value to the member attribute <b>repoType</b>.
 	 * You cannot set null to the attribute.
 	 * @param repoType Value to set member attribute <b>repoType</b>
@@ -324,6 +361,20 @@ public class VXAccessAudit extends VXDataObject implements java.io.Serializable 
 	 */
 	public void setServiceType(String serviceType) {
 		this.serviceType = serviceType;
+	}
+
+	/**
+	 * @return the serviceTypeDisplayName
+	 */
+	public String getServiceTypeDisplayName() {
+		return serviceTypeDisplayName;
+	}
+
+	/**
+	 * @param serviceTypeDisplayName the serviceTypeDisplayName to set
+	 */
+	public void setServiceTypeDisplayName(String serviceTypeDisplayName) {
+		this.serviceTypeDisplayName = serviceTypeDisplayName;
 	}
 
 	/**
@@ -521,6 +572,50 @@ public class VXAccessAudit extends VXDataObject implements java.io.Serializable 
 	}
 
 	/**
+	 * @return the zoneName
+	 */
+	public String getZoneName() {
+		return zoneName;
+	}
+	/**
+	 * @param zoneName
+	 *            the zoneName to set
+	 */
+	public void setZoneName(String zoneName) {
+		this.zoneName = zoneName;
+	}
+
+	public String getAgentHost() {
+		return agentHost;
+	}
+
+	public void setAgentHost(String agentHost) {
+		this.agentHost = agentHost;
+	}
+
+	/**
+	 * @return the policyVersion
+	 */
+	public Long getPolicyVersion() {
+		return policyVersion;
+	}
+	/**
+	 * @param policyVersion
+	 *            the policyVersion to set
+	 */
+	public void setPolicyVersion(Long policyVersion) {
+		this.policyVersion = policyVersion;
+	}
+
+	public String getEventId() {
+		return eventId;
+	}
+
+	public void setEventId(String eventId) {
+		this.eventId = eventId;
+	}
+
+	/**
 	 * This return the bean content in string format
 	 * @return formatedStr
 	*/
@@ -535,9 +630,12 @@ public class VXAccessAudit extends VXDataObject implements java.io.Serializable 
 		str += "clientIP={" + clientIP + "} ";
 		str += "clientType={" + clientType + "} ";
 		str += "policyId={" + policyId + "} ";
+		str += "policyVersion={" + policyVersion + "} ";
 		str += "repoName={" + repoName + "} ";
+		str += "repoDisplayName={" + repoDisplayName + "} ";
 		str += "repoType={" + repoType + "} ";
 		str += "serviceType={" + serviceType + "} ";
+		str += "serviceTypeDisplayName={" + serviceTypeDisplayName + "} ";
 		str += "resultReason={" + resultReason + "} ";
 		str += "sessionId={" + sessionId + "} ";
 		str += "eventTime={" + eventTime + "} ";
@@ -551,6 +649,9 @@ public class VXAccessAudit extends VXDataObject implements java.io.Serializable 
 		str += "eventDuration={" + eventDuration + "}";
 		str += "tags={" + tags + "}";
 		str += "clusterName={" + clusterName + "}";
+		str += "zoneName={" + zoneName + "}";
+		str += "agentHost={" + agentHost + "}";
+		str += "eventId={" + eventId + "}";
 		str += "}";
 		return str;
 	}

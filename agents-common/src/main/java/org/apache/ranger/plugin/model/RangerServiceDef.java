@@ -48,6 +48,7 @@ public class RangerServiceDef extends RangerBaseModelObject implements java.io.S
 	public static final String OPTION_ENABLE_DENY_AND_EXCEPTIONS_IN_POLICIES = "enableDenyAndExceptionsInPolicies";
 
 	private String                         name;
+	private String                         displayName;
 	private String                         implClass;
 	private String                         label;
 	private String                         description;
@@ -103,6 +104,15 @@ public class RangerServiceDef extends RangerBaseModelObject implements java.io.S
 		setRowFilterDef(rowFilterDef);
 	}
 
+	public RangerServiceDef(String name, String displayName, String implClass, String label, String description,
+			Map<String, String> options, List<RangerServiceConfigDef> configs,
+			List<RangerResourceDef> modifiedResourceDefs, List<RangerAccessTypeDef> accessTypes,
+			List<RangerPolicyConditionDef> policyConditions, List<RangerContextEnricherDef> contextEnrichers,
+			List<RangerEnumDef> enums) {
+		this(name, implClass, label, description, options, configs, modifiedResourceDefs, accessTypes, policyConditions, contextEnrichers, enums);
+		this.setDisplayName(displayName);
+	}
+
 	/**
 	 * @param other
 	 */
@@ -110,6 +120,7 @@ public class RangerServiceDef extends RangerBaseModelObject implements java.io.S
 		super.updateFrom(other);
 
 		setName(other.getName());
+		setDisplayName(other.getDisplayName());
 		setImplClass(other.getImplClass());
 		setLabel(other.getLabel());
 		setDescription(other.getDescription());
@@ -405,6 +416,14 @@ public class RangerServiceDef extends RangerBaseModelObject implements java.io.S
 		this.rowFilterDef = rowFilterDef == null ? new RangerRowFilterDef() : rowFilterDef;
 	}
 
+	public String getDisplayName() {
+		return displayName;
+	}
+
+	public void setDisplayName(String displayName) {
+		this.displayName = displayName;
+	}
+
 	@Override
 	public String toString( ) {
 		StringBuilder sb = new StringBuilder();
@@ -420,6 +439,7 @@ public class RangerServiceDef extends RangerBaseModelObject implements java.io.S
 		super.toString(sb);
 
 		sb.append("name={").append(name).append("} ");
+		sb.append("displayName={").append(displayName).append("} ");
 		sb.append("implClass={").append(implClass).append("} ");
 		sb.append("label={").append(label).append("} ");
 		sb.append("description={").append(description).append("} ");
@@ -1225,27 +1245,27 @@ public class RangerServiceDef extends RangerBaseModelObject implements java.io.S
 	public static class RangerResourceDef implements java.io.Serializable {
 		private static final long serialVersionUID = 1L;
 
-		private Long                itemId;
-		private String              name;
-		private String              type;
-		private Integer             level;
-		private String              parent;
-		private Boolean             mandatory;
-		private Boolean             lookupSupported;
-		private Boolean             recursiveSupported;
-		private Boolean             excludesSupported;
-		private String              matcher;
-		private Map<String, String> matcherOptions;
-		private String              validationRegEx;
-		private String              validationMessage;
-		private String              uiHint;
-		private String              label;
-		private String              description;
-		private String              rbKeyLabel;
-		private String              rbKeyDescription;
-		private String              rbKeyValidationMessage;
-		private Set<String>         accessTypeRestrictions;
-		private Boolean             isValidLeaf;
+		private Long                itemId                 = null;
+		private String              name                   = null;
+		private String              type                   = null;
+		private Integer             level                  = null;
+		private String              parent                 = null;
+		private Boolean             mandatory              = null;
+		private Boolean             lookupSupported        = null;
+		private Boolean             recursiveSupported     = null;
+		private Boolean             excludesSupported      = null;
+		private String              matcher                = null;
+		private Map<String, String> matcherOptions         = null;
+		private String              validationRegEx        = null;
+		private String              validationMessage      = null;
+		private String              uiHint                 = null;
+		private String              label                  = null;
+		private String              description            = null;
+		private String              rbKeyLabel             = null;
+		private String              rbKeyDescription       = null;
+		private String              rbKeyValidationMessage = null;
+		private Set<String>         accessTypeRestrictions = null;
+		private Boolean             isValidLeaf            = null;
 
 		public RangerResourceDef() {
 			this(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);

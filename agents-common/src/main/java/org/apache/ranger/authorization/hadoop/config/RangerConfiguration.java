@@ -20,66 +20,26 @@
 
 package org.apache.ranger.authorization.hadoop.config;
 
+import java.io.File;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.Properties;
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.log4j.Logger;
-import org.apache.ranger.audit.provider.AuditProviderFactory;
+
 
 public class RangerConfiguration extends Configuration {
 	private static final Logger LOG = Logger.getLogger(RangerConfiguration.class);
-	
-	private static volatile RangerConfiguration config;
-	
-	private RangerConfiguration() {
+
+	protected RangerConfiguration() {
 		super(false);
 	}
 
-	public void addResourcesForServiceType(String serviceType) {
-		String auditCfg    = "ranger-" + serviceType + "-audit.xml";
-		String securityCfg = "ranger-" + serviceType + "-security.xml";
-		
-		if ( !addResourceIfReadable(auditCfg)) {
-			addAuditResource(serviceType);
-		}
-
-		if ( !addResourceIfReadable(securityCfg)) {
-			addSecurityResource(serviceType);
-		}
-	}
-
-	public boolean addAdminResources() {
-		String defaultCfg = "ranger-admin-default-site.xml";
-		String addlCfg = "ranger-admin-site.xml";
-		String coreCfg = "core-site.xml";
-
-		if(LOG.isDebugEnabled()) {
-			LOG.debug("==> addAdminResources()");
-		}
-		boolean ret = true;
-
-		if (! addResourceIfReadable(defaultCfg)) {
-			ret = false;
-		}
-
-		if (! addResourceIfReadable(addlCfg)) {
-			ret = false;
-		}
-		
-		if(! addResourceIfReadable(coreCfg)){
-			ret = false;
-		}
-
-		if(LOG.isDebugEnabled()) {
-			LOG.debug("<== addAdminResources(), result=" + ret);
-		}
-		return ret;
-	}
-
-	private boolean addResourceIfReadable(String aResourceName) {
-		
+	public boolean addResourceIfReadable(String aResourceName) {
 		boolean ret = false;
+
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("==> addResourceIfReadable(" + aResourceName + ")");
 		}
@@ -109,102 +69,34 @@ public class RangerConfiguration extends Configuration {
 		return ret;
 	}
 	
+	public Properties getProperties() {
+		return getProps();
+	}
 
-	public static RangerConfiguration getInstance() {
-        RangerConfiguration result = config;
-		if (result == null) {
-			synchronized (RangerConfiguration.class) {
-				result = config;
-				if (result == null) {
-					config = result = new RangerConfiguration();
+	private URL getFileLocation(String fileName) {
+		URL lurl = null;
+		if (!StringUtils.isEmpty(fileName)) {
+			lurl = RangerConfiguration.class.getClassLoader().getResource(fileName);
+
+			if (lurl == null ) {
+				lurl = RangerConfiguration.class.getClassLoader().getResource("/" + fileName);
+			}
+
+			if (lurl == null ) {
+				File f = new File(fileName);
+				if (f.exists()) {
+					try {
+						lurl=f.toURI().toURL();
+					} catch (MalformedURLException e) {
+						LOG.error("Unable to load the resource name [" + fileName + "]. Ignoring the resource:" + f.getPath());
+					}
+				} else {
+					if(LOG.isDebugEnabled()) {
+						LOG.debug("Conf file path " + fileName + " does not exists");
+					}
 				}
 			}
-		}
-		return result;
-	}
-
-	public void initAudit(String appType) {
-		AuditProviderFactory auditFactory = AuditProviderFactory.getInstance();
-
-		if(auditFactory == null) {
-			LOG.error("Unable to find the AuditProviderFactory. (null) found");
-			return;
-		}
-
-		Properties props = getProps();
-
-		if(props == null) {
-			return;
-		}
-
-		if(! auditFactory.isInitDone()) {
-			auditFactory.init(props, appType);
-		}
-	}
-
-	public boolean isAuditInitDone() {
-		AuditProviderFactory auditFactory = AuditProviderFactory.getInstance();
-
-		return auditFactory != null && auditFactory.isInitDone();
-	}
-	
-	private URL getFileLocation(String fileName) {
-		URL lurl = RangerConfiguration.class.getClassLoader().getResource(fileName);
-		
-		if (lurl == null ) {
-			lurl = RangerConfiguration.class.getClassLoader().getResource("/" + fileName);
 		}
 		return lurl;
 	}
-	
-	private void  addSecurityResource(String serviceType) {
-
-		if(LOG.isDebugEnabled()) {
-			LOG.debug("==> addSecurityResource(Service Type: " + serviceType );
-		}
-
-		Configuration rangerConf = RangerLegacyConfigBuilder.getSecurityConfig(serviceType);
-
-		if ( rangerConf != null ) {
-			addResource(rangerConf);
-		} else {
-			if(LOG.isDebugEnabled()) {
-				LOG.debug("Unable to add the Security Config for " + serviceType + ". Plugin won't be enabled!");
-			}
-		}
-
-		if(LOG.isDebugEnabled()) {
-			LOG.debug("<= addSecurityResource(Service Type: " + serviceType );
-		}
-	}
-
-	private void  addAuditResource(String serviceType) {
-
-		if(LOG.isDebugEnabled()) {
-			LOG.debug("==> addAuditResource(Service Type: " + serviceType );
-		}
-
-		URL url = null;
-		try {
-			url = RangerLegacyConfigBuilder.getAuditConfig(serviceType);
-
-			if( url != null) {
-				addResource(url);
-				
-				if(LOG.isDebugEnabled()) {
-					LOG.debug("==> addAuditResource() URL" + url.getPath());
-				}
-			}
-				
-		} catch (Throwable t) {
-			LOG.warn(" Unable to find Audit Config for "  + serviceType + " Auditing not enabled !" );
-			if(LOG.isDebugEnabled()) {
-				LOG.debug(" Unable to find Audit Config for "  + serviceType + " Auditing not enabled !" + t);
-			}
-		}
-		if(LOG.isDebugEnabled()) {
-			LOG.debug("<== addAuditResource(Service Type: " + serviceType + ")");
-		}
-	}
-
 }

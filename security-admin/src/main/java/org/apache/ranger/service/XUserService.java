@@ -26,7 +26,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
 import org.apache.ranger.biz.RangerBizUtil;
 import org.apache.ranger.common.AppConstants;
 import org.apache.ranger.common.MessageEnums;
@@ -200,18 +199,16 @@ public class XUserService extends XUserServiceBase<XXUser, VXUser> {
 
 	@Override
 	protected VXUser mapEntityToViewBean(VXUser vObj, XXUser mObj) {
-		super.mapEntityToViewBean(vObj, mObj);
-		String userName = vObj.getName();
-		populateUserAttributes(userName, vObj);
-		return vObj;
+		VXUser ret = super.mapEntityToViewBean(vObj, mObj);
+		String userName = ret.getName();
+		populateUserAttributes(userName, ret);
+		return ret;
 	}
 
 	@Override
 	public VXUser populateViewBean(XXUser xUser) {
 		VXUser vObj = super.populateViewBean(xUser);
 		vObj.setIsVisible(xUser.getIsVisible());
-		String userName = vObj.getName();
-		populateUserAttributes(userName, vObj);
 		populateGroupList(xUser.getId(), vObj);
 		return vObj;
 	}

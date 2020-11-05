@@ -24,28 +24,25 @@ define(function(require){
 	var Backbone						= require('backbone');
 	var XAEnums					 		= require('utils/XAEnums');
 	var XALinks							= require('modules/XALinks');
-	var PolicyOperationDiff_tmpl 		= require('hbs!tmpl/reports/PolicyOperationDiff_tmpl');
-	var PolicyUpdateOperationDiff_tmpl 	= require('hbs!tmpl/reports/PolicyUpdateOperationDiff_tmpl');
-	var PolicyDeleteUpdateOperationDiff_tmpl 	= require('hbs!tmpl/reports/PolicyDeleteOperationDiff_tmpl');
-	var KnoxPolicyOperationDiff_tmpl 			= require('hbs!tmpl/reports/KnoxPolicyOperationDiff_tmpl');
-	var KnoxPolicyUpdateOperationDiff_tmpl 		= require('hbs!tmpl/reports/KnoxPolicyUpdateOperationDiff_tmpl');
-	var KnoxPolicyDeleteUpdateOperationDiff_tmpl= require('hbs!tmpl/reports/KnoxPolicyDeleteOperationDiff_tmpl');
 	var AssetOperationDiff_tmpl 		= require('hbs!tmpl/reports/AssetOperationDiff_tmpl');
 	var AssetUpdateOperationDiff_tmpl 	= require('hbs!tmpl/reports/AssetUpdateOperationDiff_tmpl');
 	var UserOperationDiff_tmpl 			= require('hbs!tmpl/reports/UserOperationDiff_tmpl');
 	var UserUpdateOperationDiff_tmpl 	= require('hbs!tmpl/reports/UserUpdateOperationDiff_tmpl');
 	var GroupOperationDiff_tmpl 		= require('hbs!tmpl/reports/GroupOperationDiff_tmpl');
 	var GroupUpdateOperationDiff_tmpl 	= require('hbs!tmpl/reports/GroupUpdateOperationDiff_tmpl');
+	var ZoneOperationDiff_tmpl 			= require('hbs!tmpl/reports/ZoneOperationDiff_tmpl');
+	var ZoneUpdateOperationDiff_tmpl 	= require('hbs!tmpl/reports/ZoneUpdateOperationDiff_tmpl');
+        var RoleOperationDiff_tmpl 		    = require('hbs!tmpl/reports/RoleOperationDiff_tmpl');
+        var RoleUpdateOperationDiff_tmpl 	= require('hbs!tmpl/reports/RoleUpdateOperationDiff_tmpl');
 	
 	var OperationDiffDetail = Backbone.Marionette.ItemView.extend(
 	/** @lends OperationDiffDetail */
 	{
 		_viewName : 'OperationDiffDetail',
 		
-    	template: PolicyOperationDiff_tmpl,
         templateHelpers :function(){
         	var obj = {
-        			collection : this.collection.models,
+                                collection : _.sortBy(this.collection.models, 'id'),
         			action	   : this.action,
         			objectName : this.objectName,
         			objectId   : this.objectId,
@@ -80,8 +77,24 @@ define(function(require){
         				isGroup 			: this.isGroup
         		});
         	}
-        	
-        	
+        	if(this.templateType == XAEnums.ClassTypes.CLASS_TYPE_RANGER_SECURITY_ZONE.value){
+        		obj = $.extend(obj, {
+        			newServiceResourceArr 		: this.newServiceResourceArr,
+        			isNewServiceResourceArr		: _.isEmpty(this.newServiceResourceArr) ? false : true,
+        			oldServiceResourceArr 		: this.oldServiceResourceArr,
+        			isOldServiceResourceArr		: _.isEmpty(this.oldServiceResourceArr) ? false : true,
+        			isServiceResourcesDiffEmpty : (_.isEmpty(this.oldServiceResourceArr) && _.isEmpty(this.oldServiceResourceArr)) ? false : true
+        		});
+        	}
+
+                        if(this.templateType == XAEnums.ClassTypes.CLASS_TYPE_RANGER_ROLE.value){
+                                obj = $.extend(obj, {
+                                        oldRolesUsersGroupsRolesDetails : this.oldRolesUsersGroupsRolesDetails,
+                                        newRolesUsersGroupsRolesDetails : this.newRolesUsersGroupsRolesDetails,
+                                        updateRolesUsersGroupsRolesDetails : this.updateRolesUsersGroupsRolesDetails
+                                });
+                        }
+
         	return obj;
         },
     	/** ui selector cache */
@@ -146,17 +159,6 @@ define(function(require){
 				}
 				this.assetDiffOperation();
 			}
-			if(this.classType == XAEnums.ClassTypes.CLASS_TYPE_XA_RESOURCE.value){
-				this.templateType=XAEnums.ClassTypes.CLASS_TYPE_XA_RESOURCE.value;
-				if(this.action == 'create'){
-					this.template = PolicyOperationDiff_tmpl;
-				} else if(this.action == 'update'){
-					this.template = PolicyUpdateOperationDiff_tmpl;
-				} else{
-					this.template = PolicyDeleteUpdateOperationDiff_tmpl;
-				}
-				this.resourceDiffOperation();
-			} 
 			if(this.classType == XAEnums.ClassTypes.CLASS_TYPE_XA_USER.value
 					|| this.classType == XAEnums.ClassTypes.CLASS_TYPE_USER_PROFILE.value
 					|| this.classType == XAEnums.ClassTypes.CLASS_TYPE_PASSWORD_CHANGE.value){
@@ -180,8 +182,25 @@ define(function(require){
 				}
 				this.templateType = XAEnums.ClassTypes.CLASS_TYPE_XA_GROUP.value;
 			} 
+			if (this.classType == XAEnums.ClassTypes.CLASS_TYPE_RANGER_SECURITY_ZONE.value){
+				this.zoneDiffOperation();
+				this.templateType = XAEnums.ClassTypes.CLASS_TYPE_RANGER_SECURITY_ZONE.value;
+				if(this.action == 'update')
+					this.template = ZoneUpdateOperationDiff_tmpl;
+				else
+					this.template = ZoneOperationDiff_tmpl;
+			}
+            if(this.classType == XAEnums.ClassTypes.CLASS_TYPE_RANGER_ROLE.value){
+                this.rolesDiffOperation();
+                if(this.action == 'update'){
+                    this.template = RoleUpdateOperationDiff_tmpl;
+                } else{
+                    this.template = RoleOperationDiff_tmpl;
+                }
+                this.templateType = XAEnums.ClassTypes.CLASS_TYPE_RANGER_ROLE.value;
+            }
 		},
-		assetDiffOperation : function(){
+		assetDiffOperation : function(){	
 			var that = this, configModel;
 			
 			this.collection.each(function(m){
@@ -216,137 +235,7 @@ define(function(require){
 			}
 			
 		},
-		resourceDiffOperation : function(){
-			var that = this, modelColl = [];
-			this.newGroupPermList = [],this.previousGroupPermList = [], this.newUserPermList = [],this.previousUserPermList = [], this.isGroupPerm = false, this.isUserPerm = false;
-			this.userList = [],this.groupList = [];
-			this.collection.each(function(m){
-				var attrName = m.get('attributeName'), type = 'permType';
-				if(attrName == "IP Address")	type = 'ipAddress';
-				if(m.get('attributeName') == 'Permission Type' || m.get('attributeName') == "IP Address"){
-					if(m.get('parentObjectClassType') == XAEnums.ClassTypes.CLASS_TYPE_XA_GROUP.value){
-						if(m.get('action') != 'delete'){
-							if(m.get('action') == 'create'){
-								var obj = {groupName : m.get('parentObjectName')};
-								obj[type] = ""; 
-								that.previousGroupPermList.push(obj);
-							}
-							obj = {groupName : m.get('parentObjectName')};
-							obj[type] = m.get('newValue');
-							that.newGroupPermList.push(obj);
-						}
-						if(m.get('action') == 'delete' || m.get('action') == 'update'){
-							obj = {groupName : m.get('parentObjectName')};
-							obj[type] = m.get('previousValue');
-							that.previousGroupPermList.push(obj);
-						}
-						if($.inArray(m.get('parentObjectName'),that.groupList) < 0)
-							that.groupList.push(m.get('parentObjectName'));
-					} else {
-						if(m.get('action') != 'delete'){
-							if(m.get('action') == 'create'){
-								var obj = {userName : m.get('parentObjectName')};
-								obj[type] = ""; 
-								that.previousUserPermList.push(obj);
-							}
-							obj = {userName : m.get('parentObjectName')};
-							obj[type] = m.get('newValue');
-							that.newUserPermList.push(obj);
-						}
-						if(m.get('action') == 'delete' || m.get('action') == 'update'){
-							obj = {userName : m.get('parentObjectName')};
-							obj[type] = m.get('previousValue');
-							that.previousUserPermList.push(obj);
-						}
-						
-						
-						if($.inArray(m.get('parentObjectName'),that.userList) < 0)
-							that.userList.push(m.get('parentObjectName'));
-					}
-					modelColl.push(m);
-					
-				} else if(m.get('attributeName') == 'Repository Type'){
-					if(m.get('action') != 'delete'){
-						that.repositoryType = m.get('newValue');
-					} else {
-						that.repositoryType = m.get('previousValue');
-					}
-					modelColl.push(m);
-					if(that.repositoryType == XAEnums.AssetType.ASSET_KNOX.label && m.get('action') == "create")//XAEnums.AssetType.ASSET_KNOX.value)
-						that.template = KnoxPolicyOperationDiff_tmpl;
-					if(that.repositoryType == XAEnums.AssetType.ASSET_KNOX.label && m.get('action') == "update")
-						that.template = KnoxPolicyUpdateOperationDiff_tmpl;
-					if(that.repositoryType == XAEnums.AssetType.ASSET_KNOX.label && m.get('action') == "delete")
-						that.template = KnoxPolicyDeleteUpdateOperationDiff_tmpl;
-				} else if(m.get('attributeName') == 'Policy Name'){
-					if(m.get('action') != 'delete'){
-						that.policyName = m.get('newValue');
-					} else {
-						that.policyName = m.get('previousValue');
-					}
-					if(m.get('newValue') == m.get('previousValue'))
-						modelColl.push(m);
-				}
-			
-				if(_.isUndefined(m.get('attributeName')))
-					modelColl.push(m);
-			});
-			
-			this.newGroupPermList 		= _.groupBy(this.newGroupPermList, 'groupName');
-			this.previousGroupPermList 	= _.groupBy(this.previousGroupPermList, 'groupName');
-			this.newUserPermList 			= _.groupBy(this.newUserPermList, 'userName');
-			this.previousUserPermList 			= _.groupBy(this.previousUserPermList, 'userName');
-			
-			this.removeUnwantedElement();
-			this.createEqualLengthArr();
-			
-			if(!_.isEmpty(this.newGroupPermList) || !_.isEmpty(this.previousGroupPermList))
-				this.isGroupPerm = true;
-			if(!_.isEmpty(this.newUserPermList) || !_.isEmpty(this.previousUserPermList))
-				this.isUserPerm = true;
-			
-			that.collection.remove(modelColl);
-		},
-		removeUnwantedElement : function(){
-			var that = this;
-			_.each(this.newGroupPermList,function(val,key){
-				console.log(val);
-				that.newGroupPermList[key]	= _.uniq(val,false,function(m){return m.permType;});
-			});
-			_.each(this.previousGroupPermList,function(val,key){
-				console.log(val);
-				that.previousGroupPermList[key]	= _.uniq(val,false,function(m){return m.permType;});
-			});
-			_.each(this.newUserPermList,function(val,key){
-				console.log(val);
-				that.newUserPermList[key]	= _.uniq(val,false,function(m){return m.permType;});
-			});
-			_.each(this.previousUserPermList,function(val,key){
-				console.log(val);
-				that.previousUserPermList[key]	= _.uniq(val,false,function(m){return m.permType;});
-			});
-			
-		},
-		createEqualLengthArr : function(){
-			if(this.objectSize(this.previousGroupPermList) > this.objectSize(this.newGroupPermList)){
-				var addlength = this.objectSize(this.previousGroupPermList) - this.objectSize(this.newGroupPermList);
-				for(var i=0; i < addlength; i++)
-					this.newGroupPermList['temp'+i] = [];
-			}else{
-				var addlength = this.objectSize(this.newGroupPermList) - this.objectSize(this.previousGroupPermList);
-				for(var i=0; i < addlength; i++)
-					this.previousGroupPermList['temp'+i] = [];
-			}
-			if(this.objectSize(this.previousUserPermList) > this.objectSize(this.newUserPermList)){
-				var addlength = this.objectSize(this.previousUserPermList) - this.objectSize(this.newUserPermList);
-				for(var i=0; i < addlength; i++)
-					this.newUserPermList['temp'+i] = [];
-			}else{
-				var addlength = this.objectSize(this.newUserPermList) - this.objectSize(this.previousUserPermList);
-				for(var i=0; i < addlength; i++)
-					this.previousUserPermList['temp'+i] = [];
-			}
-		},
+
 		userDiffOperation : function(){
 			var that = this, modelArr = [];
 			this.groupList = [], this.newGroupList = [], this.previousGroupList =[],this.isGroup = false;
@@ -370,12 +259,20 @@ define(function(require){
 						m.set('newValue',XAEnums.UserRoles.ROLE_SYS_ADMIN.label)
 					else if(newRole == "ROLE_KEY_ADMIN")
 						m.set('newValue',XAEnums.UserRoles.ROLE_KEY_ADMIN.label)
+                    else if(newRole == "ROLE_KEY_ADMIN_AUDITOR")
+                        m.set('newValue',XAEnums.UserRoles.ROLE_KEY_ADMIN_AUDITOR.label)
+                    else if(newRole == "ROLE_ADMIN_AUDITOR")
+                        m.set('newValue',XAEnums.UserRoles.ROLE_ADMIN_AUDITOR.label)
 					if(prevRole == "ROLE_USER")
 						m.set('previousValue',XAEnums.UserRoles.ROLE_USER.label)
 					else if(prevRole == "ROLE_SYS_ADMIN")
 						m.set('previousValue',XAEnums.UserRoles.ROLE_SYS_ADMIN.label)
 					else if(prevRole == "ROLE_KEY_ADMIN")
 						m.set('previousValue',XAEnums.UserRoles.ROLE_KEY_ADMIN.label)
+                    else if(prevRole == "ROLE_KEY_ADMIN_AUDITOR")
+                        m.set('previousValue',XAEnums.UserRoles.ROLE_KEY_ADMIN_AUDITOR.label)
+                    else if(prevRole == "ROLE_ADMIN_AUDITOR")
+                        m.set('previousValue',XAEnums.UserRoles.ROLE_ADMIN_AUDITOR.label)
 				} else {
 					if(!m.has('attributeName'))
 						modelArr.push(m);
@@ -394,6 +291,84 @@ define(function(require){
 			});
 			this.collection.remove(modelArr);
 		},	
+		zoneDiffOperation : function(){
+			var that = this;
+			this.newServiceResourceArr=[], this.oldServiceResourceArr=[];
+			var servicesObj = this.collection.findWhere({attributeName : 'Zone Services'});
+			if(servicesObj && servicesObj.get('newValue')  != ''){
+				var newValJson = $.parseJSON(servicesObj.get('newValue'));
+				var serviceNames = Object.keys(newValJson);
+				_.each(serviceNames, function(serviceName){
+					that.newServiceResourceArr.push({serviceName : serviceName, resources : newValJson[serviceName]['resources'] });
+				});
+			}
+			if(servicesObj && servicesObj.get('previousValue')  != ''){
+				var oldValJson = $.parseJSON(servicesObj.get('previousValue'));
+				var serviceNames = Object.keys(oldValJson);
+				_.each(serviceNames, function(serviceName){
+					that.oldServiceResourceArr.push({serviceName : serviceName, resources : oldValJson[serviceName]['resources'] });
+				});
+			}
+			this.collection.remove(this.collection.where({attributeName : 'Zone Services'}));
+			this.collection.each(function(m){
+				if(m.get('newValue')[0] == '[' && m.get('newValue')[m.get('newValue').length-1] == ']')
+					m.set('newValue', m.get('newValue').substr(1).slice(0, -1));
+
+				if(m.get('previousValue')[0] == '[' && m.get('previousValue')[m.get('previousValue').length - 1] == ']')
+					m.set('previousValue', m.get('previousValue').substr(1).slice(0, -1));
+			});
+
+		},
+
+                rolesDiffOperation : function() {
+                        var that = this;
+                        this.newRolesUsersGroupsRolesDetails = {};
+                        this.oldRolesUsersGroupsRolesDetails = {};
+                        this.updateRolesUsersGroupsRolesDetails = {};
+                        var roleDetails = ['Users', 'Groups', 'Roles'];
+                        if(this.action !== 'update') {
+                                _.each(roleDetails, function(m) {
+                                        var rolesObj = that.collection.findWhere({attributeName : m});
+                                        if(rolesObj && rolesObj.has('newValue') &&!_.isEmpty(rolesObj.get('newValue'))) {
+                                                var newValJson = $.parseJSON(rolesObj.get('newValue'));
+                                                that.newRolesUsersGroupsRolesDetails[m] = (newValJson);
+                                        }
+                                })
+                                _.each(roleDetails, function(m) {
+                                        var rolesObj = that.collection.findWhere({attributeName : m});
+                                        if(rolesObj && rolesObj.has('previousValue') &&!_.isEmpty(rolesObj.get('previousValue'))) {
+                                                var newValJson = $.parseJSON(rolesObj.get('previousValue'));
+                                                that.oldRolesUsersGroupsRolesDetails[m] = (newValJson);
+                                        }
+                                })
+                        } else {
+                                _.each(roleDetails, function(m) {
+                                        var rolesObj = that.collection.findWhere({attributeName : m});
+                                        if(rolesObj) {
+                                                that.updateRolesUsersGroupsRolesDetails[m] = {};
+                                                var newValJson, oldValJson;
+                                                try {
+                                                        newValJson = JSON.parse(rolesObj.get('newValue'));
+                                                } catch(err) {
+                                                        newValJson = "";
+                                                } finally {
+                                                        that.updateRolesUsersGroupsRolesDetails[m]["newVal"] = (newValJson)
+                                                }
+                                                try {
+                                                        oldValJson = JSON.parse(rolesObj.get('previousValue'));
+                                                } catch(err) {
+                                                        oldValJson = "";
+                                                } finally {
+                                                        that.updateRolesUsersGroupsRolesDetails[m]["oldVal"] = (oldValJson)
+                                                }
+                                        }
+                                })
+                        }
+                        _.each(roleDetails, function(key) {
+                                that.collection.remove(that.collection.where({attributeName : key}));
+                        })
+                },
+
 		removeUnwantedFromObject : function(obj){
 			_.each(obj, function(val, key){
 					if(_.isEmpty(val))

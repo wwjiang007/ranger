@@ -24,7 +24,9 @@ import javax.persistence.NoResultException;
 
 import org.apache.ranger.common.db.BaseDao;
 import org.apache.ranger.entity.XXServiceConfigMap;
+import org.springframework.stereotype.Service;
 
+@Service
 public class XXServiceConfigMapDao extends BaseDao<XXServiceConfigMap> {
 
 	public XXServiceConfigMapDao(RangerDaoManagerBase daoManager) {
@@ -54,6 +56,20 @@ public class XXServiceConfigMapDao extends BaseDao<XXServiceConfigMap> {
 			return getEntityManager()
 					.createNamedQuery("XXServiceConfigMap.findByServiceAndConfigKey", tClass)
 					.setParameter("serviceId", serviceId)
+					.setParameter("configKey", configKey).getSingleResult();
+		} catch (NoResultException e) {
+			return null;
+		}
+	}
+
+	public XXServiceConfigMap findByServiceNameAndConfigKey(String serviceName, String configKey) {
+		if(serviceName == null || configKey == null) {
+			return null;
+		}
+		try {
+			return getEntityManager()
+					.createNamedQuery("XXServiceConfigMap.findByServiceNameAndConfigKey", tClass)
+					.setParameter("name", serviceName)
 					.setParameter("configKey", configKey).getSingleResult();
 		} catch (NoResultException e) {
 			return null;

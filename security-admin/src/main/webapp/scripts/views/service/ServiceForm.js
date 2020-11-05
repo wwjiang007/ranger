@@ -1,4 +1,4 @@
-	/*
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -17,14 +17,14 @@
  * under the License.
  */
 
- 
+
 define(function(require){
     'use strict';
 
 	var Backbone		= require('backbone');
 	var XAEnums			= require('utils/XAEnums');
 	var XAUtil			= require('utils/XAUtils');
-	
+
 	var localization	= require('utils/XALangSupport');
 	var BackboneFormDataType	= require('models/BackboneFormDataType');
 	var ConfigurationList		= require('views/service/ConfigurationList')
@@ -52,7 +52,7 @@ define(function(require){
 				  serviceDetail += name+",";
 			  }
 			});
-			
+
 			return {
 				serviceDetail : serviceDetail.slice(0,-1),
 				serviceConfig : serviceConfig.slice(0,-1)
@@ -82,7 +82,7 @@ define(function(require){
 		* Override here ONLY if special case!!
 		*/
 
-		fields: ['name', 'description', 'isEnabled', 'type','configs', '_vPassword'],
+                fields: ['name', 'displayName', 'description', 'isEnabled', 'type','configs', '_vPassword'],
 
 		schema : function(){
 			var attrs = _.pick(_.result(this.rangerServiceDefModel,'schemaBase'), this.getSerivceBaseFieldNames());
@@ -124,7 +124,7 @@ define(function(require){
 				} else {
 					this.fields.isEnabled.editor.setValue(XAEnums.ActiveStatus.STATUS_DISABLED.value);
 				}
-			}	
+			}
 		},
 		evIsEnabledChange : function(form, fieldEditor){
 			XAUtil.checkDirtyFieldForToggle(fieldEditor.$el);
@@ -143,8 +143,25 @@ define(function(require){
 		},
 
 		formValidation : function(){
-			//return false;
-			return true;
+			var valid = true;
+			var config = {};
+
+			for (var i = 0; i < this.extraConfigColl.length; i++) {
+				var obj = this.extraConfigColl.at(i);
+				if(!_.isEmpty(obj.attributes)) {
+					if (!_.isUndefined(config[obj.get('name')])) {
+						XAUtil.alertPopup({
+							msg : localization.tt('msg.duplicateNewConfigValidationMsg')
+						});
+						valid = false;
+						break;
+					} else {
+						config[obj.get('name')] = obj.get('value');
+					}
+				}
+			}
+
+			return valid;
 		},
 
 		beforeSave : function(){
@@ -165,11 +182,11 @@ define(function(require){
 					}
 				});
 			}
-			this.extraConfigColl.each(function(obj){ 
+			this.extraConfigColl.each(function(obj){
 				if(!_.isEmpty(obj.attributes)) config[obj.get('name')] = obj.get('value');
 			});
-			this.model.set('configs',config);	
-			
+			this.model.set('configs',config);
+
 			//Set service type
 			this.model.set('type',this.rangerServiceDefModel.get('name'))
 			//Set isEnabled
@@ -178,7 +195,7 @@ define(function(require){
 			} else {
 				this.model.set('isEnabled',false);
 			}
-			
+
 			//Remove unwanted attributes from model
 			if(!this.model.isNew()){
 				_.each(this.model.attributes.configs, function(value, name){
@@ -208,7 +225,7 @@ define(function(require){
 			}
 		},
 		getSerivceBaseFieldNames : function(){
-			 var fields = ['name', 'description', 'isEnabled','tagService']
+                         var fields = ['name', 'displayName', 'description', 'isEnabled','tagService']
 			 return this.rangerServiceDefModel.get('name') == XAEnums.ServiceType.SERVICE_TAG.label ? fields.slice(0,fields.indexOf("tagService")) : fields;
 		}
 	});

@@ -1,6 +1,7 @@
 {
 	"id":9,
 	"name":"kafka",
+	 "displayName": "kafka",
 	"implClass":"org.apache.ranger.services.kafka.RangerServiceKafka",
 	"label":"Kafka",
 	"description":"Apache Kafka",
@@ -23,9 +24,73 @@
 			"validationMessage":"",
 			"uiHint":"",
 			"label":"Topic",
-			"description":"Topic"
+			"description":"Topic",
+			"accessTypeRestrictions": ["create", "delete", "configure", "alter", "alter_configs", "describe", "describe_configs", "consume", "publish"]
+		},
+		{
+			"itemId":2,
+			"name":"transactionalid",
+			"type":"string",
+			"level":1,
+			"mandatory":true,
+			"excludesSupported":true,
+			"matcher":"org.apache.ranger.plugin.resourcematcher.RangerDefaultResourceMatcher",
+			"matcherOptions":{
+				"wildCard":true,
+				"ignoreCase":true
+			},
+			"label":"Transactional Id",
+			"description":"Transactional Id",
+			"accessTypeRestrictions": ["publish", "describe"]
+		},
+		{
+			"itemId":3,
+			"name":"cluster",
+			"type":"string",
+			"level":1,
+			"mandatory":true,
+			"excludesSupported":true,
+			"matcher":"org.apache.ranger.plugin.resourcematcher.RangerDefaultResourceMatcher",
+			"matcherOptions":{
+				"wildCard":true,
+				"ignoreCase":true
+			},
+			"label":"Cluster",
+			"description":"Cluster",
+			"accessTypeRestrictions": ["create", "configure", "alter", "alter_configs", "describe", "describe_configs", "kafka_admin", "idempotent_write", "cluster_action"]
+		},
+		{
+			"itemId":4,
+			"name":"delegationtoken",
+			"type":"string",
+			"level":1,
+			"mandatory":true,
+			"excludesSupported":true,
+			"matcher":"org.apache.ranger.plugin.resourcematcher.RangerDefaultResourceMatcher",
+			"matcherOptions":{
+				"wildCard":true,
+				"ignoreCase":true
+			},
+			"label":"Delegation Token",
+			"description":"Delegation Token",
+			"accessTypeRestrictions": ["describe"]
+		},
+		{
+			"itemId":5,
+			"name":"consumergroup",
+			"type":"string",
+			"level":1,
+			"mandatory":true,
+			"excludesSupported":true,
+			"matcher":"org.apache.ranger.plugin.resourcematcher.RangerDefaultResourceMatcher",
+			"matcherOptions":{
+				"wildCard":true,
+				"ignoreCase":true
+			},
+			"label":"Consumer Group",
+			"description":"Consumer Group",
+			"accessTypeRestrictions": ["consume", "describe", "delete"]
 		}
-		
 	],
 	"accessTypes":[
 		{
@@ -35,7 +100,6 @@
 			"impliedGrants":[
 				"describe"
 			]
-			
 		},
 		{
 			"itemId":2,
@@ -44,7 +108,6 @@
 			"impliedGrants":[
 				"describe"
 			]
-			
 		},
 		{
 			"itemId":5,
@@ -53,22 +116,11 @@
 			"impliedGrants":[
 				"describe"
 			]
-			
 		},
 		{
 			"itemId":6,
 			"name":"describe",
 			"label":"Describe"
-		},
-		{
-			"itemId":8,
-			"name":"create",
-			"label":"Create"
-		},
-		{
-			"itemId":9,
-			"name":"delete",
-			"label":"Delete"
 		},
 		{
 			"itemId":7,
@@ -80,9 +132,54 @@
 				"configure",
 				"describe",
 				"create",
-				"delete"
+				"delete",
+				"describe_configs",
+				"alter_configs",
+				"alter",
+				"idempotent_write",
+				"cluster_action"
 			]
-			
+		},
+		{
+			"itemId":8,
+			"name":"create",
+			"label":"Create"
+		},
+		{
+			"itemId":9,
+			"name":"delete",
+			"label":"Delete",
+			"impliedGrants":[
+				"describe"
+			]
+		},
+		{
+			"itemId":10,
+			"name":"idempotent_write",
+			"label":"Idempotent Write"
+		},
+		{
+			"itemId":11,
+			"name":"describe_configs",
+			"label":"Describe Configs"
+		},
+		{
+			"itemId":12,
+			"name":"alter_configs",
+			"label":"Alter Configs",
+			"impliedGrants":[
+				"describe_configs"
+			]
+		},
+		{
+			"itemId":13,
+			"name":"cluster_action",
+			"label":"Cluster Action"
+		},
+		{
+			"itemId":14,
+			"name":"alter",
+			"label":"Alter"
 		}
 	],
 	"configs":[
@@ -115,13 +212,10 @@
 			"mandatory":false,
 			"label":"Ranger Plugin SSL CName"
 		}
-		
 	],
 	"enums":[
-		
 	],
 	"contextEnrichers":[
-		
 	],
 	"policyConditions":[
 		{
@@ -129,7 +223,6 @@
 			"name":"ip-range",
 			"evaluator":"org.apache.ranger.plugin.conditionevaluator.RangerIpMatcher",
 			"evaluatorOptions":{
-				
 			},
 			"validationRegEx":"",
 			"validationMessage":"",
@@ -137,6 +230,5 @@
 			"label":"IP Address Range",
 			"description":"IP Address Range"
 		}
-		
 	]
 }

@@ -40,6 +40,7 @@ public class SearchFilter {
 	public static final String TAG_SERVICE_ID  = "tagServiceId";  // search
 	public static final String USER            = "user";          // search
 	public static final String GROUP           = "group";         // search
+	public static final String ROLE            = "role";         // search
 	public static final String RESOURCE_PREFIX = "resource:";     // search
 	public static final String RESOURCE_MATCH_SCOPE = "resourceMatchScope"; // search - valid values: "self", "ancestor", "self_or_ancestor"
 	public static final String POL_RESOURCE    = "polResource";   // search
@@ -51,7 +52,20 @@ public class SearchFilter {
 	public static final String SORT_BY         = "sortBy";
 	public static final String RESOURCE_SIGNATURE = "resourceSignature:";     // search
 	public static final String POLICY_TYPE     = "policyType";    // search
+	public static final String POLICY_PRIORITY     = "policyPriority";    // search
     public static final String GUID		   = "guid"; //search
+    public static final String POLICY_LABEL     = "policyLabel";    // search
+    public static final String POLICY_LABELS_PARTIAL     = "policyLabelsPartial";    // search
+    public static final String POLICY_LABEL_ID       = "policyLabelId";      // search, sort
+    public static final String ZONE_ID               = "zoneId";      // search, sort
+    public static final String ZONE_NAME             = "zoneName";      // search, sort
+	public static final String ROLE_ID               = "roleId";      // search, sort
+	public static final String ROLE_NAME             = "roleName";      // search, sort
+	public static final String GROUP_NAME            = "groupName";      // search, sort
+	public static final String USER_NAME             = "userName";      // search, sort
+	public static final String ROLE_NAME_PARTIAL     = "roleNamePartial";      // search
+	public static final String GROUP_NAME_PARTIAL    = "groupNamePartial";      // search
+	public static final String USER_NAME_PARTIAL     = "userNamePartial";      // search
 
 	public static final String TAG_DEF_ID                = "tagDefId";            // search
 	public static final String TAG_DEF_GUID              = "tagDefGuid";          // search
@@ -71,6 +85,13 @@ public class SearchFilter {
 	public static final String PLUGIN_APP_TYPE           = "pluginAppType";
 	public static final String PLUGIN_ENTITY_TYPE        = "pluginEntityType";
 	public static final String PLUGIN_IP_ADDRESS         = "pluginIpAddress";
+	public static final String CLUSTER_NAME              = "clusterName";
+	public static final String FETCH_ZONE_UNZONE_POLICIES        = "fetchZoneAndUnzonePolicies";
+	public static final String FETCH_TAG_POLICIES        = "fetchTagPolicies";
+
+	public static final String SERVICE_DISPLAY_NAME			= "serviceDisplayName";			// search, sort
+	public static final String SERVICE_DISPLAY_NAME_PARTIAL	= "serviceDisplayNamePartial";	// search
+	public static final String SERVICE_TYPE_DISPLAY_NAME	= "serviceTypeDisplayName";		// search, sort
 
 	private Map<String, String> params;
 	private int                 startIndex;

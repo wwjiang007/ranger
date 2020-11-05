@@ -217,12 +217,11 @@ public class RangerKmsAuthorizer implements Runnable, KeyACLs {
 		    if(!ret){
 		    	LOG.debug("Operation "+rangerAccessType+" blocked in the blacklist for user "+ugi.getUserName());
 		    }
-		    String clusterName = kmsPlugin.getClusterName();
 		
 			if(plugin != null && ret) {				
-				RangerKMSAccessRequest request = new RangerKMSAccessRequest("", rangerAccessType, ugi, clientIp, clusterName);
+				RangerKMSAccessRequest request = new RangerKMSAccessRequest("", rangerAccessType, ugi, clientIp);
 				RangerAccessResult result = plugin.isAccessAllowed(request);
-				ret = result == null ? false : result.getIsAllowed();
+				ret = result != null && result.getIsAllowed();
 			}
 			RangerPerfTracer.log(perf);
 			if(LOG.isDebugEnabled()) {
@@ -244,12 +243,11 @@ public class RangerKmsAuthorizer implements Runnable, KeyACLs {
 		    if(!ret){
 		    	LOG.debug("Operation "+rangerAccessType+" blocked in the blacklist for user "+ugi.getUserName());
 		    }
-		    String clusterName = kmsPlugin.getClusterName();
 		
 			if(plugin != null && ret) {				
-				RangerKMSAccessRequest request = new RangerKMSAccessRequest(keyName, rangerAccessType, ugi, clientIp, clusterName);
+				RangerKMSAccessRequest request = new RangerKMSAccessRequest(keyName, rangerAccessType, ugi, clientIp);
 				RangerAccessResult result = plugin.isAccessAllowed(request);
-				ret = result == null ? false : result.getIsAllowed();
+				ret = result != null && result.getIsAllowed();
 			}
 			
 			if(LOG.isDebugEnabled()) {
@@ -348,7 +346,7 @@ public class RangerKmsAuthorizer implements Runnable, KeyACLs {
 		public void init() {
 			super.init();
 
-			RangerDefaultAuditHandler auditHandler = new RangerDefaultAuditHandler();
+			RangerDefaultAuditHandler auditHandler = new RangerDefaultAuditHandler(getConfig());
 
 			super.setResultProcessor(auditHandler);
 		}
@@ -363,7 +361,7 @@ public class RangerKmsAuthorizer implements Runnable, KeyACLs {
 	}
 
 	class RangerKMSAccessRequest extends RangerAccessRequestImpl {
-		public RangerKMSAccessRequest(String keyName, String accessType, UserGroupInformation ugi, String clientIp, String clusterName) {
+		public RangerKMSAccessRequest(String keyName, String accessType, UserGroupInformation ugi, String clientIp) {
 			super.setResource(new RangerKMSResource(keyName));
 			super.setAccessType(accessType);
 			super.setUser(ugi.getShortUserName());
@@ -371,6 +369,5 @@ public class RangerKmsAuthorizer implements Runnable, KeyACLs {
 			super.setAccessTime(new Date());
 			super.setClientIPAddress(clientIp);			
 			super.setAction(accessType);
-			super.setClusterName(clusterName);
 		}
 	}

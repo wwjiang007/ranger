@@ -23,7 +23,7 @@
 	var XAUtil	   		= require('utils/XAUtils');
     var localization 	= require('utils/XALangSupport');
     var SessionMgr   	= require('mgrs/SessionMgr');
-	require('moment');
+    var moment = require('moment');
 	/*
 	 * General guidelines while writing helpers:
 	 * 
@@ -139,7 +139,7 @@
 			return moment(context).format(f);
 		}else{
 			return context;   //  moment plugin not available. return data as is.
-		};
+                }
 	});
 
 	/*
@@ -154,7 +154,6 @@
 	
 	Handlebars.registerHelper('tt', function(str) {
 		return localization.tt(str);
-		return str;
 	});
 	
 	Handlebars.registerHelper('getCopyrightDate', function() {
@@ -187,8 +186,8 @@
 	Handlebars.registerHelper('customPermString', function(permsString,kclass) {
 		if(permsString == "--")
 			return permsString;
-		permArr = permsString.split(',');
-		var cl = _.isObject(kclass) ? 'label label-info' : kclass;
+                var permArr = permsString.split(',');
+		var cl = _.isObject(kclass) ? 'badge badge-info' : kclass;
 		var tempArr = [];
 		_.each(permArr, function(val){
 			tempArr.push('<label class="'+cl+'">'+val+'</label>');
@@ -424,7 +423,7 @@
 				html = '<span class="add-text">'+val+'</span>';
 		} else {
 			if($.inArray(val, arr) < 0)
-				return html = '<span class="delete-text">'+val+'</span>';
+                                return '<span class="delete-text">'+val+'</span>';
 		}
 	    return html;
 	});
@@ -442,9 +441,9 @@
 							isRemoved = false;
 					});
 					if(isRemoved)
-						return html = '<span class="delete-text">'+perm[type]+'</span>';
+                                                return '<span class="delete-text">'+perm[type]+'</span>';
 				} else {
-					return html = '<span class="delete-text">'+perm[type]+'</span>';
+                                        return '<span class="delete-text">'+perm[type]+'</span>';
 				}
 			}
 		} else {
@@ -456,9 +455,9 @@
 							isNewAdd = false;
 					});
 					if(isNewAdd)
-						return html = '<span class="add-text">'+perm[type]+'</span>';
+                                                return '<span class="add-text">'+perm[type]+'</span>';
 				} else {
-					return html = '<span class="delete-text">'+perm[type]+'</span>';
+                                        return '<span class="delete-text">'+perm[type]+'</span>';
 				}
 			}
 		}
@@ -479,9 +478,9 @@
 							isRemoved = false;
 					});
 					if(isRemoved)
-						return html = '<span class="delete-text">'+perm[type]+'</span>';
+                                                return  '<span class="delete-text">'+perm[type]+'</span>';
 				} else {
-					return html = '<span class="delete-text">'+perm[type]+'</span>';
+                                        return '<span class="delete-text">'+perm[type]+'</span>';
 				}
 			}
 		} else {
@@ -493,9 +492,9 @@
 							isNewAdd = false;
 					});
 					if(isNewAdd)
-						return html = '<span class="add-text">'+perm[type]+'</span>';
+                                                return  '<span class="add-text">'+perm[type]+'</span>';
 				} else {
-					return html = '<span class="add-text">'+perm[type]+'</span>';
+                                        return  '<span class="add-text">'+perm[type]+'</span>';
 				}
 			}
 		}
@@ -507,21 +506,55 @@
 		var serviceType = serviceDef.get('name'),
 		policyType = XAEnums.RangerPolicyType.RANGER_ACCESS_POLICY_TYPE.value;
 		if(!_.isUndefined(services[serviceType])){
-			_.each(services[serviceType],function(serv){
+			_.each(_.sortBy(services[serviceType],function(m){return m.get('name')}),function(serv){
 				serviceName = serv.get('name');
-				if(SessionMgr.isSystemAdmin() || SessionMgr.isKeyAdmin()){
-					serviceOperationDiv = '<div class="pull-right">\
-					<a data-id="'+serv.id+'" class="btn btn-mini" href="#!/service/'+serviceDef.id+'/edit/'+serv.id+'" title="Edit"><i class="icon-edit"></i></a>\
-					<a data-id="'+serv.id+'" class="deleteRepo btn btn-mini btn-danger" href="javascript:void(0);" title="Delete">\
-					<i class="icon-trash"></i></a>\
-					</div>'
+				if(localStorage.getItem('setOldUI') == "true") {
+					if(SessionMgr.isSystemAdmin() || SessionMgr.isKeyAdmin()){
+						serviceOperationDiv = '<div class="pull-right">\
+					                        <a href="javascript:void(0);" data-name="viewService" data-id="'+serv.id+'" class="btn btn-mini" title="View"><i class="fa-fw fa fa-eye "></i></a>\
+					                        <a data-id="'+serv.id+'" class="btn btn-mini" href="#!/service/'+serviceDef.id+'/edit/'+serv.id+'" title="Edit"><i class="fa-fw fa fa-edit"></i></a>\
+					                        <a data-id="'+serv.id+'" class="deleteRepo btn btn-mini btn-danger" href="javascript:void(0);" title="Delete">\
+					                        <i class="fa-fw fa fa-trash"></i></a>\
+					                       </div>'
+					    }
+		            if(XAUtil.isAuditorOrKMSAuditor(SessionMgr)){
+		                serviceOperationDiv = '<div class="pull-right">\
+		                            <a href="javascript:void(0);" data-name="viewService" data-id="'+serv.id+'" class="btn btn-mini" title="View"><i class="fa-fw fa fa-eye "></i></a>\
+		                       </div>'
+					}
 				}
-				tr += '<tr><td><div>\
-						<a data-id="'+serv.id+'" href="#!/service/'+serv.id+'/policies/'+policyType+'">'+_.escape(serv.attributes.name)+'</a>'+serviceOperationDiv+'\
-					  </div></td></tr>';
+				tr += '<tr><td><div>';
+				if (!serv.get('isEnabled')) {
+					tr += '<i class="fa-fw fa fa-ban text-color-red fa-lg" title="Disable"></i>';
+				}
+				if(localStorage.getItem('setOldUI') == "false" || localStorage.getItem('setOldUI') == null) {
+					tr += '<i class="fa-fw fa fa-file pull-left fa-fw fa fa-small m-top-5"></i>'
+				}
+                                //For service name
+                                if(!_.isUndefined(serv) && !_.isUndefined(serv.get('displayName')) ) {
+                                        tr += '<a class="serviceNameEllipsis" data-id="'+serv.id+'" href="#!/service/'+serv.id+'/policies/'+policyType+'" title="'+_.escape(serv.get('displayName'))+'">'+_.escape(serv.get('displayName'))+'</a>'+serviceOperationDiv+'\
+                                                </div></td></tr>';
+                                } else {
+                                        tr += '<i class="fa-fw fa fa-file pull-left"></i><a class="serviceNameEllipsis" data-id="'+serv.id+'" href="#!/service/'+serv.id+'/policies/'+policyType+'" title="'+_.escape(serv.attributes.name)+'">'+_.escape(serv.attributes.name)+'</a>'+serviceOperationDiv+'\
+                                                </div></td></tr>';
+                                }
 			});
 		}
 		return tr;
+	});
+	Handlebars.registerHelper('handleCollapeServiceIcon', function(services, serviceDef) {
+		var serviceType = serviceDef.get('name');
+		if(!_.isUndefined(services[serviceType]) && services[serviceType].length > 0) {
+			return '<i class="fa-fw fa fa-caret-up" id="collapesService"></i>'
+		}
+	});
+	Handlebars.registerHelper('handleServiceDefIcon', function(serviceDefName) {
+		var iconServiceDefList = ["hdfs", "hive", "hbase", "yarn", "knox", "kafka", "solr", "nifi", "atlas", "kudu", "ozone", "kms", "nifi-registry", "tag"];
+		if (iconServiceDefList.includes(serviceDefName)) {
+			return '<i class="icon-component-'+ serviceDefName +' fa-fw fa fa-large"></i>';
+		} else {
+			return '<i class="icon-component-default"></i>';
+		}
 	});
 	Handlebars.registerHelper('capitaliseLetter', function(str) {
 		return str.toUpperCase();
@@ -558,6 +591,34 @@
 				&& ( !_.isUndefined(rowFilterDef.resources) ) && rowFilterDef.resources.length > 0 )
 				? options.fn(this) : options.inverse(this); 
 	});
+	Handlebars.registerHelper('printZoneResourceGroups', function(zoneServiceResources) {
+		var resourceStr = '';	
+		_.each(zoneServiceResources, function(resourceGroup){
+			resourceStr += '<div class="zone-resource">';
+			_.map(resourceGroup,function(res, resType){ 
+				resourceStr +=  '<strong>' + _.escape(resType) + '</strong> : ' + _.escape(res) + '<br>' ;
+			});
+			resourceStr += '</div>';
+		});
+		
+		return resourceStr;
+	});
+        Handlebars.registerHelper('blankCheck', function(context, options) {
+                return _.isUndefined(context) || _.isEmpty(context) ? '--' : context;
+        });
+
+    Handlebars.registerHelper('getPolicyConditionTmpl', function(obj) {
+        if(!_.isUndefined(obj.evaluatorOptions) && !_.isUndefined(obj.evaluatorOptions['ui.isMultiline']) && Boolean(obj.evaluatorOptions['ui.isMultiline'])){
+            return '<div class="margin-bottom-5">\
+                        <label class="display-block">\
+                            <span>'+obj.label+' : </span>\
+                            <i title="'+localization.tt('validationMessages.jsValidationMsg')+'" class="fa-fw fa fa-info-circle margin-top-6"></i>\
+                        </label>\
+                        <textarea class="multiline-condition" data-id="textAreaContainer" name="'+obj.name+'" placeholder="Please enter condition.."></textarea>\
+                   </div>'
+            }
+            return '<div class="margin-bottom-5 display-block"><label><span>'+obj.label+' : </span></label><input type="input" data-id="inputField" name="'+obj.name+'" ></div>'
+    });
 
 	return HHelpers;
 });

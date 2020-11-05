@@ -32,8 +32,25 @@ public class RangerPolicyEngineOptions {
 	public boolean cacheAuditResults = true;
 	public boolean evaluateDelegateAdminOnly = false;
 	public boolean enableTagEnricherWithLocalRefresher = false;
+	public boolean disableAccessEvaluationWithPolicyACLSummary = true;
+	public boolean optimizeTrieForRetrieval = false;
 
 	private RangerServiceDefHelper serviceDefHelper;
+
+	public RangerPolicyEngineOptions() {}
+
+	public RangerPolicyEngineOptions(final RangerPolicyEngineOptions other) {
+		this.disableContextEnrichers = other.disableContextEnrichers;
+		this.disableCustomConditions = other.disableCustomConditions;
+		this.disableTagPolicyEvaluation = other.disableTagPolicyEvaluation;
+		this.disableTrieLookupPrefilter = other.disableTrieLookupPrefilter;
+		this.cacheAuditResults = other.cacheAuditResults;
+		this.evaluateDelegateAdminOnly = other.evaluateDelegateAdminOnly;
+		this.enableTagEnricherWithLocalRefresher = other.enableTagEnricherWithLocalRefresher;
+		this.disableAccessEvaluationWithPolicyACLSummary = other.disableAccessEvaluationWithPolicyACLSummary;
+		this.optimizeTrieForRetrieval = other.optimizeTrieForRetrieval;
+		this.serviceDefHelper = null;
+	}
 
 	public void configureForPlugin(Configuration conf, String propertyPrefix) {
 		disableContextEnrichers = conf.getBoolean(propertyPrefix + ".policyengine.option.disable.context.enrichers", false);
@@ -48,6 +65,9 @@ public class RangerPolicyEngineOptions {
 		}
 		evaluateDelegateAdminOnly = false;
 		enableTagEnricherWithLocalRefresher = false;
+		disableAccessEvaluationWithPolicyACLSummary = conf.getBoolean(propertyPrefix + ".policyengine.option.disable.access.evaluation.with.policy.acl.summary", true);
+		optimizeTrieForRetrieval = conf.getBoolean(propertyPrefix + ".policyengine.option.optimize.trie.for.retrieval", false);
+
 	}
 
 	public void configureDefaultRangerAdmin(Configuration conf, String propertyPrefix) {
@@ -59,6 +79,9 @@ public class RangerPolicyEngineOptions {
 		cacheAuditResults = false;
 		evaluateDelegateAdminOnly = false;
 		enableTagEnricherWithLocalRefresher = false;
+		disableAccessEvaluationWithPolicyACLSummary = conf.getBoolean(propertyPrefix + ".policyengine.option.disable.access.evaluation.with.policy.acl.summary", true);
+		optimizeTrieForRetrieval = conf.getBoolean(propertyPrefix + ".policyengine.option.optimize.trie.for.retrieval", false);
+
 	}
 
 	public void configureDelegateAdmin(Configuration conf, String propertyPrefix) {
@@ -66,6 +89,8 @@ public class RangerPolicyEngineOptions {
 		disableCustomConditions = conf.getBoolean(propertyPrefix + ".policyengine.option.disable.custom.conditions", true);
 		disableTagPolicyEvaluation = conf.getBoolean(propertyPrefix + ".policyengine.option.disable.tagpolicy.evaluation", true);
 		disableTrieLookupPrefilter = conf.getBoolean(propertyPrefix + ".policyengine.option.disable.trie.lookup.prefilter", false);
+		optimizeTrieForRetrieval = conf.getBoolean(propertyPrefix + ".policyengine.option.optimize.trie.for.retrieval", false);
+
 
 		cacheAuditResults = false;
 		evaluateDelegateAdminOnly = true;
@@ -78,6 +103,8 @@ public class RangerPolicyEngineOptions {
 		disableCustomConditions = conf.getBoolean(propertyPrefix + ".policyengine.option.disable.custom.conditions", true);
 		disableTagPolicyEvaluation = conf.getBoolean(propertyPrefix + ".policyengine.option.disable.tagpolicy.evaluation", false);
 		disableTrieLookupPrefilter = conf.getBoolean(propertyPrefix + ".policyengine.option.disable.trie.lookup.prefilter", false);
+		optimizeTrieForRetrieval = conf.getBoolean(propertyPrefix + ".policyengine.option.optimize.trie.for.retrieval", false);
+
 
 		cacheAuditResults = false;
 		evaluateDelegateAdminOnly = false;
@@ -108,7 +135,8 @@ public class RangerPolicyEngineOptions {
 					&& this.disableTrieLookupPrefilter == that.disableTrieLookupPrefilter
 					&& this.cacheAuditResults == that.cacheAuditResults
 					&& this.evaluateDelegateAdminOnly == that.evaluateDelegateAdminOnly
-					&& this.enableTagEnricherWithLocalRefresher == that.enableTagEnricherWithLocalRefresher;
+					&& this.enableTagEnricherWithLocalRefresher == that.enableTagEnricherWithLocalRefresher
+					&& this.optimizeTrieForRetrieval == that.optimizeTrieForRetrieval;
 		}
 		return ret;
 	}
@@ -130,6 +158,8 @@ public class RangerPolicyEngineOptions {
 		ret *= 2;
 		ret += enableTagEnricherWithLocalRefresher ? 1 : 0;
 		ret *= 2;
+		ret += optimizeTrieForRetrieval ? 1 : 0;
+		ret *= 2;
 		return ret;
 	}
 
@@ -137,10 +167,14 @@ public class RangerPolicyEngineOptions {
 	public String toString() {
 		return "PolicyEngineOptions: {" +
 				" evaluatorType: " + evaluatorType +
-				", cacheAuditResult: " + cacheAuditResults +
+				", evaluateDelegateAdminOnly: " + evaluateDelegateAdminOnly +
 				", disableContextEnrichers: " + disableContextEnrichers +
 				", disableCustomConditions: " + disableContextEnrichers +
+				", disableTagPolicyEvaluation: " + disableTagPolicyEvaluation +
+				", enableTagEnricherWithLocalRefresher: " + enableTagEnricherWithLocalRefresher +
 				", disableTrieLookupPrefilter: " + disableTrieLookupPrefilter +
+				", optimizeTrieForRetrieval: " + optimizeTrieForRetrieval +
+				", cacheAuditResult: " + cacheAuditResults +
 				" }";
 
 	}

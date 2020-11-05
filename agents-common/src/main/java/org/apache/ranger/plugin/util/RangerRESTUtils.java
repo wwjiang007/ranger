@@ -26,7 +26,7 @@ import java.net.UnknownHostException;
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-import org.apache.ranger.authorization.hadoop.config.RangerConfiguration;
+import com.kstruct.gethostname4j.Hostname;
 
 /**
  * Since this class does not retain any state.  It isn't a singleton for testability.
@@ -44,6 +44,17 @@ public class RangerRESTUtils {
 	public static final String REST_URL_SECURE_SERVICE_GRANT_ACCESS              = "/service/plugins/secure/services/grant/";
 	public static final String REST_URL_SECURE_SERVICE_REVOKE_ACCESS             = "/service/plugins/secure/services/revoke/";
 
+	public static final String REST_URL_SERVICE_CREATE_ROLE              = "/service/public/v2/api/roles/";
+	public static final String REST_URL_SERVICE_DROP_ROLE         = "/service/public/v2/api/roles/name/";
+	public static final String REST_URL_SERVICE_GET_ALL_ROLES         = "/service/public/v2/api/roles/names/";
+	public static final String REST_URL_SERVICE_GET_USER_ROLES         = "/service/public/v2/api/roles/user/";
+	public static final String REST_URL_SERVICE_GET_ROLE_INFO         = "/service/public/v2/api/roles/name/";
+	public static final String REST_URL_SERVICE_GRANT_ROLE              = "/service/public/v2/api/roles/grant/";
+	public static final String REST_URL_SERVICE_REVOKE_ROLE              = "/service/public/v2/api/roles/revoke/";
+
+	public static final String REST_URL_SERVICE_SERCURE_GET_USER_GROUP_ROLES = "/service/roles/secure/download/";
+	public static final String REST_URL_SERVICE_GET_USER_GROUP_ROLES         = "/service/roles/download/";
+
 	public static final String REST_URL_GET_SERVICE_TAGS_IF_UPDATED = "/service/tags/download/";
 	public static final String REST_URL_GET_SECURE_SERVICE_TAGS_IF_UPDATED = "/service/tags/secure/download/";
 	public static final String SERVICE_NAME_PARAM = "serviceName";
@@ -59,66 +70,32 @@ public class RangerRESTUtils {
 	public static final String REST_PARAM_LAST_ACTIVATION_TIME = "lastActivationTime";
 	public static final String REST_PARAM_PLUGIN_ID                 = "pluginId";
 
+	public static final String REST_PARAM_LAST_KNOWN_ROLE_VERSION = "lastKnownRoleVersion";
+
+	public static final String REST_PARAM_LAST_KNOWN_USERSTORE_VERSION = "lastKnownUserStoreVersion";
+	public static final String REST_URL_SERVICE_SERCURE_GET_USERSTORE = "/service/xusers/secure/download/";
+
 	private static final int MAX_PLUGIN_ID_LEN = 255;
 	
 	public static final String REST_PARAM_CLUSTER_NAME   = "clusterName";
+	public static final String REST_PARAM_SUPPORTS_POLICY_DELTAS   = "supportsPolicyDeltas";
+	public static final String REST_PARAM_SUPPORTS_TAG_DELTAS      = "supportsTagDeltas";
 
-	public String getPolicyRestUrl(String propertyPrefix) {
-		String url = RangerConfiguration.getInstance().get(propertyPrefix + ".policy.rest.url");
-		
-		if(LOG.isDebugEnabled()) {
-			LOG.debug("<== RangerRESTUtils.getPolicyRestUrl(" + url + ")");
+	public static final String REST_PARAM_ZONE_NAME		 = "zoneName";
+	public static final String REST_PARAM_EXEC_USER      = "execUser";
+
+	public static final String REST_PARAM_CAPABILITIES   = "pluginCapabilities";
+
+	public static String hostname;
+
+	static {
+		try {
+			hostname = Hostname.getHostname();
 		}
-
-		return url;
-	}
-	
-	public String getSsslConfigFileName(String propertyPrefix) {
-		String sslConfigFileName = RangerConfiguration.getInstance().get(propertyPrefix + ".policy.rest.ssl.config.file");
-
-		if(LOG.isDebugEnabled()) {
-			LOG.debug("<== RangerRESTUtils.getSsslConfigFileName(" + sslConfigFileName + ")");
+		catch(Exception e) {
+			LOG.error("ERROR: Unable to find hostname for the agent ", e);
+			hostname = "unknownHost";
 		}
-
-		return sslConfigFileName;
-	}
-	
-	public String getUrlForPolicyUpdate(String baseUrl, String serviceName) {
-		String url = baseUrl + REST_URL_POLICY_GET_FOR_SERVICE_IF_UPDATED + serviceName;
-		
-		return url;
-	}
-
-	public String getSecureUrlForPolicyUpdate(String baseUrl, String serviceName) {
-		String url = baseUrl + REST_URL_POLICY_GET_FOR_SECURE_SERVICE_IF_UPDATED + serviceName;
-		return url;
-	}
-
-	public String getUrlForTagUpdate(String baseUrl, String serviceName) {
-		String url = baseUrl + REST_URL_GET_SERVICE_TAGS_IF_UPDATED + serviceName;
-
-		return url;
-	}
-
-	public String getSecureUrlForTagUpdate(String baseUrl, String serviceName) {
-		String url = baseUrl + REST_URL_GET_SECURE_SERVICE_TAGS_IF_UPDATED + serviceName;
-		return url;
-	}
-
-	public boolean isSsl(String _baseUrl) {
-		return !StringUtils.isEmpty(_baseUrl) && _baseUrl.toLowerCase().startsWith("https");
-	}
-
-	public String getUrlForGrantAccess(String baseUrl, String serviceName) {
-		String url = baseUrl + REST_URL_SERVICE_GRANT_ACCESS + serviceName;
-		
-		return url;
-	}
-
-	public String getUrlForRevokeAccess(String baseUrl, String serviceName) {
-		String url = baseUrl + REST_URL_SERVICE_REVOKE_ACCESS + serviceName;
-		
-		return url;
 	}
 
     public String getPluginId(String serviceName, String appId) {
@@ -142,6 +119,12 @@ public class RangerRESTUtils {
         }
 
         return ret ;
+    }
+    /*
+     * This method returns the hostname of agents.
+     */
+    public String getAgentHostname() {
+        return hostname;
     }
 
     public String getHostnameFromPluginId(String pluginId, String serviceName) {

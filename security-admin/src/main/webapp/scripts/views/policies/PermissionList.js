@@ -35,6 +35,8 @@ define(function(require) {
 	var VXGroupList			= require('collections/VXGroupList');
 	var VXUserList			= require('collections/VXUserList');
 	var Vent			= require('modules/Vent');
+        var VXRole			= require('models/VXRole');
+        var VXRoleList		= require('collections/VXRoleList');
 	
 	require('bootstrap-editable');
 	require('esprima');
@@ -67,14 +69,16 @@ define(function(require) {
 			addConditionsSpan  : '.add-conditions',
 			addMaskingTypeSpan : '.add-masking-type',
 			addRowFilterSpan   : '.add-row-filter',
-			
+                        selectRoles : '[data-js="selectRoles"]'
+
 		},
 		events : {
 			'click [data-action="delete"]'	: 'evDelete',
 			'click [data-js="delegatedAdmin"]'	: 'evClickTD',
 			'change [data-js="selectGroups"]': 'evSelectGroup',
 			'change [data-js="selectUsers"]': 'evSelectUser',
-			'change input[class="policy-conditions"]'	: 'policyCondtionChange'
+                        'change input[class="policy-conditions"]'	: 'policyCondtionChange',
+                        'change [data-js="selectRoles"]': 'evSelectRoles',
 		},
 
 		initialize : function(options) {
@@ -88,11 +92,13 @@ define(function(require) {
 			//To setup permissions for edit mode 
 			this.setupFormForEditMode();
 			//create select2 dropdown for groups and users  
-			this.createDropDown(this.ui.selectGroups, true);
-			this.createDropDown(this.ui.selectUsers, false);
+                        this.createDropDown(this.ui.selectGroups, 'groups');
+                        this.createDropDown(this.ui.selectUsers, 'users');
+                        this.createDropDown(this.ui.selectRoles, 'roles');
 			//groups or users select2 dropdown change vent 
 			this.dropDownChange(this.ui.selectGroups);
 			this.dropDownChange(this.ui.selectUsers);
+                        this.dropDownChange(this.ui.selectRoles);
 			//render permissions and policy conditions
 			if(XAUtil.isTagBasedDef(this.rangerServiceDefModel)){
 				this.renderPermsForTagBasedPolicies();
@@ -123,7 +129,9 @@ define(function(require) {
 				if(!_.isUndefined(this.model.get('userName')) && !_.isNull(this.model.get('userName'))){
 					this.ui.selectUsers.val(_.map(this.model.get('userName'), function(name){ return _.escape(name); }));
 				}
-				
+                                if(!_.isUndefined(this.model.get('roleName')) && !_.isNull(this.model.get('roleName'))){
+                                        this.ui.selectRoles.val(_.map(this.model.get('roleName'), function(name){ return _.escape(name); }));
+                                }
 				if(!_.isUndefined(this.model.get('conditions'))){
 					_.each(this.model.get('conditions'), function(obj){
 						this.$el.find('input[data-js="'+obj.type+'"]').val(obj.values.toString())
@@ -131,13 +139,16 @@ define(function(require) {
 				}
 				_.each(this.model.get('accesses'), function(p){
 					if(p.isAllowed){
-						this.$el.find('input[data-name="' + p.type + '"]').attr('checked', 'checked');
+                                                this.$el.find('input[data-name="' + p.type + '"]').prop('checked', true);
 						_.each(this.accessItems,function(obj){ if(obj.type == p.type) obj.isAllowed=true;})
 					}
 				},this);
 				
 				if(!_.isUndefined(this.model.get('delegateAdmin')) && this.model.get('delegateAdmin')){
-					this.ui.delegatedAdmin.attr('checked', 'checked');
+                                        this.ui.delegatedAdmin.prop('checked', true);
+				}
+				if(this.model.has('delegateAdmin') && !this.model.get('delegateAdmin')){
+				    this.model.unset('delegateAdmin');
 				}
 				if(!_.isUndefined(this.model.get('rowFilterInfo')) && !_.isUndefined(this.model.get('rowFilterInfo').filterExpr)){
 					this.rowFilterExprVal = this.model.get('rowFilterInfo').filterExpr
@@ -165,9 +176,18 @@ define(function(require) {
 		dropDownChange : function($select){
 			var that = this;
 			$select.on('change',function(e){
-				var name = ($(e.currentTarget).attr('data-js') == that.ui.selectGroups.attr('data-js')) ? 'group': 'user';
+                                var name = ($(e.currentTarget).attr('data-js') == that.ui.selectGroups.attr('data-js')) ? 'group' :
+                                (($(e.currentTarget).attr('data-js') == that.ui.selectUsers.attr('data-js')) ? 'user' : 'role');
+				var otherName = (name == 'user') ? 'group': 'user';
+                                var otherName2 = (name == 'user') ? 'role': 'user';
 				that.checkDirtyFieldForDropDown(e);
 				
+				if(_.isNull(that.model.get(otherName+'Name'))){
+                    that.model.unset(otherName+'Name')
+                }
+                if(_.isNull(that.model.get(otherName2+'Name'))){
+                    that.model.unset(otherName2+'Name')
+                }
 				if(e.removed != undefined){
 					var gNameArr = [];
 					if(that.model.get(name+'Name') != undefined)
@@ -185,12 +205,12 @@ define(function(require) {
 				}
 			});
 		},
-                createDropDown :function($select, typeGroup){
-                        var that = this, tags = [],
-			placeholder = (typeGroup) ? 'Select Group' : 'Select User',
-					searchUrl   = (typeGroup) ? "service/xusers/groups" : "service/xusers/users";
+                createDropDown :function($select, type){
+			var that = this, tags = [],
+                        placeholder = (type == 'users') ? 'Select Users' : ((type == 'groups') ? 'Select Groups' : 'Select Roles'),
+                        searchUrl   = (type == 'users') ? "service/xusers/lookup/users" : ((type == 'groups') ? "service/xusers/lookup/groups" : "service/roles/roles");
 			if(this.model.has('editMode') && !_.isEmpty($select.val())){
-				var temp = this.model.attributes[ (typeGroup) ? 'groupName': 'userName'];
+                                var temp = this.model.attributes[ (type == 'users') ? 'userName' : ((type == 'groups') ? 'groupName' : 'roleName')];
 				_.each(temp , function(name){
 					tags.push( { 'id' : _.escape( name ), 'text' : _.escape( name ) } );
 				});
@@ -198,27 +218,36 @@ define(function(require) {
 			$select.select2({
 				closeOnSelect : true,
 				placeholder : placeholder,
-				width :'220px',
+				width :'290px',
 				tokenSeparators: [",", " "],
 				tags : true,
 				initSelection : function (element, callback) {
 					callback(tags);
 				},
-				ajax: { 
+				ajax: {
 					url: searchUrl,
 					dataType: 'json',
 					data: function (term, page) {
-						return {name : term, isVisible : XAEnums.VisibilityStatus.STATUS_VISIBLE.value};
+						if(type === 'roles') {
+							return {
+								roleNamePartial: term
+							}
+						} else {
+							return {
+								name: term,
+								isVisible : XAEnums.VisibilityStatus.STATUS_VISIBLE.value,
+							}
+						}
 					},
-					results: function (data, page) { 
+					results: function (data, page) {
 						var results = [] , selectedVals = [];
 						//Get selected values of groups/users dropdown
-						selectedVals = that.getSelectedValues($select, typeGroup);
-						if(data.resultSize != "0"){
-							if(typeGroup){
-								results = data.vXGroups.map(function(m, i){	return {id : _.escape(m.name), text: _.escape(m.name) };	});
+                                                selectedVals = that.getSelectedValues($select, type);
+						if(data.totalCount != "0"){
+                                                        if(type == 'users' || type == 'groups'){
+								results = data.vXStrings.map(function(m){	return {id : _.escape(m.value), text: _.escape(m.value) };	});
 							} else {
-								results = data.vXUsers.map(function(m, i){	return {id : _.escape(m.name), text: _.escape(m.name) };	});
+                                                                results = data.roles.map(function(m){	return {id : _.escape(m.name), text: _.escape(m.name) };	});
 							}
 							if(!_.isEmpty(selectedVals)){
 								results = XAUtil.filterResultByText(results, selectedVals);
@@ -228,7 +257,7 @@ define(function(require) {
 						return {results : results};
 					},
                     transport: function (options) {
-                    	$.ajax(options).error(function(respones) {
+			$.ajax(options).fail(function(respones) {
                     		XAUtil.defaultErrorHandler('error',respones);
                     		this.success({
                     			resultSize : 0
@@ -243,7 +272,7 @@ define(function(require) {
 					return result.text;
 				},
 				formatNoMatches: function(result){
-					return typeGroup ? 'No group found.' : 'No user found.';
+                                        return (type == 'users') ? 'No user found.' : ((type == 'groups') ? 'No group found.' : 'No role found');
 				}
 			}).on('select2-focus', XAUtil.select2Focus);
 		},
@@ -265,7 +294,9 @@ define(function(require) {
 			}
 			//if policy items not present. its skip that items and move forward
 			if(_.isObject(this.ui.addPerms)){
-				this.ui.addPerms.editable("destroy");
+                                if(changeType){
+                                    this.ui.addPerms.editable("destroy");
+                                }
 				//create x-editable for permissions
 				this.ui.addPerms.editable({
 					emptytext : 'Add Permissions',
@@ -275,7 +306,7 @@ define(function(require) {
                         if(_.isNull(values) || _.isEmpty(values) || (_.contains(values,"-1")  &&  values.length == 1)){
                             $(this).empty();
                             that.model.unset('accesses');
-                            that.ui.addPermissionsSpan.find('i').attr('class', 'icon-plus');
+                            that.ui.addPermissionsSpan.find('i').attr('class', 'fa-fw fa fa-plus');
                             that.ui.addPermissionsSpan.attr('title','add');
                             return;
 						}
@@ -288,13 +319,9 @@ define(function(require) {
                         	if(!_.isUndefined(id)){
                         		var obj = _.findWhere(that.rangerServiceDefModel.attributes.accessTypes,{'name' : id});
 								permTypeArr.push({permType : obj.value});
-								return "<span class='label label-info'>" + obj.label + "</span>";
+								return "<span class='badge badge-info'>" + obj.label + "</span>";
                         	}
                         });
-                        var perms = []
-                        if(that.model.has('accesses')){
-                        	perms = that.model.get('accesses');
-                        }
                         var items=[];
                         _.each(that.accessItems, function(item){
 							if($.inArray( item.type, values) >= 0){
@@ -305,13 +332,11 @@ define(function(require) {
                         // Save form data to model
                         that.model.set('accesses', items);
                         $(this).html(valArr.join(" "));
-                        that.ui.addPermissionsSpan.find('i').attr('class', 'icon-pencil');
+                        that.ui.addPermissionsSpan.find('i').attr('class', 'fa-fw fa fa-pencil');
                         that.ui.addPermissionsSpan.attr('title','edit');
 					},
-				}).on('click', function(e) {
-					e.stopPropagation();
-                    e.preventDefault();
-                    that.clickOnPermissions(that);
+                                }).on('shown', function(e, editable) {
+                                    that.clickOnPermissions(that);
 				});
 				that.ui.addPermissionsSpan.click(function(e) {
 				e.stopImmediatePropagation();
@@ -397,23 +422,36 @@ define(function(require) {
 	        return accessTypeByResource;
 		},
 		//if parent isValidLeaf is false than check child isvalidLeaf
-		childRscDef:function(resChild , rscName){
-			var childResourcs = _.filter(resChild, function(m){ 
+		childRscDef:function(resChild , rscName, rscDef){
+			var childResourcs = _.filter(resChild, function(m){
 				return m.parent == rscName 
 			});
-			var rscDef , someVal;
-			someVal = _.some(childResourcs,function(obj){
-//				help of this we separate specified(selected) child resource from all childResourcs 
-				var $html = $('[data-name="field-'+obj.name+'"]');
-				if($html.length > 0){
-					rscName = obj.name;
-					rscDef = obj;
-					return true;
+			if(!_.isEmpty(childResourcs)){
+				var someVal;
+				someVal = _.some(childResourcs,function(obj){
+				//help of this we separate specified(selected) child resource from all childResourcs
+					var $html = $('[data-name="field-'+obj.name+'"]');
+					if($html.length > 0){
+						rscName = obj.name;
+						rscDef = obj;
+						return true;
+					}
+				});
+				if(!someVal){
+					rscDef = childResourcs[0];
+					rscName = childResourcs[0].name;
 				}
-			});
-			if(!someVal){
-				rscDef = childResourcs[0];
-				rscName = childResourcs[0].name;
+			}
+			// resource-node have isValidLeaf is true and resource have child node then render that child node permission
+			if(rscDef && rscDef.isValidLeaf && !this.model.has('editMode')) {
+				var hasChiled = _.filter(resChild, function(m){
+					return m.parent == rscName
+				});
+				if(!_.isEmpty(hasChiled)) {
+					rscDef = hasChiled[0];
+					rscName = hasChiled[0].name;
+					this.childRscDef(resChild , rscName, rscDef);
+				}
 			}
 			return  ((rscDef.isValidLeaf) ? _.findWhere(resChild, {'name':rscName }) : this.childRscDef(resChild , rscName))
 		},
@@ -440,7 +478,7 @@ define(function(require) {
 					if(_.isNull(values) || _.isEmpty(values)){
 						$(this).empty();
 						that.model.unset('accesses');
-						that.ui.addPermissionsSpan.find('i').attr('class', 'icon-plus');
+						that.ui.addPermissionsSpan.find('i').attr('class', 'fa-fw fa fa-plus');
 						that.ui.addPermissionsSpan.attr('title','add');
 						//disable Masking option for tag based
 						if(XAUtil.isMaskingPolicy(that.rangerPolicyType)){
@@ -463,14 +501,9 @@ define(function(require) {
 						if(!_.isUndefined(id)){
 							var obj = _.findWhere(srcData,{'value' : id});
 							permTypeArr.push({permType : obj.value});
-							return "<span class='label label-info'>" + id.substr(0,id.indexOf(":")).toUpperCase() + "</span>";
+							return "<span class='badge badge-info'>" + id.substr(0,id.indexOf(":")).toUpperCase() + "</span>";
 						}
 					});
-					var perms = []
-					if(that.model.has('accesses')){
-							perms = that.model.get('accesses');
-					}
-					
 					var items=[];
 					_.each(that.accessItems, function(item){ 
 						if($.inArray( item.type, values) >= 0){
@@ -481,7 +514,7 @@ define(function(require) {
 					// Save form data to model
 					that.model.set('accesses', items);
 					$(this).html(_.uniq(valArr).join(" "));
-					that.ui.addPermissionsSpan.find('i').attr('class', 'icon-pencil');
+					that.ui.addPermissionsSpan.find('i').attr('class', 'fa-fw fa fa-pencil');
 					that.ui.addPermissionsSpan.attr('title','edit');
 					
 					//enabling add masking option for Tag-based
@@ -492,24 +525,31 @@ define(function(require) {
 						that.renderMaskingTypesForTagBasedPolicies(selectedComponent)
 					}
 				},
-			}).on('hide',function(e){
-					$(e.currentTarget).parent().find('.tag-fixed-popover-wrapper').remove()
+			}).on('hidden',function(e){
+					// $(e.currentTarget).parent().find('.tag-condition-popover').remove()
+					$('.popover').parent().remove()
 			}).on('click', function(e) {
 				e.stopPropagation();
-				e.preventDefault();
-				that.clickOnPermissions(that);
+				if($('.popover')){
+					$('.tag-condition-popover').remove()
+				}
+//				e.preventDefault();
+//				that.clickOnPermissions(that);
 				 //Sticky popup
-				var pop = $(this).parent('td').find('.popover')
+				var pop = $('.popover')
 				pop.wrap('<div class="tag-fixed-popover-wrapper"></div>');
 				pop.addClass('tag-fixed-popover');
 				pop.find('.arrow').removeClass('arrow')
 			});
 			that.ui.addPermissionsSpan.click(function(e) {
 				e.stopPropagation();
+				if($('.popover')){
+					$('.tag-condition-popover').remove()
+				}
 				that.$('a[data-js="permissions"]').editable('toggle');
 //				that.clickOnPermissions(that);
 				
-				var pop = $(this).parent('td').find('.popover')
+				var pop = $('.popover')
 				pop.wrap('<div class="tag-fixed-popover-wrapper"></div>');
 				pop.addClass('tag-fixed-popover');
 				pop.find('.arrow').removeClass('arrow')
@@ -520,7 +560,7 @@ define(function(require) {
 			var that = this, perms = [];
 			this.ui.addPerms.attr('data-type','radiolist')
 			this.ui.addPerms.attr('title','Components Permissions')
-			this.ui.delegatedAdmin.parent('td').hide();
+//			this.ui.delegatedAdmin.parent('td').hide();
 			
 			var maskingTypes = this.rangerServiceDefModel.get('dataMaskDef').maskTypes;
 			//get selected components masking types
@@ -537,14 +577,15 @@ define(function(require) {
 					maskTypeVal = $.inArray(maskTypeVal.substr(0,maskTypeVal.indexOf(":")), accessTypeSelectedComp) >= 0 ? maskTypeVal : [];
 				}
 			}
-			//Reset Add Masking Options
-			this.ui.maskingType.editable("setValue",null);
-			this.ui.maskingType.editable("destroy");
-			that.ui.addMaskingTypeSpan.unbind( "click" );
+                        if(accessTypeSelectedComp || _.isEmpty(accessTypeSelectedComp)){
+                            this.ui.maskingType.editable("destroy");
+                        }
+                        that.ui.addMaskingTypeSpan.unbind( "click" );
 			this.$el.find('input[data-id="maskTypeCustom"]').unbind( "change" );
-			that.ui.addMaskingTypeSpan.find('i').attr('class', 'icon-plus');
+			that.ui.addMaskingTypeSpan.find('i').attr('class', 'fa-fw fa fa-plus');
 			that.ui.addMaskingTypeSpan.attr('title','add');
-			this.$el.find('input[data-id="maskTypeCustom"]').css("display","none");
+                        this.$el.find('input[data-id="maskTypeCustom"]').css("display","none");
+
 			//create x-editable for permissions
 			this.ui.maskingType.editable({
 			    emptytext : 'Add Mask Type',
@@ -556,8 +597,7 @@ define(function(require) {
 				display: function(value,srcData) {
 					if(_.isNull(value) || _.isUndefined(value) || _.isEmpty(value)){
 						$(this).empty();
-//						that.model.unset('accesses');
-						that.ui.addPermissionsSpan.find('i').attr('class', 'icon-plus');
+						that.ui.addPermissionsSpan.find('i').attr('class', 'fa-fw fa fa-plus');
 						that.ui.addPermissionsSpan.attr('title','add');
 						return;
 					}
@@ -573,19 +613,21 @@ define(function(require) {
 						$(this).siblings('[data-id="maskTypeCustom"]').val(" ");
 					}
 					
-					$(this).html("<span class='label label-info'>"+ value.substr(0,value.indexOf(":")).toUpperCase() +" : "
+					$(this).html("<span class='badge badge-info'>"+ value.substr(0,value.indexOf(":")).toUpperCase() +" : "
 							+ obj.text +"</span>");
-					that.ui.addMaskingTypeSpan.find('i').attr('class', 'icon-pencil');
+					that.ui.addMaskingTypeSpan.find('i').attr('class', 'fa-fw fa fa-pencil');
 					that.ui.addMaskingTypeSpan.attr('title','edit');
 				},
 			}).on('hide',function(e){
-					$(e.currentTarget).parent().find('.tag-fixed-popover-wrapper').remove()
-			}).on('click', function(e) {
-				e.stopPropagation();
-				e.preventDefault();
-			});
+					//$(e.currentTarget).parent().find('.tag-fixed-popover-wrapper').remove()
+					$('.popover').parent().remove()
+                        }).on('click', function(e) {
+                            e.stopPropagation();
+                            e.preventDefault();
+                        });
 			that.ui.addMaskingTypeSpan.click(function(e) {
 				e.stopPropagation();
+                                 e.preventDefault();
 				if(!that.accessPermSetForTagMasking){
 					XAUtil.alertPopup({ msg :localization.tt('msg.pleaseSelectAccessTypeForTagMasking') });
 					return;
@@ -603,29 +645,30 @@ define(function(require) {
 		},
 		clickOnPermissions : function(that) {
 			var selectAll = true;
-			var checklist = that.$('.editable-checklist').find('input[type="checkbox"]')
-			
-			_.each(checklist,function(checkbox){ if($(checkbox).val() != -1 && !$(checkbox).is(':checked')) selectAll = false;})
+			var checklist = $('.editable-checklist').find('input[type="checkbox"]')
+            _.each(checklist,function(checkbox){
+                if($(checkbox).val() != -1 && !$(checkbox).is(':checked'))
+                    selectAll = false;
+            })
 			if(selectAll){
-				that.$('.editable-checklist').find('input[type="checkbox"][value="-1"]').prop('checked',true)
+				$('.editable-checklist').find('input[type="checkbox"][value="-1"]').prop('checked',true)
 			} else {
-				that.$('.editable-checklist').find('input[type="checkbox"][value="-1"]').prop('checked',false)
+				$('.editable-checklist').find('input[type="checkbox"][value="-1"]').prop('checked',false)
 			}
 			//for selectAll functionality
-			that.$('input[type="checkbox"][value="-1"]').click(function(e){
-				var checkboxlist =$(this).closest('.editable-checklist').find('input[type="checkbox"][value!=-1]')
-				$(this).is(':checked') ? checkboxlist.prop('checked',true) : checkboxlist.prop('checked',false); 
-				
-			});
-			that.$('.editable-checklist input[type="checkbox"]').click(function(e){
+                        $('input[type="checkbox"][value="-1"]').click(function(e){
+                var checkboxlist =$(this).closest('.editable-checklist').find('input[type="checkbox"][value!=-1]')
+                $(this).is(':checked') ? checkboxlist.prop('checked',true) : checkboxlist.prop('checked',false);
+            });
+			$('.editable-checklist input[type="checkbox"]').click(function(e){
 				if(this.value!="-1"){
 					var selectAll = true;
-					that.$('.editable-checklist input[type="checkbox"]').each(function(index,item){
+					$('.editable-checklist input[type="checkbox"]').each(function(index,item){
 						if(item.value!="-1" && !item.checked){
 							selectAll = false;
 						}
 					});
-					that.$('input[type="checkbox"][value="-1"]').prop('checked',selectAll);
+					$('input[type="checkbox"][value="-1"]').prop('checked',selectAll);
 				}
 			});
 		},
@@ -635,8 +678,16 @@ define(function(require) {
 			if(this.policyConditions.length > 0){
 				var tmpl = _.map(this.policyConditions,function(obj){
 					if(!_.isUndefined(obj.evaluatorOptions) && !_.isUndefined(obj.evaluatorOptions['ui.isMultiline']) && Boolean(obj.evaluatorOptions['ui.isMultiline'])){
-						return '<div class="editable-address margin-bottom-5"><label style="display:block !important;"><span>'+obj.label+' : </span><i title="JavaScript Condition Examples :\ncountry_code == \'USA\', time_range >= 900 && time_range <= 1800 etc." class="icon-info-sign" style="float: right;margin-top: 6px;"></i>\
-						</label><textarea name="'+obj.name+'" placeholder="Please enter condtion.."></textarea></div>'
+						return '<div class="editable-address margin-bottom-5">\
+						            <label style="display:block !important;">\
+						                <span>'+obj.label+' : </span>\
+						                <i title="'+localization.tt('validationMessages.jsValidationMsg')+'" class="fa-fw fa fa-info-circle" style="float: right;margin-top: 6px;"></i>\
+						            </label>\
+						            <textarea class="textAreaContainer" name="'+obj.name+'" placeholder="Please enter condition.."></textarea>\
+						            <div class="jsValidation">\
+						                <a href="javascript:;"class="jsValidationCheck btn btn-defult btn-sm" style="margin: 5px">Syntax check</a>\
+						            </div>\
+						       </div>'
 					}
 					return '<div class="editable-address margin-bottom-5"><label style="display:block !important;"><span>'+obj.label+' : </span></label><input type="text" name="'+obj.name+'" ></div>'
 						
@@ -660,7 +711,7 @@ define(function(require) {
 					emptytext : 'Add Conditions',
 					value : this.conditions,
 					display: function(value) {
-						var continue_ = false, i = 0;
+						var continue_ = false, i = 0, cond = [];
 						if(!value) {
 							$(this).empty();
 							return; 
@@ -670,37 +721,41 @@ define(function(require) {
 						if(continue_){
 							//Generate html to show on UI
 							var html = _.map(value, function(val,name) {
-								var label = (i%2 == 0) ? 'label label-inverse' : 'label';
+								var label = (i%2 == 0) ? 'badge badge-dark' : 'label';
 								if(_.isEmpty(val)){
 									return ''; 
 								}
 								//Add label for policy condition
-								var pcond = _.findWhere(that.multiLinecond, { 'name': name})
+								var pcond = _.findWhere(that.multiLinecond, { 'name': name});
 								if(!_.isUndefined(pcond) && !_.isUndefined(pcond['evaluatorOptions']) 
 										&& ! _.isUndefined(pcond['evaluatorOptions']["ui.isMultiline"]) 
 										&& ! _.isUndefined(pcond['evaluatorOptions']['engineName'])){
-									val = 	pcond['evaluatorOptions']['engineName'] + ' Condition'
+									cond.push({ 'type' : name, 'values' : !_.isArray(val) ? [val] : val });
+									val = 	pcond['evaluatorOptions']['engineName'] + ' Condition';
+								} else {
+									cond.push({ 'type' : name, 'values' : !_.isArray(val) ?  val.split(',') : val });
 								}
 								i++;
-                                                                return '<span class="'+label+' white-space-normal" >'+name+' : '+ _.escape(val) + '</span>';
+                                return '<span class="'+label+' white-space-normal" >'+name+' : '+ _.escape(val) + '</span>';
 							});
-							var cond = _.map(value, function(val, name) {
-                                                                return {'type' : name, 'values' : !_.isArray(val) ?  val.split(',') : val};
-							});
-							
 							that.model.set('conditions', cond);
 							$(this).html(html);
-							that.ui.addConditionsSpan.find('i').attr('class', 'icon-pencil');
+							that.ui.addConditionsSpan.find('i').attr('class', 'fa-fw fa fa-pencil');
 							that.ui.addConditionsSpan.attr('title','edit');
 						} else {
 							that.model.unset('conditions');
 							$(this).empty();
-							that.ui.addConditionsSpan.find('i').attr('class', 'icon-plus');
+							that.ui.addConditionsSpan.find('i').attr('class', 'fa-fw fa fa-plus');
 							that.ui.addConditionsSpan.attr('title','add');
 						}
 					},
 					validate:function(value){
-						var error = {'flag' : false};
+					    if(that.$el.find('.textAreaContainer').hasClass('errorClass') ||
+					            that.$el.find('.jsValidation span').hasClass('validSyntax')){
+					        that.$el.find('.textAreaContainer').removeClass('errorClass');
+					        that.$el.find('.jsValidation').find('span').remove();
+                        }
+					    var error = {'flag' : false};
 						_.each(value, function(val, name){
 							var tmp = _.findWhere(that.multiLinecond, { 'name' : name});
 							if(!_.isUndefined(tmp)){
@@ -723,17 +778,48 @@ define(function(require) {
 							return error.message;
 						}
 				    },
+				}).on('shown' , function(e, editable) {
+				    $('.popover').addClass('tag-condition-popover');
+				    $('.jsValidationCheck').on('click',function(e){
+				        e.stopPropagation();
+				        var $textArea = $(e.currentTarget).parent().parent();
+				        if($('.editableform div.form-group').hasClass('error')){
+				            $('.editableform div.form-group').removeClass('error');
+				            $('.editable-error-block').remove();
+				        }
+				        if($textArea.find('.textAreaContainer').hasClass('errorClass') || $textArea.find('.jsValidation span').hasClass('validSyntax')){
+				            $textArea.find('.textAreaContainer').removeClass('errorClass');
+				            $textArea.find('.jsValidation').find('span').remove();
+				        }
+				        var tmp = $textArea.find('textarea').val();
+                        if(!_.isUndefined(tmp) && ! _.isEmpty(tmp)){
+				            var errorMessage;
+                            try {
+                                var t = esprima.parse(tmp);
+                            }catch(e){
+                                errorMessage = e.message;
+                            }
+                            if(!_.isUndefined(errorMessage)){
+                                $textArea.find('.textAreaContainer').addClass('errorClass');
+                                $textArea.find('.jsValidation').append('<span class="text-color-red">'+errorMessage+'</span>');
+                            }else{
+                                $textArea.find('.jsValidation').append('<span class="validSyntax">valid javascript condition</span>');
+                            }
+                        }
+				    })
 				});
 				that.ui.addConditionsSpan.click(function(e) {
 					e.stopPropagation();
 					that.$('#policyConditions').editable('toggle');
+					$('.popover').addClass('tag-condition-popover');
 				});
-				
+			}else{
+			    that.model.unset('conditions');
 			}
 		},
-		getSelectedValues : function($select, typeGroup){
+                getSelectedValues : function($select, type){
 			var vals = [],selectedVals = [];
-			var name = typeGroup ? 'group' : 'user';
+                        var name = (type == 'users') ? 'user' : ((type == 'groups') ? 'group' : 'role');
 			if(!_.isEmpty($select.select2('data'))){
 				selectedVals = _.map($select.select2('data'),function(obj){ return obj.text; });
 			}
@@ -749,8 +835,10 @@ define(function(require) {
 			var $el = $(e.currentTarget);
 			XAUtil.checkDirtyFieldForToggle($el);
 			//Set Delegated Admin value 
-			if(!_.isUndefined($el.find('input').data('js'))){
-				this.model.set('delegateAdmin',$el.is(':checked'));
+			if($el.is(':checked')){
+			    this.model.set('delegateAdmin',$el.is(':checked'));
+			}else{
+			    this.model.unset('delegateAdmin');
 			}
 			//select/deselect all functionality
 			if(this.checkAll($el.find('input[type="checkbox"][value!="-1"]'))){
@@ -814,7 +902,7 @@ define(function(require) {
 					if(_.isNull(value) || _.isEmpty(value)){
 						$(this).empty();
 						that.model.unset('dataMaskInfo');
-						that.ui.addMaskingTypeSpan.find('i').attr('class', 'icon-plus');
+						that.ui.addMaskingTypeSpan.find('i').attr('class', 'fa-fw fa fa-plus');
 						that.ui.addMaskingTypeSpan.attr('title','add');
 						return;
 					}
@@ -830,8 +918,8 @@ define(function(require) {
                                                 $(this).siblings('[data-id="maskTypeCustom"]').val(" ")
 					}
 					
-					$(this).html("<span class='label label-info'>" + obj.text + "</span>");
-					that.ui.addMaskingTypeSpan.find('i').attr('class', 'icon-pencil');
+					$(this).html("<span class='badge badge-info'>" + obj.text + "</span>");
+					that.ui.addMaskingTypeSpan.find('i').attr('class', 'fa-fw fa fa-pencil');
 					that.ui.addMaskingTypeSpan.attr('title','edit');
 				},
 			}).on('click', function(e) {
@@ -859,13 +947,13 @@ define(function(require) {
 					if(_.isNull(value) || _.isEmpty(value)){
 						$(this).empty();
 						that.model.unset('rowFilterInfo');
-						that.ui.addRowFilterSpan.find('i').attr('class', 'icon-plus');
+						that.ui.addRowFilterSpan.find('i').attr('class', 'fa-fw fa fa-plus');
 						that.ui.addRowFilterSpan.attr('title','add');
 						return;
 					}	
 					that.model.set('rowFilterInfo', {'filterExpr': value });
-					$(this).html("<span class='label label-info'>" + _.escape(value) + "</span>");
-					that.ui.addRowFilterSpan.find('i').attr('class', 'icon-pencil');
+					$(this).html("<span class='badge badge-info'>" + _.escape(value) + "</span>");
+					that.ui.addRowFilterSpan.find('i').attr('class', 'fa-fw fa fa-pencil');
 					that.ui.addRowFilterSpan.attr('title','edit');
 				},
 			}).on('click', function(e) {
@@ -951,6 +1039,7 @@ define(function(require) {
 			}
 			permList.unshift(localization.tt('lbl.selectUser'));
 			permList.unshift(localization.tt('lbl.selectGroup'));
+                        permList.unshift(localization.tt('lbl.selectRole'));
 			permList.push("");
 			return permList;
 		},

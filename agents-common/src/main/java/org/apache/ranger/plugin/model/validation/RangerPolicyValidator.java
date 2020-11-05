@@ -33,10 +33,12 @@ import org.apache.ranger.plugin.model.RangerPolicy.RangerPolicyItemAccess;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerPolicyResource;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerRowFilterPolicyItem;
 import org.apache.ranger.plugin.model.RangerPolicyResourceSignature;
+import org.apache.ranger.plugin.model.RangerSecurityZone;
 import org.apache.ranger.plugin.model.RangerService;
 import org.apache.ranger.plugin.model.RangerServiceDef;
 import org.apache.ranger.plugin.model.RangerServiceDef.RangerAccessTypeDef;
 import org.apache.ranger.plugin.model.RangerServiceDef.RangerResourceDef;
+import org.apache.ranger.plugin.model.RangerValiditySchedule;
 import org.apache.ranger.plugin.store.ServiceStore;
 
 public class RangerPolicyValidator extends RangerValidator {
@@ -92,7 +94,7 @@ public class RangerPolicyValidator extends RangerValidator {
 					.becauseOf(error.getMessage("id"))
 					.build());
 			valid = false;
-		} else if (getPolicy(id) == null) {
+		} else if (policyExists(id)) {
 			if (LOG.isDebugEnabled()) {
 				LOG.debug("No policy found for id[" + id + "]! ok!");
 			}
@@ -123,6 +125,19 @@ public class RangerPolicyValidator extends RangerValidator {
 				.build());
 			valid = false;
 		} else {
+			Integer priority = policy.getPolicyPriority();
+			if (priority != null) {
+				if (priority < RangerPolicy.POLICY_PRIORITY_NORMAL || priority > RangerPolicy.POLICY_PRIORITY_OVERRIDE) {
+					ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_POLICY_INVALID_PRIORITY;
+					failures.add(new ValidationFailureDetailsBuilder()
+							.field("policyPriority")
+							.isSemanticallyIncorrect()
+							.becauseOf(error.getMessage("out of range"))
+							.errorCode(error.getErrorCode())
+							.build());
+					valid = false;
+				}
+			}
 			Long id = policy.getId();
 			RangerPolicy existingPolicy = null;
 
@@ -151,8 +166,81 @@ public class RangerPolicyValidator extends RangerValidator {
 					valid = false;
 				}
 			}
-			String policyName = policy.getName();
+			String policyName  = policy.getName();
 			String serviceName = policy.getService();
+			String policyServicetype = policy.getServiceType();
+			String zoneName    = policy.getZoneName();
+
+			RangerService service = null;
+			RangerSecurityZone zone = null;
+			boolean serviceNameValid = false;
+			if (StringUtils.isBlank(serviceName)) {
+				ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_MISSING_FIELD;
+				failures.add(new ValidationFailureDetailsBuilder()
+						.field("service name")
+						.isMissing()
+						.becauseOf(error.getMessage("service name"))
+						.errorCode(error.getErrorCode())
+						.build());
+				valid = false;
+			} else {
+				service = getService(serviceName);
+				if (service == null) {
+					ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_INVALID_SERVICE_NAME;
+					failures.add(new ValidationFailureDetailsBuilder()
+							.field("service name")
+							.isSemanticallyIncorrect()
+							.becauseOf(error.getMessage(serviceName))
+							.errorCode(error.getErrorCode())
+							.build());
+					valid = false;
+				} else {
+					serviceNameValid = true;
+
+					String serviceType = service.getType();
+
+					if (StringUtils.isNotEmpty(serviceType) && StringUtils.isNotEmpty(policyServicetype)) {
+						if (!serviceType.equalsIgnoreCase(policyServicetype)) {
+							ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_INVALID_SERVICE_TYPE;
+
+							failures.add(new ValidationFailureDetailsBuilder()
+									.field("service type")
+									.isSemanticallyIncorrect()
+									.becauseOf(error.getMessage(policyServicetype,serviceName))
+									.errorCode(error.getErrorCode())
+									.build());
+							valid = false;
+						}
+					}
+				}
+			}
+
+			if (StringUtils.isNotEmpty(zoneName)) {
+				zone = getSecurityZone(zoneName);
+				if (zone == null) {
+					ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_NONEXISTANT_ZONE_NAME;
+					failures.add(new ValidationFailureDetailsBuilder()
+							.field("zoneName")
+							.isSemanticallyIncorrect()
+							.becauseOf(error.getMessage(id, zoneName))
+							.errorCode(error.getErrorCode())
+							.build());
+					valid = false;
+				}
+				List<String> tagSvcList = zone.getTagServices();
+				Set<String> svcNameSet = zone.getServices().keySet();
+				if(!svcNameSet.contains(serviceName) && !tagSvcList.contains(serviceName)){
+					ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_SERVICE_NOT_ASSOCIATED_TO_ZONE;
+					failures.add(new ValidationFailureDetailsBuilder()
+							.field("zoneName")
+							.isSemanticallyIncorrect()
+							.becauseOf(error.getMessage(serviceName, zoneName))
+							.errorCode(error.getErrorCode())
+							.build());
+					valid = false;
+				}
+			}
+
 			if (StringUtils.isBlank(policyName)) {
 				ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_MISSING_FIELD;
 				failures.add(new ValidationFailureDetailsBuilder()
@@ -163,67 +251,36 @@ public class RangerPolicyValidator extends RangerValidator {
 					.build());
 				valid = false;
 			} else {
-				List<RangerPolicy> policies = getPolicies(serviceName, policyName);
-				if (CollectionUtils.isNotEmpty(policies)) {
-					if (policies.size() > 1) {
-						ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_POLICY_NAME_MULTIPLE_POLICIES_WITH_SAME_NAME;
-						failures.add(new ValidationFailureDetailsBuilder()
-							.field("name")
-							.isAnInternalError()
-							.becauseOf(error.getMessage(policyName))
-							.errorCode(error.getErrorCode())
-							.build());
-						valid = false;
-					} else if (action == Action.CREATE) { // size == 1
-						ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_POLICY_NAME_CONFLICT;
-						failures.add(new ValidationFailureDetailsBuilder()
-							.field("policy name")
-							.isSemanticallyIncorrect()
-							.becauseOf(error.getMessage(policies.iterator().next().getId(), serviceName))
-							.errorCode(error.getErrorCode())
-							.build());
-						valid = false;
-					} else if (!policies.iterator().next().getId().equals(id)) { // size == 1 && action == UPDATE
-						ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_POLICY_NAME_CONFLICT;
-						failures.add(new ValidationFailureDetailsBuilder()
-							.field("id/name")
-							.isSemanticallyIncorrect()
-							.becauseOf(error.getMessage(policies.iterator().next().getId(), serviceName))
-							.errorCode(error.getErrorCode())
-							.build());
-						valid = false;
+				if (service != null && (StringUtils.isEmpty(zoneName) || zone != null)) {
+					Long zoneId = zone != null ? zone.getId() : RangerSecurityZone.RANGER_UNZONED_SECURITY_ZONE_ID;
+					Long policyId = getPolicyId(service.getId(), policyName, zoneId);
+
+					if (policyId != null) {
+						if (action == Action.CREATE) {
+							ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_POLICY_NAME_CONFLICT;
+							failures.add(new ValidationFailureDetailsBuilder()
+									.field("policy name")
+									.isSemanticallyIncorrect()
+									.becauseOf(error.getMessage(policyId, serviceName))
+									.errorCode(error.getErrorCode())
+									.build());
+							valid = false;
+						} else if (!policyId.equals(id)) { // action == UPDATE
+							ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_POLICY_NAME_CONFLICT;
+							failures.add(new ValidationFailureDetailsBuilder()
+									.field("id/name")
+									.isSemanticallyIncorrect()
+									.becauseOf(error.getMessage(policyId, serviceName))
+									.errorCode(error.getErrorCode())
+									.build());
+							valid = false;
+						}
 					}
-				}
-			}
-			RangerService service = null;
-			boolean serviceNameValid = false;
-			if (StringUtils.isBlank(serviceName)) {
-				ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_MISSING_FIELD;
-				failures.add(new ValidationFailureDetailsBuilder()
-					.field("service name")
-					.isMissing()
-					.becauseOf(error.getMessage("service name"))
-					.errorCode(error.getErrorCode())
-					.build());
-				valid = false;
-			} else {
-				service = getService(serviceName);
-				if (service == null) {
-					ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_INVALID_SERVICE_NAME;
-					failures.add(new ValidationFailureDetailsBuilder()
-						.field("service name")
-						.isSemanticallyIncorrect()
-						.becauseOf(error.getMessage(serviceName))
-						.errorCode(error.getErrorCode())
-						.build());
-					valid = false;
-				} else {
-					serviceNameValid = true;
 				}
 			}
 
 			if(existingPolicy != null) {
-				if(! StringUtils.equalsIgnoreCase(existingPolicy.getService(), policy.getService())) {
+				if (!StringUtils.equalsIgnoreCase(existingPolicy.getService(), policy.getService())) {
 					ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_POLICY_UPDATE_MOVE_SERVICE_NOT_ALLOWED;
 					failures.add(new ValidationFailureDetailsBuilder()
 							.field("service name")
@@ -237,7 +294,7 @@ public class RangerPolicyValidator extends RangerValidator {
 				int existingPolicyType = existingPolicy.getPolicyType() == null ? RangerPolicy.POLICY_TYPE_ACCESS : existingPolicy.getPolicyType();
 				int policyType         = policy.getPolicyType() == null ? RangerPolicy.POLICY_TYPE_ACCESS : policy.getPolicyType();
 
-				if(existingPolicyType != policyType) {
+				if (existingPolicyType != policyType) {
 					ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_POLICY_TYPE_CHANGE_NOT_ALLOWED;
 					failures.add(new ValidationFailureDetailsBuilder()
 							.field("policy type")
@@ -246,6 +303,21 @@ public class RangerPolicyValidator extends RangerValidator {
 							.errorCode(error.getErrorCode())
 							.build());
 					valid = false;
+				}
+
+				String existingZoneName = existingPolicy.getZoneName();
+
+				if (StringUtils.isNotEmpty(zoneName) || StringUtils.isNotEmpty(existingZoneName)) {
+					if (!StringUtils.equals(existingZoneName, zoneName)) {
+						ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_UPDATE_ZONE_NAME_NOT_ALLOWED;
+						failures.add(new ValidationFailureDetailsBuilder()
+								.field("zoneName")
+								.isSemanticallyIncorrect()
+								.becauseOf(error.getMessage(existingZoneName, zoneName))
+								.errorCode(error.getErrorCode())
+								.build());
+						valid = false;
+					}
 				}
 			}
 
@@ -298,6 +370,17 @@ public class RangerPolicyValidator extends RangerValidator {
 						.build());
 					valid = false;
 				} else {
+					if (Boolean.TRUE.equals(policy.getIsDenyAllElse())) {
+						if (CollectionUtils.isNotEmpty(policy.getDenyPolicyItems()) || CollectionUtils.isNotEmpty(policy.getDenyExceptions())) {
+							ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_UNSUPPORTED_POLICY_ITEM_TYPE;
+							failures.add(new ValidationFailureDetailsBuilder()
+									.field("policy items")
+									.becauseOf(error.getMessage())
+									.errorCode(error.getErrorCode())
+									.build());
+							valid = false;
+						}
+					}
 					valid = isValidPolicyItems(policy.getPolicyItems(), failures, serviceDef) && valid;
 					valid = isValidPolicyItems(policy.getDenyPolicyItems(), failures, serviceDef) && valid;
 					valid = isValidPolicyItems(policy.getAllowExceptions(), failures, serviceDef) && valid;
@@ -306,6 +389,7 @@ public class RangerPolicyValidator extends RangerValidator {
 			}
 
 			if (serviceNameValid) { // resource checks can't be done meaningfully otherwise
+				valid = isValidValiditySchedule(policy, failures, action) && valid;
 				valid = isValidResources(policy, failures, action, isAdmin, serviceDef) && valid;
 				valid = isValidAccessTypeDef(policy, failures, action, isAdmin, serviceDef) && valid;
 			}
@@ -413,7 +497,41 @@ public class RangerPolicyValidator extends RangerValidator {
 		}
 		return valid;
 	}
-	
+
+	boolean isValidValiditySchedule(RangerPolicy policy, final List<ValidationFailureDetails> failures, Action action) {
+
+		boolean valid = true;
+		if (LOG.isDebugEnabled()) {
+			LOG.debug(String.format("==> RangerPolicyValidator.isValidValiditySchedule(%s, %s, %s)", policy, failures, action));
+		}
+		List<RangerValiditySchedule> validitySchedules = policy.getValiditySchedules();
+		List<RangerValiditySchedule> normalizedValiditySchedules = null;
+
+		for (RangerValiditySchedule entry : validitySchedules) {
+			RangerValidityScheduleValidator validator = new RangerValidityScheduleValidator(entry);
+
+			RangerValiditySchedule normalizedValiditySchedule = validator.validate(failures);
+			if (normalizedValiditySchedule == null) {
+				valid = false;
+				if (LOG.isDebugEnabled()) {
+					LOG.debug("Invalid Validity-Schedule:[" + entry +"]");
+				}
+			} else {
+				if (normalizedValiditySchedules == null) {
+					normalizedValiditySchedules = new ArrayList<>();
+				}
+				normalizedValiditySchedules.add(normalizedValiditySchedule);
+			}
+		}
+		if (valid && CollectionUtils.isNotEmpty(normalizedValiditySchedules)) {
+			policy.setValiditySchedules(normalizedValiditySchedules);
+		}
+		if (LOG.isDebugEnabled()) {
+			LOG.debug(String.format("<== RangerPolicyValidator.isValidValiditySchedule(%s, %s, %s): %s", policy, failures, action, valid));
+		}
+		return valid;
+	}
+
 	boolean isPolicyResourceUnique(RangerPolicy policy, final List<ValidationFailureDetails> failures, Action action) {
 		
 		if(LOG.isDebugEnabled()) {
@@ -456,7 +574,8 @@ public class RangerPolicyValidator extends RangerValidator {
 		}
 
 		boolean valid = true;
-		Set<String> policyResources = getPolicyResources(policy);
+		convertPolicyResourceNamesToLower(policy);
+		Set<String> policyResources = policy.getResources().keySet();
 
 		RangerServiceDefHelper defHelper = new RangerServiceDefHelper(serviceDef);
 		Set<List<RangerResourceDef>> hierarchies = defHelper.getResourceHierarchies(policy.getPolicyType()); // this can be empty but not null!
@@ -819,10 +938,10 @@ public class RangerPolicyValidator extends RangerValidator {
 				valid = isValidItemAccesses(policyItem.getAccesses(), failures, serviceDef) && valid;
 			}
 			// both users and user-groups collections can't be empty
-			if (CollectionUtils.isEmpty(policyItem.getUsers()) && CollectionUtils.isEmpty(policyItem.getGroups())) {
+			if (CollectionUtils.isEmpty(policyItem.getUsers()) && CollectionUtils.isEmpty(policyItem.getGroups()) && CollectionUtils.isEmpty(policyItem.getRoles())) {
 				ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_MISSING_USER_AND_GROUPS;
 				failures.add(new ValidationFailureDetailsBuilder()
-					.field("policy item users/user-groups")
+					.field("policy item users/user-groups/roles")
 					.isMissing()
 					.becauseOf(error.getMessage())
 					.errorCode(error.getErrorCode())
@@ -891,15 +1010,20 @@ public class RangerPolicyValidator extends RangerValidator {
 					.errorCode(error.getErrorCode())
 					.build());
 				valid = false;
-			} else if (!accessTypes.contains(accessType.toLowerCase())) {
-				ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_POLICY_ITEM_ACCESS_TYPE_INVALID;
-				failures.add(new ValidationFailureDetailsBuilder()
-					.field("policy item access type")
-					.isSemanticallyIncorrect()
-					.becauseOf(error.getMessage(accessType, accessTypes))
-					.errorCode(error.getErrorCode())
-					.build());
-				valid = false;
+			} else {
+				String matchedAccessType = getMatchedAccessType(accessType, accessTypes);
+				if (StringUtils.isEmpty(matchedAccessType)) {
+					ValidationErrorCode error = ValidationErrorCode.POLICY_VALIDATION_ERR_POLICY_ITEM_ACCESS_TYPE_INVALID;
+					failures.add(new ValidationFailureDetailsBuilder()
+							.field("policy item access type")
+							.isSemanticallyIncorrect()
+							.becauseOf(error.getMessage(accessType, accessTypes))
+							.errorCode(error.getErrorCode())
+							.build());
+					valid = false;
+				} else {
+					access.setType(matchedAccessType);
+				}
 			}
 			Boolean isAllowed = access.getIsAllowed();
 			// it can be null (which is treated as allowed) but not false
@@ -919,5 +1043,16 @@ public class RangerPolicyValidator extends RangerValidator {
 			LOG.debug(String.format("<== RangerPolicyValidator.isValidPolicyItemAccess(%s, %s, %s): %s", access, failures, accessTypes, valid));
 		}
 		return valid;
+	}
+
+	String getMatchedAccessType(String accessType, Set<String> validAccessTypes) {
+		String ret = null;
+		for (String validType : validAccessTypes) {
+			if (StringUtils.equalsIgnoreCase(accessType, validType)) {
+				ret = validType;
+				break;
+			}
+		}
+		return ret;
 	}
 }

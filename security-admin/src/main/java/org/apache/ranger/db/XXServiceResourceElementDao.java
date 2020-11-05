@@ -26,7 +26,9 @@ import javax.persistence.NoResultException;
 
 import org.apache.ranger.common.db.BaseDao;
 import org.apache.ranger.entity.XXServiceResourceElement;
+import org.springframework.stereotype.Service;
 
+@Service
 public class XXServiceResourceElementDao extends BaseDao<XXServiceResourceElement> {
 
 	public XXServiceResourceElementDao(RangerDaoManagerBase daoManager) {
@@ -72,16 +74,4 @@ public class XXServiceResourceElementDao extends BaseDao<XXServiceResourceElemen
 		}
 	}
 
-	public List<XXServiceResourceElement> findForServicePlugin(Long serviceId) {
-		if (serviceId == null) {
-			return new ArrayList<XXServiceResourceElement>();
-		}
-		try {
-			return getEntityManager().createNamedQuery("XXServiceResourceElement.findForServicePlugin", tClass)
-					.setParameter("serviceId", serviceId)
-					.getResultList();
-		} catch (NoResultException e) {
-			return new ArrayList<XXServiceResourceElement>();
-		}
-	}
 }

@@ -49,6 +49,13 @@ define(function(require){
 		return vXPortalUser;
 	};
 
+	SessionMgr.updateUserProfile = function() {
+		if (vXPortalUser){
+			vXPortalUser.getUserProfile({async : false,cache:false}).done(function(data){
+				vXPortalUser.set(data);
+			});
+		}
+	};
 
 	SessionMgr.getLoginId = function() {
 		if (vXPortalUser) {
@@ -114,11 +121,11 @@ define(function(require){
 		MSCacheMgr.resetAll();
 		if (reDirectUser) {
 			// This will ask the browser to redirect
-			window.location.replace("logout.html");
+			window.location.replace("logout");
 		} else {
 			// We will do an implicit logout
 			$.ajax({
-				url : 'logout.html',
+				url : 'logout',
 				type : 'GET',
 				async : false
 			});
@@ -134,5 +141,11 @@ define(function(require){
 	SessionMgr.isUser = function(){
 		return this.userInRole('ROLE_USER') ? true : false;
 	};
+    SessionMgr.isAuditor = function(){
+        return this.userInRole('ROLE_ADMIN_AUDITOR') ? true : false;
+    };
+    SessionMgr.isKMSAuditor = function(){
+        return this.userInRole('ROLE_KEY_ADMIN_AUDITOR') ? true : false;
+    };
 	return SessionMgr;
 });	

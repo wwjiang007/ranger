@@ -25,6 +25,7 @@ import org.apache.hadoop.security.authentication.server.KerberosAuthenticationHa
 import org.apache.hadoop.security.authentication.server.PseudoAuthenticationHandler;
 import org.apache.hadoop.security.authentication.util.*;
 import org.apache.ranger.common.PropertiesUtil;
+import org.apache.ranger.plugin.util.RangerCommonConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,12 +41,13 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletRequestWrapper;
 import javax.servlet.http.HttpServletResponse;
 
+import java.io.EOFException;
 import java.io.IOException;
 import java.security.Principal;
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+
+import static com.google.common.io.ByteStreams.skipFully;
 
 @InterfaceAudience.Private
 @InterfaceStability.Unstable
@@ -105,7 +107,9 @@ public class RangerKrbFilter implements Filter {
   public static final String SIGNER_SECRET_PROVIDER_ATTRIBUTE =
       "signer.secret.provider.object";
 
-  private static final String BROWSER_USER_AGENT_PARAM = "ranger.krb.browser-useragents-regex";	
+  private static final String BROWSER_USER_AGENT_PARAM = "ranger.krb.browser-useragents-regex";
+
+  static final String ALLOW_TRUSTED_PROXY = "ranger.authentication.allow.trustedproxy";
 
   private String[] browserUserAgents;
 
@@ -116,6 +120,7 @@ public class RangerKrbFilter implements Filter {
   private long validity;
   private String cookieDomain;
   private String cookiePath;
+  private String cookieName;
 
   /**
    * <p>Initializes the authentication filter and signer secret provider.</p>
@@ -154,6 +159,7 @@ public class RangerKrbFilter implements Filter {
 
     cookieDomain = config.getProperty(COOKIE_DOMAIN, null);
     cookiePath = config.getProperty(COOKIE_PATH, null);
+    cookieName = config.getProperty(RangerCommonConstants.PROP_COOKIE_NAME, RangerCommonConstants.DEFAULT_COOKIE_NAME);
   }
 
   protected void initializeAuthHandler(String authHandlerClassName, FilterConfig filterConfig)
@@ -428,6 +434,9 @@ public class RangerKrbFilter implements Filter {
     HttpServletRequest httpRequest = (HttpServletRequest) request;
     HttpServletResponse httpResponse = (HttpServletResponse) response;
     boolean isHttps = "https".equals(httpRequest.getScheme());
+    boolean allowTrustedProxy = PropertiesUtil.getBooleanProperty(ALLOW_TRUSTED_PROXY, false);
+    long contentLength = httpRequest.getContentLength();
+
     try {
       boolean newToken = false;
       AuthenticationToken token;
@@ -441,6 +450,7 @@ public class RangerKrbFilter implements Filter {
         authenticationEx = ex;
         token = null;
       }
+
       if (authHandler.managementOperation(token, httpRequest, httpResponse)) {
         if (token == null) {
           if (LOG.isDebugEnabled()) {
@@ -476,7 +486,7 @@ public class RangerKrbFilter implements Filter {
               return (authToken != AuthenticationToken.ANONYMOUS) ? authToken : null;
             }
           };
-          if (newToken && !token.isExpired() && token != AuthenticationToken.ANONYMOUS) {
+          if ((newToken || allowTrustedProxy) && !token.isExpired() && token != AuthenticationToken.ANONYMOUS) {
             String signedToken = signer.sign(token.toString());
             createAuthCookie(httpResponse, signedToken, getCookieDomain(),
                     getCookiePath(), token.getExpires(), isHttps);
@@ -495,6 +505,9 @@ public class RangerKrbFilter implements Filter {
     }
     if (unauthorizedResponse) {
       if (!httpResponse.isCommitted()) {
+        if (LOG.isDebugEnabled()) {
+          LOG.debug("create auth cookie");
+        }
         createAuthCookie(httpResponse, "", getCookieDomain(),
                 getCookiePath(), 0, isHttps);
         // If response code is 401. Then WWW-Authenticate Header should be
@@ -505,26 +518,55 @@ public class RangerKrbFilter implements Filter {
           errCode = HttpServletResponse.SC_FORBIDDEN;
         }
         if (authenticationEx == null) {
-        	String agents = PropertiesUtil.getProperty(BROWSER_USER_AGENT_PARAM, RangerCSRFPreventionFilter.BROWSER_USER_AGENTS_DEFAULT);
+            String agents = PropertiesUtil.getProperty(BROWSER_USER_AGENT_PARAM, RangerCSRFPreventionFilter.BROWSER_USER_AGENTS_DEFAULT);
             if (agents == null) {
               agents = RangerCSRFPreventionFilter.BROWSER_USER_AGENTS_DEFAULT;
             }
             parseBrowserUserAgents(agents);
-        	if(isBrowser(httpRequest.getHeader(RangerCSRFPreventionFilter.HEADER_USER_AGENT))){
-        		((HttpServletResponse)response).setHeader(KerberosAuthenticator.WWW_AUTHENTICATE, "");
-        		filterChain.doFilter(request, response);
-        	}else{
-	        	boolean chk = true;
-	            Collection<String> headerNames = httpResponse.getHeaderNames();
-	            for(String headerName : headerNames){
-	                String value = httpResponse.getHeader(headerName);
-	                if("Set-Cookie".equalsIgnoreCase(headerName) && value.startsWith("RANGERADMINSESSIONID")){
-	                    chk = false;
-	                    break;
-	                }
-	            }
-	            String authHeader = httpRequest.getHeader("Authorization");
-	            if(authHeader == null && chk){
+            String doAsUser = request.getParameter("doAs");
+            if(isBrowser(httpRequest.getHeader(RangerCSRFPreventionFilter.HEADER_USER_AGENT)) &&
+                    (!allowTrustedProxy || (allowTrustedProxy && StringUtils.isEmpty(doAsUser))) ){
+        	  ((HttpServletResponse)response).setHeader(KerberosAuthenticator.WWW_AUTHENTICATE, "");
+                filterChain.doFilter(request, response);
+            }else{
+              if (allowTrustedProxy) {
+                String expectHeader = httpRequest.getHeader("Expect");
+                if (LOG.isDebugEnabled()) {
+                  LOG.debug("expect header in request = " + expectHeader);
+                  LOG.debug("http response code = " + httpResponse.getStatus());
+                }
+                if (expectHeader != null && expectHeader.startsWith("100")) {
+                  if (LOG.isDebugEnabled()) {
+                    LOG.debug("skipping 100 continue!!");
+                  }
+                  if (contentLength <= 0) {
+                    Integer maxContentLen = Integer.MAX_VALUE;
+                    contentLength = maxContentLen.longValue();
+                    try {
+                      if (LOG.isDebugEnabled()) {
+                        LOG.debug("Skipping content length of " + contentLength);
+                      }
+                      skipFully(request.getInputStream(), contentLength);
+                    } catch (EOFException ex) {
+                      LOG.info(ex.getMessage());
+                    }
+                  }
+                }
+              }
+              boolean chk = true;
+              Collection<String> headerNames = httpResponse.getHeaderNames();
+              if (LOG.isDebugEnabled()) {
+                LOG.debug("reponse header names = " + headerNames);
+              }
+              for(String headerName : headerNames){
+                String value = httpResponse.getHeader(headerName);
+                if("Set-Cookie".equalsIgnoreCase(headerName) && value.startsWith(cookieName)){
+                  chk = false;
+                  break;
+                }
+              }
+              String authHeader = httpRequest.getHeader("Authorization");
+              if(authHeader == null && chk){
 	            	filterChain.doFilter(request, response);
 	            }else if(authHeader != null && authHeader.startsWith("Basic")){
 	                filterChain.doFilter(request, response);

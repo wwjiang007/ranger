@@ -21,23 +21,33 @@ package org.apache.ranger.authorization.hive.authorizer;
 
 import java.util.*;
 
+import org.apache.commons.lang.ArrayUtils;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.apache.hadoop.hive.ql.security.authorization.plugin.HiveOperationType;
 import org.apache.ranger.audit.model.AuthzAuditEvent;
 import org.apache.ranger.plugin.audit.RangerDefaultAuditHandler;
 import org.apache.ranger.plugin.model.RangerPolicy;
 import org.apache.ranger.plugin.policyengine.RangerAccessRequest;
 import org.apache.ranger.plugin.policyengine.RangerAccessResource;
 import org.apache.ranger.plugin.policyengine.RangerAccessResult;
-import org.apache.ranger.plugin.policyengine.RangerDataMaskResult;
-import org.apache.ranger.plugin.policyengine.RangerRowFilterResult;
 
 import com.google.common.collect.Lists;
 
 public class RangerHiveAuditHandler extends RangerDefaultAuditHandler {
 
+	private static final Log LOG = LogFactory.getLog(RangerDefaultAuditHandler.class);
+
 	public static final String  ACCESS_TYPE_ROWFILTER = "ROW_FILTER";
+	public static final String  ACTION_TYPE_METADATA_OPERATION = "METADATA OPERATION";
 	Collection<AuthzAuditEvent> auditEvents  = null;
 	boolean                     deniedExists = false;
+
+	Set<String> roleOperationCmds = new HashSet<>(Arrays.asList(HiveOperationType.CREATEROLE.name(), HiveOperationType.DROPROLE.name(),
+			HiveOperationType.SHOW_ROLES.name(), HiveOperationType.SHOW_ROLE_GRANT.name(),
+			HiveOperationType.SHOW_ROLE_PRINCIPALS.name(), HiveOperationType.GRANT_ROLE.name(),
+			HiveOperationType.REVOKE_ROLE.name()));
 
 	public RangerHiveAuditHandler() {
 		super();
@@ -57,10 +67,39 @@ public class RangerHiveAuditHandler extends RangerDefaultAuditHandler {
 		if (request instanceof RangerHiveAccessRequest && resource instanceof RangerHiveResource) {
 			RangerHiveAccessRequest hiveAccessRequest = (RangerHiveAccessRequest) request;
 			RangerHiveResource hiveResource = (RangerHiveResource) resource;
+			HiveAccessType hiveAccessType = hiveAccessRequest.getHiveAccessType();
 
-			if (hiveAccessRequest.getHiveAccessType() == HiveAccessType.USE && hiveResource.getObjectType() == HiveObjectType.DATABASE) {
-				// this should happen only for SHOWDATABASES and USE <db-name> commands
+			if (hiveAccessType == HiveAccessType.USE && hiveResource.getObjectType() == HiveObjectType.DATABASE && StringUtils.isBlank(hiveResource.getDatabase())) {
+				// this should happen only for SHOWDATABASES
 				auditEvent.setTags(null);
+			}
+
+			if (hiveAccessType == HiveAccessType.REPLADMIN ) {
+				// In case of REPL commands Audit should show what REPL Command instead of REPLADMIN access type
+				String context = request.getRequestData();
+					String replAccessType = getReplCmd(context);
+					auditEvent.setAccessType(replAccessType);
+			}
+
+			if (hiveAccessType == HiveAccessType.SERVICEADMIN) {
+				String hiveOperationType = request.getAction();
+				String commandStr = request.getRequestData();
+				if (HiveOperationType.KILL_QUERY.name().equalsIgnoreCase(hiveOperationType)) {
+					String queryId = getServiceAdminQueryId(commandStr);
+					if (!StringUtils.isEmpty(queryId)) {
+						auditEvent.setRequestData(queryId);
+					}
+					commandStr = getServiceAdminCmd(commandStr);
+					if (StringUtils.isEmpty(commandStr)) {
+						commandStr = hiveAccessType.name();
+					}
+				}
+				auditEvent.setAccessType(commandStr);
+			}
+
+			String action = request.getAction();
+			if (hiveResource.getObjectType() == HiveObjectType.GLOBAL && isRoleOperation(action)) {
+				auditEvent.setAccessType(action);
 			}
 		}
 
@@ -68,37 +107,40 @@ public class RangerHiveAuditHandler extends RangerDefaultAuditHandler {
 	}
 	
 	AuthzAuditEvent createAuditEvent(RangerAccessResult result) {
+
+		AuthzAuditEvent ret = null;
+
 		RangerAccessRequest  request  = result.getAccessRequest();
 		RangerAccessResource resource = request.getResource();
 		String               resourcePath = resource != null ? resource.getAsString() : null;
+		int                  policyType = result.getPolicyType();
 
-		String accessType = null;
+		if (policyType == RangerPolicy.POLICY_TYPE_DATAMASK && result.isMaskEnabled()) {
+		    ret = createAuditEvent(result, result.getMaskType(), resourcePath);
+        } else if (policyType == RangerPolicy.POLICY_TYPE_ROWFILTER) {
+            ret = createAuditEvent(result, ACCESS_TYPE_ROWFILTER, resourcePath);
+		} else if (policyType == RangerPolicy.POLICY_TYPE_ACCESS) {
+			String accessType = null;
 
-		if(result instanceof RangerDataMaskResult) {
-			accessType = ((RangerDataMaskResult)result).getMaskType();
-
-			if(StringUtils.equals(accessType, RangerPolicy.MASK_TYPE_NONE)) {
-				return null;
-			}
-
-			return createAuditEvent(result, accessType, resourcePath);
-		} else if(result instanceof RangerRowFilterResult) {
-			accessType = ACCESS_TYPE_ROWFILTER;
-
-			return createAuditEvent(result, accessType, resourcePath);
-		} else {
 			if (request instanceof RangerHiveAccessRequest) {
 				RangerHiveAccessRequest hiveRequest = (RangerHiveAccessRequest) request;
 
 				accessType = hiveRequest.getHiveAccessType().toString();
+
+				String action = request.getAction();
+				if (ACTION_TYPE_METADATA_OPERATION.equals(action)) {
+					accessType = ACTION_TYPE_METADATA_OPERATION;
+				}
 			}
 
 			if (StringUtils.isEmpty(accessType)) {
 				accessType = request.getAccessType();
 			}
 
-			return createAuditEvent(result, accessType, resourcePath);
+			ret = createAuditEvent(result, accessType, resourcePath);
 		}
+
+		return ret;
 	}
 
 	List<AuthzAuditEvent> createAuditEvents(Collection<RangerAccessResult> results) {
@@ -148,6 +190,11 @@ public class RangerHiveAuditHandler extends RangerDefaultAuditHandler {
 		if(! result.getIsAudited()) {
 			return;
 		}
+
+		if  (skipFilterOperationAuditing(result)) {
+			return;
+		}
+
 		AuthzAuditEvent auditEvent = createAuditEvent(result);
 
 		if(auditEvent != null) {
@@ -170,7 +217,7 @@ public class RangerHiveAuditHandler extends RangerDefaultAuditHandler {
 	public void logAuditEventForDfs(String userName, String dfsCommand, boolean accessGranted, int repositoryType, String repositoryName) {
 		AuthzAuditEvent auditEvent = new AuthzAuditEvent();
 
-		auditEvent.setAclEnforcer(RangerDefaultAuditHandler.RangerModuleName);
+		auditEvent.setAclEnforcer(moduleName);
 		auditEvent.setResourceType("@dfs"); // to be consistent with earlier release
 		auditEvent.setAccessType("DFS");
 		auditEvent.setAction("DFS");
@@ -182,6 +229,10 @@ public class RangerHiveAuditHandler extends RangerDefaultAuditHandler {
 		auditEvent.setRequestData(dfsCommand);
 
 		auditEvent.setResourcePath(dfsCommand);
+
+		if(LOG.isDebugEnabled()){
+			LOG.debug("Logging DFS event " + auditEvent.toString());
+		}
 
 		addAuthzAuditEvent(auditEvent);
     }
@@ -213,4 +264,57 @@ public class RangerHiveAuditHandler extends RangerDefaultAuditHandler {
     		}
     	}
     }
+
+    private String getReplCmd(String cmdString) {
+		String ret = "REPL";
+		if (cmdString != null) {
+			String[] cmd = cmdString.trim().split("\\s+");
+			if (!ArrayUtils.isEmpty(cmd) && cmd.length > 2) {
+				ret = cmd[0] + " " + cmd[1];
+			}
+		}
+		return ret;
+	}
+
+	private String getServiceAdminCmd(String cmdString) {
+		String ret = "SERVICE ADMIN";
+		if (cmdString != null) {
+			String[] cmd = cmdString.trim().split("\\s+");
+			if (!ArrayUtils.isEmpty(cmd) && cmd.length > 1) {
+				ret = cmd[0] + " " + cmd[1];
+			}
+		}
+		return ret;
+	}
+
+	private String getServiceAdminQueryId(String cmdString) {
+		String ret = "QUERY ID = ";
+		if (cmdString != null) {
+			String[] cmd = cmdString.trim().split("\\s+");
+			if (!ArrayUtils.isEmpty(cmd) && cmd.length > 2) {
+				ret = ret + cmd[2];
+			}
+		}
+		return ret;
+	}
+
+	private boolean skipFilterOperationAuditing(RangerAccessResult result) {
+		boolean ret = false;
+		RangerAccessRequest accessRequest = result.getAccessRequest();
+		if (accessRequest != null) {
+			String action = accessRequest.getAction();
+			if (ACTION_TYPE_METADATA_OPERATION.equals(action) && !result.getIsAllowed()) {
+				ret = true;
+			}
+		}
+		return ret;
+	}
+
+	private boolean isRoleOperation(String action) {
+		boolean ret = false;
+		if (roleOperationCmds.contains(action)) {
+			ret = true;
+		}
+		return ret;
+	}
 }

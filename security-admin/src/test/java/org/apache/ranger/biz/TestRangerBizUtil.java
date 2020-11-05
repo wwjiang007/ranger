@@ -16,37 +16,40 @@
  */
 package org.apache.ranger.biz;
 
-import java.io.File;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.List;
+
+import javax.servlet.http.HttpServletResponse;
+import javax.ws.rs.WebApplicationException;
 
 import org.apache.ranger.common.AppConstants;
 import org.apache.ranger.common.ContextUtil;
-import org.apache.ranger.common.RangerCommonEnums;
+import org.apache.ranger.common.MessageEnums;
+import org.apache.ranger.common.RESTErrorUtil;
 import org.apache.ranger.common.RangerConstants;
 import org.apache.ranger.common.StringUtil;
 import org.apache.ranger.common.UserSessionBase;
-import org.apache.ranger.common.db.BaseDao;
 import org.apache.ranger.db.RangerDaoManager;
 import org.apache.ranger.db.XXAssetDao;
 import org.apache.ranger.db.XXPortalUserDao;
 import org.apache.ranger.db.XXResourceDao;
 import org.apache.ranger.db.XXUserDao;
 import org.apache.ranger.entity.XXAsset;
-import org.apache.ranger.entity.XXDBBase;
 import org.apache.ranger.entity.XXPortalUser;
 import org.apache.ranger.entity.XXResource;
 import org.apache.ranger.entity.XXUser;
 import org.apache.ranger.security.context.RangerContextHolder;
 import org.apache.ranger.security.context.RangerSecurityContext;
-import org.apache.ranger.view.VXAsset;
-import org.apache.ranger.view.VXDataObject;
 import org.apache.ranger.view.VXPortalUser;
 import org.apache.ranger.view.VXResource;
 import org.apache.ranger.view.VXResponse;
+import org.apache.ranger.view.VXUser;
 import org.junit.Assert;
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
@@ -68,11 +71,37 @@ public class TestRangerBizUtil {
 	@Mock
 	StringUtil stringUtil;
 	
+        @Mock
+        VXUser vXUser;
+
+        @Mock
+        UserMgr userMgr;
+
+        @Mock
+        ContextUtil contextUtil;
+
+        @Mock
+        RangerSecurityContext context;
+
+        @Mock
+        UserSessionBase currentUserSession;
+
+        @Mock
+        RESTErrorUtil restErrorUtil;
+
+        @Mock
+        VXResponse vXResponse;
+
+        @Rule
+        public ExpectedException thrown = ExpectedException.none();
+
 	@Before
 	public void setup(){
 		RangerSecurityContext context = new RangerSecurityContext();
 		context.setUserSession(new UserSessionBase());
 		RangerContextHolder.setSecurityContext(context);
+
+//		RESTErrorUtil restErrorUtil;
 	}
 	
 	@Test
@@ -273,188 +302,8 @@ public class TestRangerBizUtil {
 		String publicNameChk = rangerBizUtil.generatePublicName(vXPortalUser, null);
 		Assert.assertNull(publicNameChk);
 	}
-	
-	@Test
-	public void testGetDisplayName_EmptyName() {
-		String displayNameChk = rangerBizUtil.getDisplayName(null);
-		Assert.assertEquals(rangerBizUtil.EMPTY_CONTENT_DISPLAY_NAME, displayNameChk);
-	}
-	
-	@Test
-	public void testGetDisplayName_AssetName() {
-		XXAsset obj = new XXAsset();
-		obj.setDescription(resourceName);
-		String displayNameChk = rangerBizUtil.getDisplayName(obj);
-		Assert.assertEquals(resourceName, displayNameChk);
-	}
-	
-	@Test
-	public void testGetDisplayName_MoreThanMaxLen() {
-		XXAsset obj = new XXAsset();
-		String name = resourceName;
-		for(int i=0;i<16;i++){
-			name = name + "_" + name + "1";
-		}
-		obj.setDescription(name);
-		String displayNameChk = rangerBizUtil.getDisplayName(obj);
-		Assert.assertEquals(displayNameChk.length(), 150);
-	}
-	
-	@Test
-	public void testGetDisplayNameForClassName(){
-		XXAsset obj = new XXAsset();
-		String displayNameChk = rangerBizUtil.getDisplayNameForClassName(obj);
-		Assert.assertEquals("Asset",displayNameChk);
-	}
-	
-	@Test
-	public void testGetFileNameWithoutExtension(){
-		File file = new File("test.txt");
-		String fileNameChk = rangerBizUtil.getFileNameWithoutExtension(file);
-		Assert.assertEquals("test",fileNameChk);
-	}
-	
-	@Test
-	public void testGetFileNameWithoutExtension_NoFile(){
-		String fileNameChk = rangerBizUtil.getFileNameWithoutExtension(null);
-		Assert.assertNull(fileNameChk);
-	}
-	
-	@Test
-	public void testGetFileNameWithoutExtension_noExt(){
-		File file = new File("test");
-		String fileNameChk = rangerBizUtil.getFileNameWithoutExtension(file);
-		Assert.assertEquals("test",fileNameChk);
-	}
-	
-	@Test
-	public void testGetImageExtension_TestJPG(){
-		String contentType = "img.JPG";
-		String extChk = rangerBizUtil.getImageExtension(contentType);
-		Assert.assertEquals("jpg",extChk);
-	}
-	
-	@Test
-	public void testGetImageExtension_TestJPEG(){
-		String contentType = "img.JPEG";
-		String extChk = rangerBizUtil.getImageExtension(contentType);
-		Assert.assertEquals("jpg",extChk);
-	}
-	
-	@Test
-	public void testGetImageExtension_TestPNG(){
-		String contentType = "img.PNG";
-		String extChk = rangerBizUtil.getImageExtension(contentType);
-		Assert.assertEquals("png",extChk);
-	}
-	
-	@Test
-	public void testGetImageExtension_NoExt(){
-		String contentType = "img";
-		String extChk = rangerBizUtil.getImageExtension(contentType);
-		Assert.assertEquals("",extChk);
-	}
-	
-	@Test
-	public void testGetMimeType_ForJPG(){
-		String mimeTypeChk = rangerBizUtil.getMimeType(RangerConstants.MIME_JPEG);
-		Assert.assertEquals("jpg",mimeTypeChk);
-	}
-	
-	@Test
-	public void testGetMimeType_ForPNG(){
-		String mimeTypeChk = rangerBizUtil.getMimeType(RangerConstants.MIME_PNG);
-		Assert.assertEquals("png",mimeTypeChk);
-	}
-	
-	@Test
-	public void testGetMimeType_ForEmpty(){
-		String mimeTypeChk = rangerBizUtil.getMimeType(1);
-		Assert.assertEquals("",mimeTypeChk);
-	}
-	
-	@Test
-	public void testGetMimeTypeInt_ForUnknow(){
-		int mimeTypeChk = rangerBizUtil.getMimeTypeInt("");
-		Assert.assertEquals(RangerConstants.MIME_UNKNOWN, mimeTypeChk);
-	}
-	
-	@Test
-	public void testGetMimeTypeInt_Forjpg(){
-		int mimeTypeChk = rangerBizUtil.getMimeTypeInt("jpg");
-		Assert.assertEquals(RangerConstants.MIME_JPEG, mimeTypeChk);
-	}
-	
-	@Test
-	public void testGetMimeTypeInt_ForJPEG(){
-		int mimeTypeChk = rangerBizUtil.getMimeTypeInt("JPEG");
-		Assert.assertEquals(RangerConstants.MIME_JPEG, mimeTypeChk);
-	}
-	
-	@Test
-	public void testGetMimeTypeInt_EndsWithJPEG(){
-		int mimeTypeChk = rangerBizUtil.getMimeTypeInt("txt.jpeg");
-		Assert.assertEquals(RangerConstants.MIME_JPEG, mimeTypeChk);
-	}
-	
-	@Test
-	public void testGetMimeTypeInt_EndsWithJPG(){
-		int mimeTypeChk = rangerBizUtil.getMimeTypeInt("txt.jpg");
-		Assert.assertEquals(RangerConstants.MIME_JPEG, mimeTypeChk);
-	}
-	
-	@Test
-	public void testGetMimeTypeInt_EndsWithPNG(){
-		int mimeTypeChk = rangerBizUtil.getMimeTypeInt("txt.png");
-		Assert.assertEquals(RangerConstants.MIME_PNG, mimeTypeChk);
-	}
-	
-	@Test
-	public void testGetMimeTypeInt_ForPNG(){
-		int mimeTypeChk = rangerBizUtil.getMimeTypeInt("png");
-		Assert.assertEquals(RangerConstants.MIME_PNG, mimeTypeChk);
-	}
-	
-	@SuppressWarnings({ "unchecked", "rawtypes" })
-	@Test
-	public void testGetMObject(){
-		BaseDao baseDao = Mockito.mock(BaseDao.class);
-		Mockito.when(daoManager.getDaoForClassType(RangerCommonEnums.CLASS_TYPE_USER_PROFILE)).thenReturn(baseDao);
-		Mockito.when(baseDao.getById(id)).thenReturn(new XXAsset());
-		XXDBBase mObjChk = rangerBizUtil.getMObject(RangerCommonEnums.CLASS_TYPE_USER_PROFILE,id);
-		Assert.assertNotNull(mObjChk);
-	}
-	
-	@Test
-	public void testGetMObject_NoObjId(){
-		XXDBBase mObjChk = rangerBizUtil.getMObject(RangerCommonEnums.CLASS_TYPE_USER_PROFILE,null);
-		Assert.assertNull(mObjChk);
-	}
-	
-	@SuppressWarnings({ "rawtypes", "unchecked" })
-	@Test
-	public void testGetMObject_VXDataObject(){
-		VXAsset vXDataObject = new VXAsset();
-		vXDataObject.setId(id);
-		BaseDao baseDao = Mockito.mock(BaseDao.class);
-		Mockito.when(daoManager.getDaoForClassType(vXDataObject.getMyClassType())).thenReturn(baseDao);
-		Mockito.when(baseDao.getById(vXDataObject.getId())).thenReturn(new XXAsset());
-		XXDBBase xXDBaseChk = rangerBizUtil.getMObject(vXDataObject);
-		Assert.assertNotNull(xXDBaseChk);
-	}
-	
-	@Test
-	public void testGetMObject_NOVXDataObject(){
-		XXDBBase xXDBaseChk = rangerBizUtil.getMObject(null);
-		Assert.assertNull(xXDBaseChk);
-	}
-	
-	@Test
-	public void testGetVObject_NOObjId(){
-		VXDataObject objchk = rangerBizUtil.getVObject(RangerConstants.CLASS_TYPE_USER_PROFILE, null);
-		Assert.assertNull(objchk);
-	}
-	
+
+
 	@Test
 	public void testMatchHdfsPolicy_NoResourceName(){
 		boolean bnlChk = rangerBizUtil.matchHbasePolicy(null, null, null, id, AppConstants.XA_PERM_TYPE_UNKNOWN);
@@ -553,4 +402,254 @@ public class TestRangerBizUtil {
 		Mockito.verify(stringUtil).split(Mockito.anyString(), Mockito.anyString());
 		Assert.assertFalse(bnlChk);
 	}
+
+        @Test
+        public void testCheckUserAccessibleThrowErrorForKeyAdminAndUserRoleSysAdmin()
+                        throws Exception {
+
+                Collection<String> roleList = new ArrayList<String>();
+                roleList.add(RangerConstants.ROLE_SYS_ADMIN);
+                Mockito.when(userMgr.getRolesByLoginId(vXUser.getName())).thenReturn(
+                                roleList);
+                Mockito.when(vXUser.getUserRoleList()).thenReturn(roleList);
+
+                currentUserSession.setKeyAdmin(true);
+                RangerSecurityContext context = new RangerSecurityContext();
+                context.setUserSession(currentUserSession);
+                RangerContextHolder.setSecurityContext(context);
+
+                Mockito.when(currentUserSession.isKeyAdmin()).thenReturn(true);
+
+                WebApplicationException webExp = new WebApplicationException();
+
+                Mockito.when(
+                                restErrorUtil.createRESTException(
+                                                "Logged in user is not allowed to create/update user",
+                                                MessageEnums.OPER_NO_PERMISSION)).thenReturn(webExp);
+
+                thrown.expect(WebApplicationException.class);
+
+                rangerBizUtil.checkUserAccessible(vXUser);
+
+                Mockito.verify(restErrorUtil).createRESTException(
+                                "Logged in user is not allowed to create/update user",
+                                MessageEnums.OPER_NO_PERMISSION);
+
+        }
+
+        @Test
+        public void testCheckUserAccessibleThrowErrorForKeyAdminAndUserRoleAdminAuditor()
+                        throws Exception {
+
+                Collection<String> roleList = new ArrayList<String>();
+                roleList.add(RangerConstants.ROLE_ADMIN_AUDITOR);
+                Mockito.when(userMgr.getRolesByLoginId(vXUser.getName())).thenReturn(
+                                roleList);
+                Mockito.when(vXUser.getUserRoleList()).thenReturn(roleList);
+
+                currentUserSession.setKeyAdmin(true);
+                RangerSecurityContext context = new RangerSecurityContext();
+                context.setUserSession(currentUserSession);
+                RangerContextHolder.setSecurityContext(context);
+
+                Mockito.when(currentUserSession.isKeyAdmin()).thenReturn(true);
+
+                WebApplicationException webExp = new WebApplicationException();
+
+                Mockito.when(
+                                restErrorUtil.createRESTException(
+                                                "Logged in user is not allowed to create/update user",
+                                                MessageEnums.OPER_NO_PERMISSION)).thenReturn(webExp);
+
+                thrown.expect(WebApplicationException.class);
+
+                rangerBizUtil.checkUserAccessible(vXUser);
+
+                Mockito.verify(restErrorUtil).createRESTException(
+                                "Logged in user is not allowed to create/update user",
+                                MessageEnums.OPER_NO_PERMISSION);
+
+        }
+
+        @Test
+        public void testCheckUserAccessibleSuccessForKeyAdmin(){
+                Collection<String> roleList = new ArrayList<String>();
+                roleList.add(RangerConstants.ROLE_KEY_ADMIN);
+                roleList.add(RangerConstants.ROLE_KEY_ADMIN_AUDITOR);
+                Mockito.when(userMgr.getRolesByLoginId(vXUser.getName())).thenReturn(
+                                roleList);
+                Mockito.when(vXUser.getUserRoleList()).thenReturn(roleList);
+
+                currentUserSession.setKeyAdmin(true);
+
+                RangerSecurityContext context = new RangerSecurityContext();
+                context.setUserSession(currentUserSession);
+                RangerContextHolder.setSecurityContext(context);
+
+                Mockito.when(currentUserSession.isKeyAdmin()).thenReturn(true);
+
+                boolean result = rangerBizUtil.checkUserAccessible(vXUser);
+                Assert.assertTrue(result);
+
+        }
+
+        @Test
+        public void testCheckUserAccessibleThrowErrorForAdminAndUserRoleKeyAdmin()
+                        throws Exception {
+
+                Collection<String> roleList = new ArrayList<String>();
+                roleList.add(RangerConstants.ROLE_KEY_ADMIN);
+                Mockito.when(userMgr.getRolesByLoginId(vXUser.getName())).thenReturn(
+                                roleList);
+                Mockito.when(vXUser.getUserRoleList()).thenReturn(roleList);
+
+                currentUserSession.setUserAdmin(true);
+
+                RangerSecurityContext context = new RangerSecurityContext();
+                context.setUserSession(currentUserSession);
+                RangerContextHolder.setSecurityContext(context);
+
+                Mockito.when(currentUserSession.isUserAdmin()).thenReturn(true);
+
+                WebApplicationException webExp = new WebApplicationException();
+
+                Mockito.when(
+                                restErrorUtil.createRESTException(
+                                                "Logged in user is not allowed to create/update user",
+                                                MessageEnums.OPER_NO_PERMISSION)).thenReturn(webExp);
+
+                thrown.expect(WebApplicationException.class);
+
+                rangerBizUtil.checkUserAccessible(vXUser);
+
+                Mockito.verify(restErrorUtil).createRESTException(
+                                "Logged in user is not allowed to create/update user",
+                                MessageEnums.OPER_NO_PERMISSION);
+
+        }
+
+        @Test
+        public void testCheckUserAccessibleThrowErrorForAdminAndUserRoleKeyAdminAuditor()
+                        throws Exception {
+
+                Collection<String> roleList = new ArrayList<String>();
+                roleList.add(RangerConstants.ROLE_KEY_ADMIN_AUDITOR);
+                Mockito.when(userMgr.getRolesByLoginId(vXUser.getName())).thenReturn(
+                                roleList);
+                Mockito.when(vXUser.getUserRoleList()).thenReturn(roleList);
+
+                currentUserSession.setUserAdmin(true);
+
+                RangerSecurityContext context = new RangerSecurityContext();
+                context.setUserSession(currentUserSession);
+                RangerContextHolder.setSecurityContext(context);
+
+                Mockito.when(currentUserSession.isUserAdmin()).thenReturn(true);
+
+                WebApplicationException webExp = new WebApplicationException();
+
+                Mockito.when(
+                                restErrorUtil.createRESTException(
+                                                "Logged in user is not allowed to create/update user",
+                                                MessageEnums.OPER_NO_PERMISSION)).thenReturn(webExp);
+
+                thrown.expect(WebApplicationException.class);
+
+                rangerBizUtil.checkUserAccessible(vXUser);
+
+                Mockito.verify(restErrorUtil).createRESTException(
+                                "Logged in user is not allowed to create/update user",
+                                MessageEnums.OPER_NO_PERMISSION);
+
+        }
+
+        @Test
+        public void testCheckUserAccessibleSuccessForAdmin(){
+                Collection<String> roleList = new ArrayList<String>();
+                roleList.add(RangerConstants.ROLE_SYS_ADMIN);
+                Mockito.when(userMgr.getRolesByLoginId(vXUser.getName())).thenReturn(
+                                roleList);
+                Mockito.when(vXUser.getUserRoleList()).thenReturn(roleList);
+
+                currentUserSession.setUserAdmin(true);
+
+                RangerSecurityContext context = new RangerSecurityContext();
+                context.setUserSession(currentUserSession);
+                RangerContextHolder.setSecurityContext(context);
+
+                Mockito.when(currentUserSession.isUserAdmin()).thenReturn(true);
+
+                boolean result = rangerBizUtil.checkUserAccessible(vXUser);
+                Assert.assertTrue(result);
+
+        }
+
+        @Test
+        public void testBlockAuditorRoleUserThrowsErrorForAuditKeyAdmin(){
+                RangerBizUtil rangerBizUtilMock = Mockito.mock(RangerBizUtil.class);
+        vXResponse.setStatusCode(HttpServletResponse.SC_UNAUTHORIZED);
+        vXResponse.setMsgDesc("Operation denied. LoggedInUser=1 ,isn't permitted to perform the action.");
+
+        XXPortalUser xxPortalUser = new XXPortalUser();
+        xxPortalUser.setId(1L);
+
+                currentUserSession.setAuditKeyAdmin(true);
+
+                RangerSecurityContext context = new RangerSecurityContext();
+                context.setUserSession(currentUserSession);
+                RangerContextHolder.setSecurityContext(context);
+
+                Mockito.doThrow(new WebApplicationException()).when(rangerBizUtilMock).blockAuditorRoleUser();
+                thrown.expect(WebApplicationException.class);
+
+                rangerBizUtilMock.blockAuditorRoleUser();
+
+        }
+
+        @Test
+        public void testBlockAuditorRoleUserThrowsErrorForAuditUserAdmin(){
+
+                RangerBizUtil rangerBizUtilMock = Mockito.mock(RangerBizUtil.class);
+
+        vXResponse.setStatusCode(HttpServletResponse.SC_UNAUTHORIZED);
+        vXResponse.setMsgDesc("Operation denied. LoggedInUser=1 ,isn't permitted to perform the action.");
+
+        XXPortalUser xxPortalUser = new XXPortalUser();
+        xxPortalUser.setId(1L);
+
+                currentUserSession.setAuditKeyAdmin(true);
+
+                RangerSecurityContext context = new RangerSecurityContext();
+                context.setUserSession(currentUserSession);
+                RangerContextHolder.setSecurityContext(context);
+
+
+                Mockito.doThrow(new WebApplicationException()).when(rangerBizUtilMock).blockAuditorRoleUser();
+
+                thrown.expect(WebApplicationException.class);
+
+                rangerBizUtilMock.blockAuditorRoleUser();
+        }
+
+        @Test
+        public void testBlockAuditorRoleUserSuccess(){
+                RangerBizUtil rangerBizUtilMock = Mockito.mock(RangerBizUtil.class);
+
+        XXPortalUser xxPortalUser = new XXPortalUser();
+        xxPortalUser.setId(1L);
+
+                currentUserSession.setUserAdmin(true);
+
+                RangerSecurityContext context = new RangerSecurityContext();
+                context.setUserSession(currentUserSession);
+                RangerContextHolder.setSecurityContext(context);
+
+
+                Mockito.doNothing().when(rangerBizUtilMock).blockAuditorRoleUser();
+
+                rangerBizUtilMock.blockAuditorRoleUser();
+                Mockito.verify(rangerBizUtilMock).blockAuditorRoleUser();
+
+        }
+
 }

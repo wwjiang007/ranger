@@ -84,6 +84,8 @@ public interface TagStore {
 
     RangerServiceResource updateServiceResource(RangerServiceResource resource) throws Exception;
 
+    void refreshServiceResource(Long resourceId) throws Exception;
+
     void deleteServiceResource(Long id) throws Exception;
 
     void deleteServiceResourceByGuid(String guid) throws Exception;
@@ -128,10 +130,13 @@ public interface TagStore {
     PList<RangerTagResourceMap> getPaginatedTagResourceMaps(SearchFilter filter) throws Exception;
 
 
-    ServiceTags getServiceTagsIfUpdated(String serviceName, Long lastKnownVersion) throws Exception;
-    ServiceTags getServiceTags(String serviceName) throws Exception;
+    ServiceTags getServiceTagsIfUpdated(String serviceName, Long lastKnownVersion, boolean needsBackwardCompatibility) throws Exception;
+    ServiceTags getServiceTags(String serviceName, Long lastKnownVersion) throws Exception;
+    ServiceTags getServiceTagsDelta(String serviceName, Long lastKnownVersion) throws Exception;
+
 
     Long getTagVersion(String serviceName);
 
     void deleteAllTagObjectsForService(String serviceName) throws Exception;
+
 }

@@ -19,29 +19,30 @@
 
 package org.apache.ranger.tagsync.sink.tagadmin;
 
-import com.sun.jersey.api.client.ClientResponse;
-import com.sun.jersey.api.client.WebResource;
+import java.io.IOException;
+import java.security.PrivilegedAction;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
-import org.apache.commons.collections.MapUtils;
+import javax.servlet.http.HttpServletResponse;
+import javax.ws.rs.core.Cookie;
+import javax.ws.rs.core.NewCookie;
+
 import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.ranger.admin.client.datatype.RESTResponse;
-import org.apache.ranger.tagsync.model.TagSink;
 import org.apache.ranger.plugin.util.RangerRESTClient;
-import org.apache.ranger.plugin.util.SearchFilter;
 import org.apache.ranger.plugin.util.ServiceTags;
+import org.apache.ranger.tagsync.model.TagSink;
 import org.apache.ranger.tagsync.process.TagSyncConfig;
-import javax.servlet.http.HttpServletResponse;
 
-import java.io.IOException;
-import java.security.PrivilegedAction;
-import java.util.Map;
-import java.util.Properties;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
+import com.sun.jersey.api.client.ClientResponse;
 
 public class TagAdminRESTSink implements TagSink, Runnable {
 	private static final Log LOG = LogFactory.getLog(TagAdminRESTSink.class);
@@ -49,11 +50,18 @@ public class TagAdminRESTSink implements TagSink, Runnable {
 	private static final String REST_PREFIX = "/service";
 	private static final String MODULE_PREFIX = "/tags";
 
-	private static final String REST_MIME_TYPE_JSON = "application/json";
-
 	private static final String REST_URL_IMPORT_SERVICETAGS_RESOURCE = REST_PREFIX + MODULE_PREFIX + "/importservicetags/";
 
 	private long rangerAdminConnectionCheckInterval;
+
+	private Cookie sessionId=null;
+
+	private boolean isValidRangerCookie=false;
+
+	List<NewCookie> cookieList=new ArrayList<>();
+
+	private boolean isRangerCookieEnabled;
+	private String rangerAdminCookieName;
 
 	private RangerRESTClient tagRESTClient = null;
 
@@ -77,7 +85,9 @@ public class TagAdminRESTSink implements TagSink, Runnable {
 		String password = TagSyncConfig.getTagAdminPassword(properties);
 		rangerAdminConnectionCheckInterval = TagSyncConfig.getTagAdminConnectionCheckInterval(properties);
 		isKerberized = TagSyncConfig.getTagsyncKerberosIdentity(properties) != null;
-
+		isRangerCookieEnabled = TagSyncConfig.isTagSyncRangerCookieEnabled(properties);
+		rangerAdminCookieName=TagSyncConfig.getRangerAdminCookieName(properties);
+		sessionId=null;
 
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("restUrl=" + restUrl);
@@ -88,7 +98,7 @@ public class TagAdminRESTSink implements TagSink, Runnable {
 		}
 
 		if (StringUtils.isNotBlank(restUrl)) {
-			tagRESTClient = new RangerRESTClient(restUrl, sslConfigFile);
+			tagRESTClient = new RangerRESTClient(restUrl, sslConfigFile, TagSyncConfig.getInstance());
 			if (!isKerberized) {
 				tagRESTClient.setBasicAuthInfo(userName, password);
 			}
@@ -175,9 +185,12 @@ public class TagAdminRESTSink implements TagSink, Runnable {
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("==> doUpload()");
 		}
-		WebResource webResource = createWebResource(REST_URL_IMPORT_SERVICETAGS_RESOURCE);
-
-		ClientResponse response    = webResource.accept(REST_MIME_TYPE_JSON).type(REST_MIME_TYPE_JSON).put(ClientResponse.class, tagRESTClient.toJson(serviceTags));
+		ClientResponse response = null;
+		if (isRangerCookieEnabled) {
+			response = uploadServiceTagsUsingCookie(serviceTags);
+		} else {
+			response = tagRESTClient.put(REST_URL_IMPORT_SERVICETAGS_RESOURCE, null, serviceTags);
+		}
 
 		if(response == null || response.getStatus() != HttpServletResponse.SC_NO_CONTENT) {
 
@@ -199,23 +212,134 @@ public class TagAdminRESTSink implements TagSink, Runnable {
 		return serviceTags;
 	}
 
-	private WebResource createWebResource(String url) {
-		return createWebResource(url, null);
+	private ClientResponse uploadServiceTagsUsingCookie(ServiceTags serviceTags) {
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("==> uploadServiceTagCache()");
+		}
+		ClientResponse clientResponse = null;
+		if (sessionId != null && isValidRangerCookie) {
+			clientResponse = tryWithCookie(serviceTags);
+
+		} else {
+			clientResponse = tryWithCred(serviceTags);
+		}
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("<== uploadServiceTagCache()");
+		}
+		return clientResponse;
 	}
 
-	private WebResource createWebResource(String url, SearchFilter filter) {
-		WebResource ret = tagRESTClient.getResource(url);
-
-		if(filter != null && !MapUtils.isEmpty(filter.getParams())) {
-			for(Map.Entry<String, String> e : filter.getParams().entrySet()) {
-				String name  = e.getKey();
-				String value = e.getValue();
-
-				ret.queryParam(name, value);
-			}
+	private ClientResponse tryWithCred(ServiceTags serviceTags) {
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("==> tryWithCred");
+		}
+		ClientResponse clientResponsebyCred = uploadTagsWithCred(serviceTags);
+		if (clientResponsebyCred != null && clientResponsebyCred.getStatus() != HttpServletResponse.SC_NO_CONTENT
+				&& clientResponsebyCred.getStatus() != HttpServletResponse.SC_BAD_REQUEST
+				&& clientResponsebyCred.getStatus() != HttpServletResponse.SC_OK) {
+			sessionId = null;
+			clientResponsebyCred = null;
 		}
 
-		return ret;
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("<== tryWithCred");
+		}
+		return clientResponsebyCred;
+	}
+
+	private ClientResponse tryWithCookie(ServiceTags serviceTags) {
+		ClientResponse clientResponsebySessionId = uploadTagsWithCookie(serviceTags);
+		if (clientResponsebySessionId != null
+				&& clientResponsebySessionId.getStatus() != HttpServletResponse.SC_NO_CONTENT
+				&& clientResponsebySessionId.getStatus() != HttpServletResponse.SC_BAD_REQUEST
+				&& clientResponsebySessionId.getStatus() != HttpServletResponse.SC_OK) {
+			sessionId = null;
+			isValidRangerCookie = false;
+			clientResponsebySessionId = null;
+		}
+		return clientResponsebySessionId;
+	}
+
+	private synchronized ClientResponse uploadTagsWithCred(ServiceTags serviceTags) {
+			if (sessionId == null) {
+				tagRESTClient.resetClient();
+
+				ClientResponse response = null;
+				try {
+					response = tagRESTClient.put(REST_URL_IMPORT_SERVICETAGS_RESOURCE, null, serviceTags);
+				} catch (Exception e) {
+					LOG.error("Failed to get response, Error is : "+e.getMessage());
+				}
+				if (response != null) {
+					if (!(response.toString().contains(REST_URL_IMPORT_SERVICETAGS_RESOURCE))) {
+						response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+					} else if (response.getStatus() == HttpServletResponse.SC_UNAUTHORIZED) {
+						LOG.warn("Credentials response from ranger is 401.");
+					} else if (response.getStatus() == HttpServletResponse.SC_OK
+							|| response.getStatus() == HttpServletResponse.SC_NO_CONTENT) {
+						cookieList = response.getCookies();
+						// save cookie received from credentials session login
+						for (NewCookie cookie : cookieList) {
+							if (cookie.getName().equalsIgnoreCase(rangerAdminCookieName)) {
+								sessionId = cookie.toCookie();
+								isValidRangerCookie = true;
+								break;
+							} else {
+								isValidRangerCookie = false;
+							}
+						}
+					}
+				}
+				return response;
+			} else {
+				ClientResponse clientResponsebySessionId = uploadTagsWithCookie(serviceTags);
+
+				if (!(clientResponsebySessionId.toString().contains(REST_URL_IMPORT_SERVICETAGS_RESOURCE))) {
+					clientResponsebySessionId.setStatus(HttpServletResponse.SC_NOT_FOUND);
+				}
+				return clientResponsebySessionId;
+			}
+	}
+
+	private ClientResponse uploadTagsWithCookie(ServiceTags serviceTags) {
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("==> uploadTagsWithCookie");
+		}
+
+		ClientResponse response = null;
+		try {
+			response = tagRESTClient.put(REST_URL_IMPORT_SERVICETAGS_RESOURCE, serviceTags, sessionId);
+		} catch (Exception e) {
+			LOG.error("Failed to get response, Error is : "+e.getMessage());
+		}
+		if (response != null) {
+			if (!(response.toString().contains(REST_URL_IMPORT_SERVICETAGS_RESOURCE))) {
+				response.setStatus(HttpServletResponse.SC_NOT_FOUND);
+				sessionId = null;
+				isValidRangerCookie = false;
+			} else if (response.getStatus() == HttpServletResponse.SC_UNAUTHORIZED) {
+				sessionId = null;
+				isValidRangerCookie = false;
+			} else if (response.getStatus() == HttpServletResponse.SC_NO_CONTENT
+					|| response.getStatus() == HttpServletResponse.SC_OK) {
+				List<NewCookie> respCookieList = response.getCookies();
+				for (NewCookie respCookie : respCookieList) {
+					if (respCookie.getName().equalsIgnoreCase(rangerAdminCookieName)) {
+						if (!(sessionId.getValue().equalsIgnoreCase(respCookie.toCookie().getValue()))) {
+							sessionId = respCookie.toCookie();
+						}
+						isValidRangerCookie = true;
+						break;
+					}
+				}
+			}
+
+		}
+
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("<== uploadTagsWithCookie");
+		}
+		return response;
 	}
 
 	@Override

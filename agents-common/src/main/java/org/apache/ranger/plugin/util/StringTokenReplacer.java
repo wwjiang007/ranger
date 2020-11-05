@@ -50,10 +50,24 @@ public class StringTokenReplacer {
                 i++;
                 if(i < value.length()) {
                     c = value.charAt(i);
-                    if(token != null) {
+                    if (token != null) {
+                        // if next char is not the escape char or endChar, retain the escapeChar
+                        if (c != escapeChar && c != endChar) {
+                            token.append(escapeChar);
+                        }
                         token.append(c);
                     } else {
+                        // if next char is not the escape char or startChar, retain the escapeChar
+                        if (c != escapeChar && c != startChar) {
+                            ret.append(escapeChar);
+                        }
                         ret.append(c);
+                    }
+                } else {
+                    if (token != null) {
+                        token.append(escapeChar);
+                    } else {
+                        ret.append(escapeChar);
                     }
                 }
                 continue;
@@ -73,9 +87,7 @@ public class StringTokenReplacer {
                         if (replaced != null) {
                             ret.append(replaced.toString());
                         } else {
-                            ret = null;
-                            token = null;
-                            break;
+                            ret.append(startChar).append(token).append(endChar);
                         }
                     } else {
                         ret.append(startChar).append(token).append(endChar);
@@ -91,6 +103,6 @@ public class StringTokenReplacer {
             ret.append(startChar).append(token);
         }
 
-        return ret != null ? ret.toString() : null;
+        return ret.toString();
     }  
 }

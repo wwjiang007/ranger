@@ -22,8 +22,10 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.ranger.biz.RangerBizUtil;
@@ -34,6 +36,7 @@ import org.apache.ranger.common.SortField;
 import org.apache.ranger.db.RangerDaoManager;
 import org.apache.ranger.entity.XXPluginInfo;
 import org.apache.ranger.entity.XXService;
+import org.apache.ranger.entity.XXServiceDef;
 import org.apache.ranger.entity.XXServiceVersionInfo;
 import org.apache.ranger.plugin.model.RangerPluginInfo;
 import org.apache.ranger.plugin.store.PList;
@@ -91,6 +94,14 @@ public class RangerPluginInfoService {
 
 		List<XXService> servicesWithTagService = daoManager.getXXService().getAllServicesWithTagService();
 
+                // Rebuild searchFilter without serviceType
+
+                String serviceTypeToSearch = searchFilter.getParam(SearchFilter.SERVICE_TYPE);
+                if (StringUtils.isNotBlank(serviceTypeToSearch)) {
+                        searchFilter.removeParam(SearchFilter.SERVICE_TYPE);
+                }
+                String clusterNameToSearch =  searchFilter.getParam(SearchFilter.CLUSTER_NAME);
+
 		List<XXPluginInfo> xObjList = searchRangerObjects(searchFilter, searchFields, sortFields, retList);
 
 		List<Object[]> objectsList = null;
@@ -126,7 +137,23 @@ public class RangerPluginInfoService {
 			}
 
 			RangerPluginInfo obj = populateViewObjectWithServiceVersionInfo(xObj, xxServiceVersionInfo, hasAssociatedTagService);
-			objList.add(obj);
+
+                        if (StringUtils.isBlank(serviceTypeToSearch) || StringUtils.equals(serviceTypeToSearch, obj.getServiceType())) {
+                                objList.add(obj);
+                        }
+
+			if (StringUtils.isNotBlank(clusterNameToSearch)) {
+				Map<String, String> infoMap = obj.getInfo();
+				Set<Map.Entry<String, String>> infoSet = infoMap.entrySet();
+				for (Map.Entry<String, String> info : infoSet) {
+					if (StringUtils.equals(info.getKey(), SearchFilter.CLUSTER_NAME)) {
+						if (!StringUtils.equals(info.getValue(), clusterNameToSearch)) {
+							objList.remove(obj);
+						}
+						break;
+					}
+				}
+			}
 		}
 
 		retList.setList(objList);
@@ -140,6 +167,11 @@ public class RangerPluginInfoService {
 		ret.setCreateTime(xObj.getCreateTime());
 		ret.setUpdateTime(xObj.getUpdateTime());
 		ret.setServiceName(xObj.getServiceName());
+
+                String serviceType = daoManager.getXXServiceDef().findServiceDefTypeByServiceName(ret.getServiceName());
+                if (StringUtils.isNotBlank(serviceType)) {
+                        ret.setServiceType(serviceType);
+                }
 		ret.setHostName(xObj.getHostName());
 		ret.setAppType(xObj.getAppType());
 		ret.setIpAddress(xObj.getIpAddress());
@@ -166,10 +198,23 @@ public class RangerPluginInfoService {
 		ret.setCreateTime(xObj.getCreateTime());
 		ret.setUpdateTime(xObj.getUpdateTime());
 		ret.setServiceName(xObj.getServiceName());
+
+		String serviceDefName = daoManager.getXXServiceDef().findServiceDefTypeByServiceName(ret.getServiceName());
+		if (StringUtils.isNotBlank(serviceDefName)) {
+			ret.setServiceType(serviceDefName);
+			XXServiceDef xxServiceDef = daoManager.getXXServiceDef().findByName(serviceDefName);
+
+			ret.setServiceTypeDisplayName(xxServiceDef.getDisplayName());
+		}
 		ret.setHostName(xObj.getHostName());
 		ret.setAppType(xObj.getAppType());
 		ret.setIpAddress(xObj.getIpAddress());
 		ret.setInfo(jsonStringToMap(xObj.getInfo(), xxServiceVersionInfo, hasAssociatedTagService));
+
+		XXService xxService = daoManager.getXXService().findByName(ret.getServiceName());
+		if (xxService != null) {
+			ret.setServiceDisplayName(xxService.getDisplayName());
+		}
 		return ret;
 	}
 
@@ -207,7 +252,7 @@ public class RangerPluginInfoService {
 
 		EntityManager em = daoManager.getEntityManager();
 		return searchUtil.createSearchQuery(em, searchString, sortString, searchCriteria,
-				searchFieldList, bizUtil.getClassType(XXPluginInfo.class), false, isCountQuery);
+				searchFieldList, false, isCountQuery);
 	}
 
 	private long getCountForSearchQuery(SearchFilter searchCriteria, List<SearchField> searchFieldList) {

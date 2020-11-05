@@ -71,7 +71,7 @@ public class StormRangerPlugin extends RangerBasePlugin {
 			// mandatory call to base plugin
 			super.init();
 			// One time call to register the audit hander with the policy engine.
-			super.setResultProcessor(new RangerDefaultAuditHandler());
+			super.setResultProcessor(new RangerDefaultAuditHandler(getConfig()));
 			// this needed to set things right in the nimbus process
 			if (KerberosName.getRules() == null) {
 				KerberosName.setRules("DEFAULT");
@@ -82,7 +82,7 @@ public class StormRangerPlugin extends RangerBasePlugin {
 		}
 	}
 
-	public RangerAccessRequest buildAccessRequest(String _user, String[] _groups, String _clientIp, String _topology, String _operation, String clusterName) {
+	public RangerAccessRequest buildAccessRequest(String _user, String[] _groups, String _clientIp, String _topology, String _operation) {
 		
 		RangerAccessRequestImpl request = new RangerAccessRequestImpl();
 		request.setUser(_user);
@@ -98,7 +98,6 @@ public class StormRangerPlugin extends RangerBasePlugin {
 		RangerAccessResourceImpl resource = new RangerAccessResourceImpl();
 		resource.setValue(ResourceName.Topology, _topology);
 		request.setResource(resource);
-		request.setClusterName(clusterName);
 		
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("Returning request: " + request.toString());

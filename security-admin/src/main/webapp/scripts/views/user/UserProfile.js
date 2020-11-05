@@ -28,6 +28,7 @@ define(function(require){
 	var XAEnums			= require('utils/XAEnums');
 	var XALinks 		= require('modules/XALinks');
 	var localization	= require('utils/XALangSupport');
+	var SessionMgr		= require('mgrs/SessionMgr');
 
 	var VPasswordChange	= require("models/VXPasswordChange");
 	var UserProfileForm = require('views/user/UserProfileForm');
@@ -39,6 +40,13 @@ define(function(require){
 		_viewName : 'UserProfile',
 		
     	template: UserprofileTmpl,
+
+    	templateHelpers : function(){
+			return{
+				setOldUi : localStorage.getItem('setOldUI') == "true" ? true : false,
+			}
+		},
+
         breadCrumbs : [XALinks.get('UserProfile')],
 		/** Layout sub regions */
     	regions: {
@@ -80,6 +88,9 @@ define(function(require){
 
 		/** on render callback */
 		onRender: function() {
+			if(localStorage.getItem('setOldUI') == "false") {
+				App.rSideBar.currentView.ui.profileTab.find('[data-tab="edit-basic"]').addClass('selected');
+			}
 			if(!_.isUndefined(this.model.get('userSource')) && this.model.get('userSource') == XAEnums.UserSource.XA_USER.value){
 				this.$('[data-tab="edit-password"]').hide();
 				this.$('[data-tab="edit-basic"]').hide();
@@ -109,6 +120,7 @@ define(function(require){
 			if(! _.isEmpty(errors)){
 				return;
 			}
+			XAUtil.blockUI();
 			this.form.afterCommit();
 			if(this.showBasicFields){
 				this.saveUserDetail();
@@ -120,11 +132,14 @@ define(function(require){
 			this.model.saveUserProfile(this.model,{
 				wait: true,
 				success: function () {
+					XAUtil.blockUI('unblock');
 					XAUtil.notifySuccess('Success', "User profile updated successfully !!");
+					SessionMgr.updateUserProfile();
 					App.appRouter.navigate("#!/policymanager/resource",{trigger: true});
 					Communicator.vent.trigger('ProfileBar:rerender');
 				},
 				error: function (model, response, options) {
+					XAUtil.blockUI('unblock');
 					if(model.responseJSON != undefined && _.isArray(model.responseJSON.messageList)){
 						if(model.responseJSON.messageList[0].name == "INVALID_INPUT_DATA"){
 							if (model.responseJSON.msgDesc == "Validation failure"){
@@ -161,17 +176,19 @@ define(function(require){
 			this.model.changePassword(this.model.get('id'),vPasswordChange,{
 				wait: true,
 				success: function () {
+					XAUtil.blockUI('unblock');
 					XAUtil.notifySuccess('Success', "User profile updated successfully !!");
 					App.appRouter.navigate("#!/policymanager/resource",{trigger: true});
 					that.clearPasswordFields();
 				},
 				error: function (msResponse, options) {
+					XAUtil.blockUI('unblock');
 					XAUtil.notifyError('Error', 'Error occured while updating user profile');
 					if(localization.tt(msResponse.responseJSON.msgDesc) == "Invalid new password"){
 						that.form.fields.newPassword.setError(localization.tt('validationMessages.newPasswordError'));
 						that.form.fields.reEnterPassword.setError(localization.tt('validationMessages.newPasswordError'));
 					}else if((msResponse.responseJSON.msgDesc) == "serverMsg.userMgrOldPassword"){
-						that.form.fields.oldPassword.setError(localization.tt('validationMessages.oldPasswordRepeatError'));
+						that.form.fields.newPassword.setError(localization.tt('validationMessages.oldPasswordRepeatError'));
                                         }else if(msResponse.status == 419){
                                                 XAUtil.defaultErrorHandler(options , msResponse);
 					} else {
@@ -190,6 +207,9 @@ define(function(require){
 		},
 		/** on close */
 		onClose: function(){
+			if(localStorage.getItem('setOldUI') == "false") {
+				App.rSideBar.currentView.ui.profileTab.find('.selected').removeClass('selected');
+			}
 		}
 
 	});

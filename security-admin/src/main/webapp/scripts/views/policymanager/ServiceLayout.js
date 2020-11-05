@@ -32,6 +32,8 @@ define(function(require){
 	var ServicemanagerlayoutTmpl = require('hbs!tmpl/common/ServiceManagerLayout_tmpl');
 	var vUploadServicePolicy		= require('views/UploadServicePolicy');
 	var vDownloadServicePolicy		= require('views/DownloadServicePolicy');
+    var RangerServiceViewDetail = require('views/service/RangerServiceViewDetail');
+    var App    =require('App');
 	require('Backbone.BootstrapModal');
 	return Backbone.Marionette.Layout.extend(
 	/** @lends Servicemanagerlayout */
@@ -43,18 +45,30 @@ define(function(require){
 		templateHelpers: function(){
 			return {
 				operation 	: SessionMgr.isSystemAdmin() || SessionMgr.isKeyAdmin(),
-				serviceDefs : this.collection.models,
-				services 	: this.services.groupBy("type"),
-				showImportExportBtn : SessionMgr.isUser() ? false : true
+                serviceDefs : this.componentCollectionModels(App.vZone.vZoneName),
+                services    : this.componentServicesModels(App.vZone.vZoneName),
+                showImportExportBtn : (SessionMgr.isUser() || XAUtil.isAuditorOrKMSAuditor(SessionMgr)) ? false : true,
+                isZoneAdministration : (SessionMgr.isSystemAdmin()|| SessionMgr.isUser() || SessionMgr.isAuditor()) ? true : false,
+                isServiceManager : (App.vZone && _.isEmpty(App.vZone.vZoneName)) ? true : false,
+                setOldUi : localStorage.getItem('setOldUI') == "true" ? true : false,
 			};
 			
 		},
     	breadCrumbs :function(){
-    		if(this.type == "tag"){
-    			return [XALinks.get('TagBasedServiceManager')];
-    		}
-    		return [XALinks.get('ServiceManager')];
-    	},
+            if(this.type == "tag"){
+                if(App.vZone && App.vZone.vZoneName && !_.isEmpty(App.vZone.vZoneName)){
+                    return [XALinks.get('TagBasedServiceManager', App.vZone.vZoneName)];
+                }else{
+                    return [XALinks.get('TagBasedServiceManager')];
+                }
+            }else{
+                if(App.vZone && App.vZone.vZoneName && !_.isEmpty(App.vZone.vZoneName)){
+                    return [XALinks.get('ServiceManager', App.vZone.vZoneName)];
+                }else{
+                    return [XALinks.get('ServiceManager')];
+                }
+            }
+        },
 
 		/** Layout sub regions */
     	regions: {},
@@ -65,7 +79,10 @@ define(function(require){
     		'downloadReport'      : '[data-id="downloadBtnOnService"]',
     		'uploadServiceReport' :'[data-id="uploadBtnOnServices"]',
     		'exportReport'      : '[data-id="exportBtn"]',
-        	'importServiceReport' :'[data-id="importBtn"]'
+            'importServiceReport' :'[data-id="importBtn"]',
+            'viewServices' : '[data-name="viewService"]',
+            'selectZoneName' : '[data-id="selectZoneName"]'
+
     	},
 
 		/** ui events hash */
@@ -76,6 +93,8 @@ define(function(require){
 			events['click ' + this.ui.uploadServiceReport]	= 'uploadServiceReport';
 			events['click ' + this.ui.exportReport]	= 'downloadReport';
 			events['click ' + this.ui.importServiceReport]	= 'uploadServiceReport';
+            events['click ' + this.ui.viewServices]   = 'viewServices';
+            events['click ' + this.ui.selectZoneName]   = 'selectZoneName';
 			return events;
 		},
     	/**
@@ -85,10 +104,21 @@ define(function(require){
 		initialize: function(options) {
 			console.log("initialized a Servicemanagerlayout Layout");
 			this.services = new RangerServiceList();	
-			_.extend(this, _.pick(options, 'collection','type'));
+                        _.extend(this, _.pick(options, 'collection','type', 'rangerZoneList'));
 			this.bindEvents();
 			this.initializeServices();
-		},
+            if (!App.vZone) {
+                App.vZone = {
+                    vZoneName: ""
+                }
+            }
+			if (!_.isUndefined(XAUtil.urlQueryParams())) {
+				var searchFregment = XAUtil.changeUrlToSearchQuery(decodeURIComponent(XAUtil.urlQueryParams()));
+				if(_.has(searchFregment, 'securityZone')) {
+					App.vZone.vZoneName = searchFregment['securityZone'];
+				}
+			}
+        },
 
 		/** all events binding here */
 		bindEvents : function(){
@@ -103,14 +133,19 @@ define(function(require){
 		onRender: function() {
 			this.$('[data-id="r_tableSpinner"]').removeClass('loading').addClass('display-none');
 			this.initializePlugins();
-		},
+            if (this.rangerZoneList.length > 0) {
+                this.ui.selectZoneName.removeAttr('disabled');
+                this.$el.find('.zoneEmptyMsg').removeAttr('title');
+            }
+            this.selectZoneName();
+        },
 		/** all post render plugin initialization */
 		initializePlugins: function(){
 
 		},
 
 		initializeServices : function(){
-			this.services.setPageSize(100);
+			this.services.setPageSize(200);
 			this.services.fetch({
 			   cache : false,
 			   async : false
@@ -128,7 +163,7 @@ define(function(require){
 			var el = $(e.currentTarget), serviceType = el.attr('data-servicetype');
 			if(serviceType){
 				var componentServices = this.services.where({'type' : serviceType });
-	            if(serviceType !== undefined && componentServices.length == 0 ){
+                    if(componentServices.length == 0 ){
 	            	XAUtil.alertBoxWithTimeSet(localization.tt('msg.noServiceToExport'));
 	            	return;
 	            }
@@ -155,13 +190,17 @@ define(function(require){
               	serviceType		:serviceType,
 				collection 		: new Backbone.Collection([""]),
 				serviceDefList	: this.collection,
-				services		: this.services
+                                services		: this.services,
+                zoneServiceDefList : this.componentCollectionModels(this.ui.selectZoneName.val()),
+                zoneServices    : this.componentServicesModels(this.ui.selectZoneName.val()),
+
 			});
             var modal = new Backbone.BootstrapModal({
 				content	: view,
 				title	: 'Export Policy',
 				okText  :"Export",
-				animate : true
+				animate : true,
+				focusOk : false
 			}).open();
 			
 		},
@@ -176,7 +215,7 @@ define(function(require){
 		    var el = $(e.currentTarget), serviceType = el.attr('data-servicetype');
 			if(serviceType){
 				var componentServices = this.services.where({'type' : serviceType });
-	            if(serviceType !== undefined && componentServices.length == 0 ){
+                    if(componentServices.length == 0 ){
 	            	XAUtil.alertBoxWithTimeSet(localization.tt('msg.noServiceToImport'));
 	            	return;
 	            }	
@@ -200,16 +239,18 @@ define(function(require){
 				
 			}
 			var view = new vUploadServicePolicy({
-                serviceType		: serviceType,
-				collection 		: new Backbone.Collection([""]),
+				serviceType		: serviceType,
+				collection 		: new Backbone.Collection(),
 				serviceDefList	: this.collection,
-				services		: this.services
-			});	
+				services		: this.services,
+				rangerZoneList  : this.rangerZoneList,
+            });
 			var modal = new Backbone.BootstrapModal({
 				content	: view,	
 				okText 	:"Import",
-				title	: 'Import Policy',
-				animate : true
+                                title	: App.vZone && App.vZone.vZoneName && !_.isEmpty(App.vZone.vZoneName) ? 'Import Policy For Zone' : 'Import Policy',
+				animate : true,
+				focusOk : false
 			}).open();
 
 		},
@@ -231,7 +272,7 @@ define(function(require){
 							},
 							error :function(model, response) {
 								XAUtil.blockUI('unblock');
-                                                                if(!_.isUndefined(response) && !_.isUndefined(response.responseJSON) && !_.isUndefined(response.responseJSON.msgDesc && response.status !='419')){
+                                if(!_.isUndefined(response) && !_.isUndefined(response.responseJSON) && !_.isUndefined(response.responseJSON.msgDesc && response.status !='419')){
 									XAUtil.notifyError('Error', response.responseJSON.msgDesc);
 								}
 							}
@@ -240,8 +281,114 @@ define(function(require){
 				});
 			}
 		},
+        viewServices : function(e){
+            var that =this;
+            var serviceId =  $(e.currentTarget).data('id');
+            var rangerService = that.services.find(function(m){return m.id == serviceId});
+            var serviceDef = that.collection.find(function(m){return m.get('name') == rangerService.get('type')});
+            var view = new RangerServiceViewDetail({
+                serviceDef : serviceDef,
+                rangerService : rangerService,
+                rangerSeviceList : that.services,
+
+            });
+            var modal = new Backbone.BootstrapModal({
+                animate : true,
+                content     : view,
+                title: localization.tt("h.serviceDetails"),
+                okText :localization.tt("lbl.ok"),
+                allowCancel : true,
+                escape : true,
+                focusOk : false
+            }).open();
+            modal.$el.find('.cancel').hide();
+        },
+        selectZoneName : function(){
+            var that = this;
+            var zoneName = _.map(this.rangerZoneList.models, function(m){
+                return { 'id':m.get('name'), 'text':m.get('name'), 'zoneId' : m.get('id')}
+            });
+            if(!_.isEmpty(App.vZone.vZoneName) && !_.isUndefined(App.vZone.vZoneName)){
+                this.ui.selectZoneName.val(App.vZone.vZoneName);
+            }
+            var servicesModel = _.clone(that.services);
+            this.ui.selectZoneName.select2({
+                theme: 'bootstrap4',
+                closeOnSelect: false,
+                maximumSelectionSize : 1,
+                width: '220px',
+                allowClear: true,
+                data: zoneName,
+                placeholder: 'Select Zone Name',
+            }).on('change', function(e){
+                App.vZone.vZoneName = e.val;
+                if(e.added){
+                    App.vZone.vZoneId = e.added.zoneId;
+                        XAUtil.changeParamToUrlFragment({"securityZone" : e.val}, that.collection.modelName);
+                } else {
+                    App.vZone.vZoneId = null;
+                    //for url change on UI
+                    XAUtil.changeParamToUrlFragment();
+                }
+                var rBreadcrumbsText = !_.isEmpty(App.vZone.vZoneName) ? 'Service Manager : ' + App.vZone.vZoneName + ' zone' : 'Service Manager';
+                App.rBreadcrumbs.currentView.breadcrumb[0].text = rBreadcrumbsText;
+                App.rBreadcrumbs.currentView.render()
+                that.render();
+                that.ui.selectZoneName.select2('val', e.val);
+            });
+        },
+
+        componentCollectionModels: function(zoneName) {
+            var that = this;
+            if (!_.isEmpty(zoneName) && !_.isUndefined(zoneName) && this.type !== XAEnums.ServiceType.SERVICE_TAG.label) {
+                var serviceType = _.keys(that.componentServicesModels(zoneName));
+                return that.collection.filter(function(model) {
+                    return serviceType.indexOf(model.get("name")) !== -1;
+                })
+            } else {
+                return that.collection.models;
+            }
+        },
+
+        componentServicesModels: function(zoneName) {
+            var that = this;
+            if(!_.isEmpty(zoneName) && !_.isUndefined(zoneName) && that.rangerZoneList.length > 0){
+                var selectedZone = that.rangerZoneList.find(function(m) {
+                    return zoneName === m.get('name');
+                });
+            }
+            if (selectedZone && !_.isEmpty(selectedZone)) {
+                var selectedZoneServices = [], model;
+                if(this.type !== XAEnums.ServiceType.SERVICE_TAG.label){
+                    _.each(selectedZone.get('services'), function(value, key) {
+                        model = that.services.find(function(m) {
+                            return m.get('name') == key
+                        });
+                        if (model) {
+                            selectedZoneServices.push(model);
+                        }
+                    });
+                }else{
+                    _.each(selectedZone.get('tagServices'), function(value){
+                        model = that.services.find(function(m) {
+                            return m.get('name') == value
+                        });
+                        if (model) {
+                            selectedZoneServices.push(model);
+                        }
+                    })
+                }
+                return _.groupBy(selectedZoneServices, function(m) {
+                        return m.get('type')
+                });
+            } else {
+                return that.services.groupBy("type")
+            }
+        },
+
 		/** on close */
 		onClose: function(){
+            XAUtil.removeUnwantedDomElement();
 		}
 
 	});

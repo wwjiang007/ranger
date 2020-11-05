@@ -343,11 +343,39 @@ public class AppConstants extends RangerCommonEnums {
 	 * XA_PERM_TYPE_UPLOAD_NEW_CREDENTIAL is an element of enum XAPermType. Its value is "XA_PERM_TYPE_UPLOAD_NEW_CREDENTIAL".
 	 */
 	public static final int XA_PERM_TYPE_UPLOAD_NEW_CREDENTIAL = 31;
+	/**
+	* XA_PERM_TYPE_REPLADMIN is an element of enum XAPermType. Its value is "XA_PERM_TYPE_REPLADMIN".
+	*/
+	public static final int XA_PERM_TYPE_REPLADMIN = 32;
+	/**
+	 * XA_PERM_TYPE_SERVICEADMIN is an element of enum XAPermType. Its value is "XA_PERM_TYPE_HIVE_SERVICE".
+	 */
+	public static final int XA_PERM_TYPE_SERVICEADMIN = 33;
+	/**
+	 * XA_PERM_TYPE_TEMPUDFADMIN is an element of enum XAPermType. Its value is "XA_PERM_TYPE_TEMPUDFADMIN".
+	 */
+	public static final int XA_PERM_TYPE_TEMPUDFADMIN = 34;
+	/**
+	 * XA_PERM_TYPE_IDEMPOTENT_WRITE is an element of enum XAPermType. Its value is "XA_PERM_TYPE_IDEMPOTENT_WRITE".
+	 */
+	public static final int XA_PERM_TYPE_IDEMPOTENT_WRITE = 35;
+	/**
+	 * XA_PERM_TYPE_DESCRIBE_CONFIGS is an element of enum XAPermType. Its value is "XA_PERM_TYPE_DESCRIBE_CONFIGS".
+	 */
+	public static final int XA_PERM_TYPE_DESCRIBE_CONFIGS = 36;
+	/**
+	 * XA_PERM_TYPE_ALTER_CONFIGS is an element of enum XAPermType. Its value is "XA_PERM_TYPE_ALTER_CONFIGS".
+	 */
+	public static final int XA_PERM_TYPE_ALTER_CONFIGS = 37;
+	/**
+	 * XA_PERM_TYPE_CLUSTER_ACTION is an element of enum XAPermType. Its value is "XA_PERM_TYPE_CLUSTER_ACTION".
+	 */
+	public static final int XA_PERM_TYPE_CLUSTER_ACTION = 38;
 
 	/**
 	 * Max value for enum XAPermType_MAX
 	 */
-	public static final int XAPermType_MAX = 31;
+	public static final int XAPermType_MAX = 38;
 
 	/***************************************************************
 	 * Enum values for DatabaseFavor
@@ -594,10 +622,25 @@ public class AppConstants extends RangerCommonEnums {
 	public static final int CLASS_TYPE_XA_SERVICE_VERSION_INFO = 1052;
 	public static final int CLASS_TYPE_XA_ACCESS_AUDIT_V4 = 1053;
 	public static final int CLASS_TYPE_XA_ACCESS_AUDIT_V5 = 1054;
+	public static final int CLASS_TYPE_UGYNC_AUDIT_INFO = 1055;
+
+	/**
+	 * Class type of RangerSecurityZone
+	 */
+
+	public static final int CLASS_TYPE_RANGER_SECURITY_ZONE = 1056;
+	public static final int CLASS_TYPE_RANGER_ROLE = 1057;
+
+	public static final int CLASS_TYPE_RMS_MAPPING_PROVIDER = 1058;
+	public static final int CLASS_TYPE_RMS_NOTIFICATION = 1059;
+	public static final int CLASS_TYPE_RMS_SERVICE_RESOURCE = 1060;
+	public static final int CLASS_TYPE_RMS_RESOURCE_MAPPING = 1061;
+
 	/**
 	 * Max value for enum ClassTypes_MAX
 	 */
-	public static final int ClassTypes_MAX = 1054;
+	public static final int ClassTypes_MAX = 1062;
+
 	
 	/***************************************************************
 	 * Enum values for Default SortOrder
@@ -853,6 +896,34 @@ public class AppConstants extends RangerCommonEnums {
 			// return "Upload New Credential"; //XA_PERM_TYPE_UPLOAD_NEW_CREDENTIAL
 			return "uploadNewCredentials";
 		}
+		if( elementValue == 32 ) {
+			// return "Repl Admin"; //XA_PERM_TYPE_REPL_ADMIN
+			return "repladmin";
+		}
+		if( elementValue == 33 ) {
+			// return "serviceadmin"; //XA_PERM_TYPE_SERVICEADMIN
+			return "serviceadmin";
+		}
+		if( elementValue == 34 ) {
+			// return "tempudfadmin"; //XA_PERM_TYPE_TEMPUDFADMIN
+			return "tempudfadmin";
+		}
+		if( elementValue == 35 ) {
+			// return "Idempotent Write"; //XA_PERM_TYPE_IDEMPOTENT_WRITE
+			return "idempotent_write";
+		}
+		if( elementValue == 36 ) {
+			// return "Describe Configs"; //XA_PERM_TYPE_DESCRIBE_CONFIGS
+			return "describe_configs";
+		}
+		if( elementValue == 37 ) {
+			// return "Alter Configs"; //XA_PERM_TYPE_ALTER_CONFIGS
+			return "alter_configs";
+		}
+		if( elementValue == 38 ) {
+			// return "Cluster Action"; //XA_PERM_TYPE_CLUSTER_ACTION
+			return "cluster_action";
+		}
 		return null;
 	}
 
@@ -967,6 +1038,28 @@ public class AppConstants extends RangerCommonEnums {
 		}
 		if( elementValue == 1054 ) {
 			return "Access Audit V5"; //CLASS_TYPE_XA_ACCESS_AUDIT_V5
+		}
+		if( elementValue == 1055 ) {
+			return "Usersync Audit Info"; //CLASS_TYPE_UGYNC_AUDIT_INFO
+		}
+		if( elementValue == 1056 ) {
+			return "Ranger Security Zone"; //CLASS_TYPE_RANGER_SECURITY_ZONE
+		}
+		if( elementValue == 1057 ) {
+			return "Ranger Role"; //CLASS_TYPE_RANGER_ROLE
+		}
+
+		if( elementValue == 1058 ) {
+			return "Ranger Security Zone"; //CLAS
+		}
+		if( elementValue == 1059 ) {
+			return "Ranger Security Zone"; //CLAS
+		}
+		if( elementValue == 1060 ) {
+			return "Ranger Security Zone"; //CLAS
+		}
+		if( elementValue == 1061 ) {
+			return "Ranger Security Zone"; //CLAS
 		}
 		return null;
 	}
@@ -1153,6 +1246,27 @@ public class AppConstants extends RangerCommonEnums {
 		}
 		if("uploadNewCredentials".equalsIgnoreCase(label)) {
 			return AppConstants.XA_PERM_TYPE_UPLOAD_NEW_CREDENTIAL; //XA_PERM_TYPE_UPLOAD_NEW_CREDENTIAL
+		}
+		if(label.equalsIgnoreCase("repladmin")) {
+			return AppConstants.XA_PERM_TYPE_REPLADMIN; //XA_PERM_TYPE_REPLADMIN
+		}
+		if(label.equalsIgnoreCase("serviceadmin")) {
+			return AppConstants.XA_PERM_TYPE_SERVICEADMIN; //XA_PERM_TYPE_SERVICEADMIN
+		}
+		if("tempudfadmin".equalsIgnoreCase(label)) {
+			return AppConstants.XA_PERM_TYPE_TEMPUDFADMIN; //XA_PERM_TYPE_TEMPUDFADMIN
+		}
+		if("idempotent_write".equalsIgnoreCase(label)) {
+			return AppConstants.XA_PERM_TYPE_IDEMPOTENT_WRITE; //XA_PERM_TYPE_IDEMPOTENT_WRITE
+		}
+		if("describe_configs".equalsIgnoreCase(label)) {
+			return AppConstants.XA_PERM_TYPE_DESCRIBE_CONFIGS; //XA_PERM_TYPE_DESCRIBE_CONFIGS
+		}
+		if("alter_configs".equalsIgnoreCase(label)) {
+			return AppConstants.XA_PERM_TYPE_ALTER_CONFIGS; //XA_PERM_TYPE_ALTER_CONFIGS
+		}
+		if("cluster_action".equalsIgnoreCase(label)) {
+			return AppConstants.XA_PERM_TYPE_CLUSTER_ACTION; //XA_PERM_TYPE_CLUSTER_ACTION
 		}
 		return 0;
 	}

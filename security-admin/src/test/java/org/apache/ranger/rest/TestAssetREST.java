@@ -40,6 +40,7 @@ import org.apache.ranger.common.RangerSearchUtil;
 import org.apache.ranger.common.SearchCriteria;
 import org.apache.ranger.common.ServiceUtil;
 import org.apache.ranger.common.SortField;
+import org.apache.ranger.common.StringUtil;
 import org.apache.ranger.db.RangerDaoManager;
 import org.apache.ranger.db.XXServiceDefDao;
 import org.apache.ranger.entity.XXServiceDef;
@@ -103,6 +104,9 @@ public class TestAssetREST {
 
 	@Mock
 	RangerSearchUtil searchUtil;
+
+        @Mock
+        RangerBizUtil xaBizUtil;
 
 	@Mock
 	XAssetService xAssetService;
@@ -632,7 +636,7 @@ public class TestAssetREST {
 		// Mockito.when(PropertiesUtil.getBooleanProperty("ranger.service.http.enabled",true)).thenReturn(true);
 		try {
 			Mockito.when(serviceREST.getServicePoliciesIfUpdated(Mockito.anyString(), Mockito.anyLong(),
-					Mockito.anyLong(), Mockito.anyString(), Mockito.anyString() , (HttpServletRequest) Mockito.any()))
+					Mockito.anyLong(), Mockito.anyString(), Mockito.anyString() , Mockito.anyString() , Mockito.anyBoolean(), Mockito.anyString(), (HttpServletRequest) Mockito.any()))
 					.thenReturn(servicePolicies);
 		} catch (Exception e) {
 			fail("test failed due to: " + e.getMessage());
@@ -675,7 +679,7 @@ public class TestAssetREST {
 		VXPolicyExportAuditList expectedVXPolicyExportAuditList = assetREST.searchXPolicyExportAudits(request);
 		Assert.assertEquals(vXPolicyExportAuditList, expectedVXPolicyExportAuditList);
 		Mockito.verify(searchUtil).extractCommonCriterias(request, sortFields);
-		Mockito.verify(searchUtil, Mockito.times(4)).extractString((HttpServletRequest) Mockito.any(),
+		Mockito.verify(searchUtil, Mockito.times(5)).extractString((HttpServletRequest) Mockito.any(),
 				(SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString());
 		Mockito.verify(searchUtil).extractInt((HttpServletRequest) Mockito.any(),
 				(SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString());
@@ -758,7 +762,7 @@ public class TestAssetREST {
 		Mockito.verify(msBizUtil).isKeyAdmin();
 		Mockito.verify(assetMgr).getAccessLogs(searchCriteria);
 		Mockito.verify(daoManager).getXXServiceDef();
-		Mockito.verify(searchUtil, Mockito.times(12)).extractString((HttpServletRequest) Mockito.any(),
+		Mockito.verify(searchUtil, Mockito.times(14)).extractString((HttpServletRequest) Mockito.any(),
 				(SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String.class));
 		Mockito.verify(searchUtil, Mockito.times(4)).extractInt((HttpServletRequest) Mockito.any(),
 				(SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString());
@@ -766,6 +770,19 @@ public class TestAssetREST {
 				(SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString());
 		Mockito.verify(searchUtil).extractLong((HttpServletRequest) Mockito.any(),
 				(SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString());
+		Mockito.verify(searchUtil).extractStringList(Mockito.any(HttpServletRequest.class),
+			(SearchCriteria) Mockito.any(), Mockito.eq("requestUser"), Mockito.eq("Users"), Mockito.eq("requestUser"),
+			Mockito.any(), Mockito.eq(StringUtil.VALIDATION_TEXT));
+		Mockito.verify(searchUtil).extractStringList(Mockito.any(HttpServletRequest.class),
+				(SearchCriteria) Mockito.any(), Mockito.eq("excludeUser"), Mockito.eq("Exclude Users"), Mockito.eq("-requestUser"),
+				Mockito.any(), Mockito.eq(StringUtil.VALIDATION_TEXT));
+		Mockito.verify(searchUtil).extractStringList(Mockito.any(HttpServletRequest.class),
+				(SearchCriteria) Mockito.any(), Mockito.eq("zoneName"), Mockito.eq("Zone Name List"), Mockito.eq("zoneName"),
+				Mockito.eq(null), Mockito.eq(null));
+		Mockito.verify(searchUtil).extractCommonCriterias(Mockito.any(HttpServletRequest.class),
+			(List<SortField>) Mockito.any());
+		Mockito.verifyNoMoreInteractions(searchUtil, assetMgr, daoManager);
+
 	}
 
 	@Test
@@ -801,7 +818,7 @@ public class TestAssetREST {
 		Mockito.verify(msBizUtil).isKeyAdmin();
 		Mockito.verify(assetMgr).getAccessLogs(searchCriteria);
 		Mockito.verify(daoManager).getXXServiceDef();
-		Mockito.verify(searchUtil, Mockito.times(12)).extractString((HttpServletRequest) Mockito.any(),
+		Mockito.verify(searchUtil, Mockito.times(14)).extractString((HttpServletRequest) Mockito.any(),
 				(SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString(), Mockito.nullable(String.class));
 		Mockito.verify(searchUtil, Mockito.times(4)).extractInt((HttpServletRequest) Mockito.any(),
 				(SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString());
@@ -809,6 +826,18 @@ public class TestAssetREST {
 				(SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString());
 		Mockito.verify(searchUtil).extractLong((HttpServletRequest) Mockito.any(),
 				(SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString());
+		Mockito.verify(searchUtil).extractStringList(Mockito.any(HttpServletRequest.class),
+			(SearchCriteria) Mockito.any(), Mockito.eq("requestUser"), Mockito.eq("Users"), Mockito.eq("requestUser"),
+			Mockito.any(), Mockito.eq(StringUtil.VALIDATION_TEXT));
+		Mockito.verify(searchUtil).extractStringList(Mockito.any(HttpServletRequest.class),
+			(SearchCriteria) Mockito.any(), Mockito.eq("excludeUser"), Mockito.eq("Exclude Users"), Mockito.eq("-requestUser"),
+			Mockito.any(), Mockito.eq(StringUtil.VALIDATION_TEXT));
+		Mockito.verify(searchUtil).extractStringList(Mockito.any(HttpServletRequest.class),
+				(SearchCriteria) Mockito.any(), Mockito.eq("zoneName"), Mockito.eq("Zone Name List"), Mockito.eq("zoneName"),
+				Mockito.eq(null), Mockito.eq(null));
+		Mockito.verify(searchUtil).extractCommonCriterias(Mockito.any(HttpServletRequest.class),
+			(List<SortField>) Mockito.any());
+		Mockito.verifyNoMoreInteractions(searchUtil, assetMgr, daoManager);
 	}
 
 	@Test
@@ -936,6 +965,65 @@ public class TestAssetREST {
 		}
 
 	}
+
+        @Test
+        public void testGetReportLogsForAuditAdmin() {
+                SearchCriteria searchCriteria = new SearchCriteria();
+                List<VXTrxLog> vXTrxLogs = new ArrayList<VXTrxLog>();
+                VXTrxLogList vXTrxLogList = new VXTrxLogList();
+                vXTrxLogList.setVXTrxLogs(vXTrxLogs);
+                Mockito.when(searchUtil.extractCommonCriterias(request, xTrxLogService.sortFields)).thenReturn(searchCriteria);
+                Mockito.when(searchUtil.extractString((HttpServletRequest) Mockito.any(),
+                                (SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+                                .thenReturn("test");
+                Mockito.when(searchUtil.extractInt((HttpServletRequest) Mockito.any(),
+                                (SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString()))
+                                .thenReturn((Integer) 8);
+                Mockito.when(searchUtil.extractDate((HttpServletRequest) Mockito.any(),
+                                (SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+                                .thenReturn(new Date());
+                Mockito.when(assetMgr.getReportLogs(searchCriteria)).thenReturn(vXTrxLogList);
+                VXTrxLogList expectedVXTrxLogListt = assetREST.getReportLogs(request);
+                Assert.assertEquals(vXTrxLogList, expectedVXTrxLogListt);
+                Mockito.verify(searchUtil, Mockito.times(4)).extractString((HttpServletRequest) Mockito.any(),
+                                (SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString());
+                Mockito.verify(searchUtil).extractInt((HttpServletRequest) Mockito.any(),
+                                (SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString());
+                Mockito.verify(searchUtil, Mockito.times(2)).extractDate((HttpServletRequest) Mockito.any(),
+                                (SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString());
+                Mockito.verify(assetMgr).getReportLogs(searchCriteria);
+                Mockito.verify(searchUtil).extractCommonCriterias(request, xTrxLogService.sortFields);
+        }
+
+
+        @Test
+        public void testGetReportLogsForAuditKeyAdmin() {
+                SearchCriteria searchCriteria = new SearchCriteria();
+                List<VXTrxLog> vXTrxLogs = new ArrayList<VXTrxLog>();
+                VXTrxLogList vXTrxLogList = new VXTrxLogList();
+                vXTrxLogList.setVXTrxLogs(vXTrxLogs);
+                Mockito.when(searchUtil.extractCommonCriterias(request, xTrxLogService.sortFields)).thenReturn(searchCriteria);
+                Mockito.when(searchUtil.extractString((HttpServletRequest) Mockito.any(),
+                                (SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+                                .thenReturn("test");
+                Mockito.when(searchUtil.extractInt((HttpServletRequest) Mockito.any(),
+                                (SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString()))
+                                .thenReturn((Integer) 8);
+                Mockito.when(searchUtil.extractDate((HttpServletRequest) Mockito.any(),
+                                (SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString()))
+                                .thenReturn(new Date());
+                Mockito.when(assetMgr.getReportLogs(searchCriteria)).thenReturn(vXTrxLogList);
+                VXTrxLogList expectedVXTrxLogListt = assetREST.getReportLogs(request);
+                Assert.assertEquals(vXTrxLogList, expectedVXTrxLogListt);
+                Mockito.verify(searchUtil, Mockito.times(4)).extractString((HttpServletRequest) Mockito.any(),
+                                (SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString());
+                Mockito.verify(searchUtil).extractInt((HttpServletRequest) Mockito.any(),
+                                (SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString());
+                Mockito.verify(searchUtil, Mockito.times(2)).extractDate((HttpServletRequest) Mockito.any(),
+                                (SearchCriteria) Mockito.any(), Mockito.anyString(), Mockito.anyString(), Mockito.anyString());
+                Mockito.verify(assetMgr).getReportLogs(searchCriteria);
+                Mockito.verify(searchUtil).extractCommonCriterias(request, xTrxLogService.sortFields);
+        }
 
 	public Map<String, String> getSampleConfig() {
 		Map<String, String> configs = new HashMap<String, String>();

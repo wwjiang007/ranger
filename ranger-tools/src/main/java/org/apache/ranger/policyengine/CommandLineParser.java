@@ -52,8 +52,13 @@ public class CommandLineParser
     private int concurrentClientCount = 1;
     private int iterationsCount = 1;
 
-    private boolean isDynamicReorderingDisabled = true;
     private boolean isTrieLookupPrefixDisabled = true;
+
+    private boolean isLazyTriePostSetupDisabled = true;
+
+    private String configurationFileName;
+    private URL configurationFileURL;
+
 
     private Options options = new Options();
 
@@ -63,7 +68,7 @@ public class CommandLineParser
         PerfTestOptions ret = null;
         if (parseArguments(args) && validateInputFiles()) {
             // Instantiate a data-object and return
-            ret = new PerfTestOptions(servicePoliciesFileURL, requestFileURLs, statCollectionFileURL, concurrentClientCount, iterationsCount, isDynamicReorderingDisabled, isTrieLookupPrefixDisabled);
+            ret = new PerfTestOptions(servicePoliciesFileURL, requestFileURLs, statCollectionFileURL, concurrentClientCount, iterationsCount, isTrieLookupPrefixDisabled, isLazyTriePostSetupDisabled, configurationFileURL);
         } else {
             showUsage();
         }
@@ -78,7 +83,9 @@ public class CommandLineParser
             -r request-file-name-list
             -n number-of-iterations
             -p modules-to-collect-stats
-            -o
+            -f configuration-file-name
+            -t
+            -d
 
             If the concurrent-client-count is more than the number of files in the request-file-name-list,
             then reuse the request-file-names in a round-robin way
@@ -98,8 +105,10 @@ public class CommandLineParser
         options.addOption("p", "statistics", true, "Modules for stat collection File Name");
         options.addOption("c", "clients", true, "Number of concurrent clients");
         options.addOption("n", "cycles", true, "Number of iterations");
-        options.addOption("o", "optimize", false, "Enable usage-based policy reordering");
+        options.addOption("f", "configurations", true, "Configuration File Name");
         options.addOption("t", "trie-prefilter", false, "Enable trie-prefilter");
+        options.addOption("d", "trie-lazy-setup", false, "Enable lazy trie-setup");
+
 
         org.apache.commons.cli.CommandLineParser commandLineParser = new DefaultParser();
 
@@ -126,18 +135,23 @@ public class CommandLineParser
             if (iterationsOptionValue != null) {
                 iterationsCount = Integer.parseInt(iterationsOptionValue);
             }
-            if (commandLine.hasOption("o")) {
-                isDynamicReorderingDisabled = false;
-            }
             if (commandLine.hasOption("t")) {
                 isTrieLookupPrefixDisabled = false;
             }
 
+            if (commandLine.hasOption("d")) {
+                isLazyTriePostSetupDisabled = false;
+            }
+
+            configurationFileName = commandLine.getOptionValue("f");
+
             if (LOG.isDebugEnabled()) {
                 LOG.debug("servicePoliciesFileName=" + servicePoliciesFileName + ", requestFileName=" + Arrays.toString(requestFileNames));
                 LOG.debug("concurrentClientCount=" + concurrentClientCount + ", iterationsCount=" + iterationsCount);
-                LOG.debug("isDynamicReorderingDisabled=" + isDynamicReorderingDisabled);
                 LOG.debug("isTrieLookupPrefixDisabled=" + isTrieLookupPrefixDisabled);
+                LOG.debug("isLazyTriePostSetupDisabled=" + isLazyTriePostSetupDisabled);
+                LOG.debug("configurationFileName=" + configurationFileName);
+
             }
 
             ret = true;
@@ -164,11 +178,14 @@ public class CommandLineParser
             if (servicePoliciesFileURL != null) {
                 if (requestFileNames != null) {
                     if (validateRequestFiles()) {
+                    	ret = true;
                         if (statCollectionFileName != null) {
                             statCollectionFileURL = getInputFileURL(statCollectionFileName);
                             ret = statCollectionFileURL != null;
-                        }  else {
-                            ret = true;
+                        }
+                        if (ret && configurationFileName != null) {
+                        	configurationFileURL = getInputFileURL(configurationFileName);
+                        	ret = configurationFileURL != null;
                         }
                     }
                 } else {

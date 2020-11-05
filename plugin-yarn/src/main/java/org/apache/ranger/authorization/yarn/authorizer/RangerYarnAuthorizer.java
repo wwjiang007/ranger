@@ -23,8 +23,10 @@ package org.apache.ranger.authorization.yarn.authorizer;
 import java.net.InetAddress;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
@@ -34,7 +36,6 @@ import org.apache.hadoop.security.authorize.AccessControlList;
 import org.apache.hadoop.yarn.security.*;
 import org.apache.hadoop.yarn.security.PrivilegedEntity.EntityType;
 import org.apache.ranger.audit.model.AuthzAuditEvent;
-import org.apache.ranger.authorization.hadoop.config.RangerConfiguration;
 import org.apache.ranger.authorization.hadoop.constants.RangerHadoopConstants;
 import org.apache.ranger.authorization.utils.StringUtil;
 import org.apache.ranger.plugin.audit.RangerDefaultAuditHandler;
@@ -47,19 +48,19 @@ import com.google.common.collect.Sets;
 import org.apache.ranger.plugin.util.RangerPerfTracer;
 
 public class RangerYarnAuthorizer extends YarnAuthorizationProvider {
-	public static final String ACCESS_TYPE_ADMIN_QUEUE = "admin-queue";
-	public static final String ACCESS_TYPE_SUBMIT_APP  = "submit-app";
-	public static final String ACCESS_TYPE_ADMIN       = "admin";
-
-    public static final String KEY_RESOURCE_QUEUE = "queue";
-
-    private static boolean yarnAuthEnabled = RangerHadoopConstants.RANGER_ADD_YARN_PERMISSION_DEFAULT;
-
 	private static final Log LOG = LogFactory.getLog(RangerYarnAuthorizer.class);
 
 	private static final Log PERF_YARNAUTH_REQUEST_LOG = RangerPerfTracer.getPerfLogger("yarnauth.request");
 
+	public static final String ACCESS_TYPE_ADMIN_QUEUE = "admin-queue";
+	public static final String ACCESS_TYPE_SUBMIT_APP  = "submit-app";
+	public static final String ACCESS_TYPE_ADMIN       = "admin";
+    public static final String KEY_RESOURCE_QUEUE      = "queue";
+
 	private static volatile RangerYarnPlugin yarnPlugin = null;
+
+    private boolean yarnAuthEnabled = RangerHadoopConstants.RANGER_ADD_YARN_PERMISSION_DEFAULT;
+    private String  yarnModuleName  = RangerHadoopConstants.DEFAULT_YARN_MODULE_ACL_NAME;
 
 	private AccessControlList admins = null;
 	private Map<PrivilegedEntity, Map<AccessType, AccessControlList>> yarnAcl = new HashMap<PrivilegedEntity, Map<AccessType, AccessControlList>>();
@@ -85,7 +86,9 @@ public class RangerYarnAuthorizer extends YarnAuthorizationProvider {
 			}
 		}
 
-		RangerYarnAuthorizer.yarnAuthEnabled = RangerConfiguration.getInstance().getBoolean(RangerHadoopConstants.RANGER_ADD_YARN_PERMISSION_PROP, RangerHadoopConstants.RANGER_ADD_YARN_PERMISSION_DEFAULT);
+		this.yarnAuthEnabled = yarnPlugin.getConfig().getBoolean(RangerHadoopConstants.RANGER_ADD_YARN_PERMISSION_PROP, RangerHadoopConstants.RANGER_ADD_YARN_PERMISSION_DEFAULT);
+		this.yarnModuleName  = yarnPlugin.getConfig().get(RangerHadoopConstants.AUDITLOG_YARN_MODULE_ACL_NAME_PROP , RangerHadoopConstants.DEFAULT_YARN_MODULE_ACL_NAME);
+
 
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("<== RangerYarnAuthorizer.init()");
@@ -93,7 +96,12 @@ public class RangerYarnAuthorizer extends YarnAuthorizationProvider {
 	}
 
 	@Override
-	public boolean checkPermission(AccessType accessType, PrivilegedEntity entity, UserGroupInformation ugi) {
+	public boolean checkPermission(AccessRequest accessRequest) {
+		AccessType accessType = accessRequest.getAccessType();
+	    PrivilegedEntity entity = accessRequest.getEntity();
+		UserGroupInformation ugi = accessRequest.getUser();
+		List<String> forwardedAddresses = accessRequest.getForwardedAddresses();
+		String remoteIpAddress = accessRequest.getRemoteAddress();
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("==> RangerYarnAuthorizer.checkPermission(" + accessType + ", " + toString(entity) + ", " + ugi + ")");
 		}
@@ -102,7 +110,6 @@ public class RangerYarnAuthorizer extends YarnAuthorizationProvider {
 		RangerYarnPlugin       plugin       = yarnPlugin;
 		RangerYarnAuditHandler auditHandler = null;
 		RangerAccessResult     result       = null;
-		String				   clusterName  = yarnPlugin.getClusterName();
 
 		RangerPerfTracer perf = null;
 		RangerPerfTracer yarnAclPerf = null;
@@ -113,14 +120,14 @@ public class RangerYarnAuthorizer extends YarnAuthorizationProvider {
 				perf = RangerPerfTracer.getPerfTracer(PERF_YARNAUTH_REQUEST_LOG, "RangerYarnAuthorizer.checkPermission(entity=" + entity + ")");
 			}
 
-			RangerYarnAccessRequest request = new RangerYarnAccessRequest(entity, getRangerAccessType(accessType), accessType.name(), ugi, clusterName);
+			RangerYarnAccessRequest request = new RangerYarnAccessRequest(entity, getRangerAccessType(accessType), accessType.name(), ugi, forwardedAddresses, remoteIpAddress);
 
-			auditHandler = new RangerYarnAuditHandler();
+			auditHandler = new RangerYarnAuditHandler(yarnModuleName);
 
 			result = plugin.isAccessAllowed(request, auditHandler);
 		}
 
-		if(RangerYarnAuthorizer.yarnAuthEnabled && (result == null || !result.getIsAccessDetermined())) {
+		if(yarnAuthEnabled && (result == null || !result.getIsAccessDetermined())) {
 
 			if(RangerPerfTracer.isPerfTraceEnabled(PERF_YARNAUTH_REQUEST_LOG)) {
 				yarnAclPerf = RangerPerfTracer.getPerfTracer(PERF_YARNAUTH_REQUEST_LOG, "RangerYarnNativeAuthorizer.isAllowedByYarnAcl(entity=" + entity + ")");
@@ -181,7 +188,14 @@ public class RangerYarnAuthorizer extends YarnAuthorizationProvider {
 	}
 
 	@Override
-	public void setPermission(PrivilegedEntity entity, Map<AccessType, AccessControlList> permission, UserGroupInformation ugi) {
+	public void setPermission(List<Permission> permissions, UserGroupInformation ugi) {
+		for (Permission permission : permissions) {
+			setPermission(permission.getTarget(), permission.getAcls(), ugi);
+		}
+
+	}
+
+	private void setPermission(PrivilegedEntity entity, Map<AccessType, AccessControlList> permission, UserGroupInformation ugi) {
 		if(LOG.isDebugEnabled()) {
 			LOG.debug("==> RangerYarnAuthorizer.setPermission(" + toString(entity) + ", " + permission + ", " + ugi + ")");
 		}
@@ -276,7 +290,7 @@ class RangerYarnPlugin extends RangerBasePlugin {
 	public void init() {
 		super.init();
 
-		RangerDefaultAuditHandler auditHandler = new RangerDefaultAuditHandler();
+		RangerDefaultAuditHandler auditHandler = new RangerDefaultAuditHandler(getConfig());
 
 		super.setResultProcessor(auditHandler);
 	}
@@ -289,15 +303,22 @@ class RangerYarnResource extends RangerAccessResourceImpl {
 }
 
 class RangerYarnAccessRequest extends RangerAccessRequestImpl {
-	public RangerYarnAccessRequest(PrivilegedEntity entity, String accessType, String action, UserGroupInformation ugi, String clusterName) {
+	public RangerYarnAccessRequest(PrivilegedEntity entity, String accessType, String action, UserGroupInformation ugi, List<String> forwardedAddresses, String remoteIpAddress) {
 		super.setResource(new RangerYarnResource(entity));
 		super.setAccessType(accessType);
 		super.setUser(ugi.getShortUserName());
 		super.setUserGroups(Sets.newHashSet(ugi.getGroupNames()));
 		super.setAccessTime(new Date());
-		super.setClientIPAddress(getRemoteIp());
+
+		String clientIPAddress = remoteIpAddress;
+		if (StringUtils.isEmpty(clientIPAddress)) {
+			clientIPAddress = getRemoteIp();
+		}
+		super.setClientIPAddress(clientIPAddress);
+
 		super.setAction(action);
-		super.setClusterName(clusterName);
+		super.setRemoteIPAddress(remoteIpAddress);
+		super.setForwardedAddresses(forwardedAddresses);
 	}
 	
 	private static String getRemoteIp() {
@@ -313,12 +334,12 @@ class RangerYarnAccessRequest extends RangerAccessRequestImpl {
 class RangerYarnAuditHandler extends RangerDefaultAuditHandler {
 	private static final Log LOG = LogFactory.getLog(RangerYarnAuditHandler.class);
 
-	private static final String YarnModuleName = RangerConfiguration.getInstance().get(RangerHadoopConstants.AUDITLOG_YARN_MODULE_ACL_NAME_PROP , RangerHadoopConstants.DEFAULT_YARN_MODULE_ACL_NAME);
-
+	private final String    yarnModuleName;
 	private boolean         isAuditEnabled = false;
 	private AuthzAuditEvent auditEvent     = null;
 
-	public RangerYarnAuditHandler() {
+	public RangerYarnAuditHandler(String yarnModuleName) {
+		this.yarnModuleName = yarnModuleName;
 	}
 
 	@Override
@@ -345,7 +366,7 @@ class RangerYarnAuditHandler extends RangerDefaultAuditHandler {
 
 		if(auditEvent != null) {
 			auditEvent.setAccessResult((short) (accessGranted ? 1 : 0));
-			auditEvent.setAclEnforcer(YarnModuleName);
+			auditEvent.setAclEnforcer(yarnModuleName);
 			auditEvent.setPolicyId(-1);
 		}
 

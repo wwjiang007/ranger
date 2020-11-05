@@ -32,8 +32,8 @@ XAPOLICYMGR_DIR=`(cd $realScriptDir/..; pwd)`
 XAPOLICYMGR_EWS_DIR=${XAPOLICYMGR_DIR}/ews
 RANGER_JAAS_LIB_DIR="${XAPOLICYMGR_EWS_DIR}/ranger_jaas"
 RANGER_JAAS_CONF_DIR="${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/conf/ranger_jaas"
-JAVA_OPTS=" ${JAVA_OPTS} -XX:MaxPermSize=256m -Xmx1024m -Xms1024m "
-if [[ ${JAVA_OPTS} != *"-Duser.timezone"* ]] ;then  export JAVA_OPTS=" ${JAVA_OPTS} -Duser.timezone=UTC" ;fi
+ranger_admin_max_heap_size=1g
+
 if [ -f ${XAPOLICYMGR_DIR}/ews/webapp/WEB-INF/classes/conf/java_home.sh ]; then
         . ${XAPOLICYMGR_DIR}/ews/webapp/WEB-INF/classes/conf/java_home.sh
 fi
@@ -43,6 +43,9 @@ for custom_env_script in `find ${XAPOLICYMGR_DIR}/ews/webapp/WEB-INF/classes/con
                 . $custom_env_script
         fi
 done
+
+JAVA_OPTS=" ${JAVA_OPTS} -XX:MetaspaceSize=100m -XX:MaxMetaspaceSize=200m -Xmx${ranger_admin_max_heap_size} -Xms1g -Xloggc:${XAPOLICYMGR_EWS_DIR}/logs/gc-worker.log -verbose:gc -XX:+PrintGCDetails"
+if [[ ${JAVA_OPTS} != *"-Duser.timezone"* ]] ;then  export JAVA_OPTS=" ${JAVA_OPTS} -Duser.timezone=UTC" ;fi
 
 if [ "$JAVA_HOME" != "" ]; then
         export PATH=$JAVA_HOME/bin:$PATH
@@ -82,7 +85,7 @@ fi
 SERVER_NAME=rangeradmin
 start() {
 	SLEEP_TIME_AFTER_START=5
-	nohup  java -Dproc_rangeradmin ${JAVA_OPTS} -Duser=${USER} -Dhostname=${HOSTNAME} ${DB_SSL_PARAM} -Dservername=${SERVER_NAME} -Dlogdir=${RANGER_ADMIN_LOG_DIR} -Dcatalina.base=${XAPOLICYMGR_EWS_DIR} -cp "${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/conf:${XAPOLICYMGR_EWS_DIR}/lib/*:${RANGER_JAAS_LIB_DIR}/*:${RANGER_JAAS_CONF_DIR}:${JAVA_HOME}/lib/*:${RANGER_HADOOP_CONF_DIR}/*:$CLASSPATH" org.apache.ranger.server.tomcat.EmbeddedServer > ${RANGER_ADMIN_LOG_DIR}/catalina.out 2>&1 &
+	nohup  java -Dproc_rangeradmin ${JAVA_OPTS} -Dlog4j.configuration=file:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/log4j.properties  -Duser=${USER} -Dhostname=${HOSTNAME} ${DB_SSL_PARAM} -Dservername=${SERVER_NAME} -Dlogdir=${RANGER_ADMIN_LOG_DIR} -Dcatalina.base=${XAPOLICYMGR_EWS_DIR} -cp "${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/conf:${XAPOLICYMGR_EWS_DIR}/lib/*:${RANGER_JAAS_LIB_DIR}/*:${RANGER_JAAS_CONF_DIR}:${JAVA_HOME}/lib/*:${RANGER_HADOOP_CONF_DIR}/*:$CLASSPATH" org.apache.ranger.server.tomcat.EmbeddedServer > ${RANGER_ADMIN_LOG_DIR}/catalina.out 2>&1 &
 	VALUE_OF_PID=$!
 	echo "Starting Apache Ranger Admin Service"
 	sleep $SLEEP_TIME_AFTER_START
@@ -111,7 +114,7 @@ stop(){
 			echo "pid file($pidf) not present, taking pid from \'ps\' command.."
 		else
 			echo "Apache Ranger Admin Service is not running"
-			exit
+			return
 		fi
 	fi
 
@@ -145,7 +148,11 @@ stop(){
 }
 
 metric(){
-	java ${JAVA_OPTS} -Duser=${USER} -Dhostname=${HOSTNAME} -Dlogdir=${RANGER_ADMIN_LOG_DIR} -cp "${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/conf:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/lib/*:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/META-INF:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/lib/*:${XAPOLICYMGR_EWS_DIR}/webapp/META-INF:${XAPOLICYMGR_EWS_DIR}/lib/*:${RANGER_JAAS_LIB_DIR}/*:${RANGER_JAAS_CONF_DIR}:${JAVA_HOME}/lib/*:${RANGER_HADOOP_CONF_DIR}/*:$CLASSPATH" org.apache.ranger.patch.cliutil.MetricUtil ${arg2} ${arg3} 2>/dev/null
+ if [ "$JAVA_HOME" == "" ]; then
+  echo "[E] JAVA_HOME environment variable not defined, aborting Apache Ranger Admin metric collection"
+  exit 1;
+ fi
+ java ${JAVA_OPTS} -Dlogdir=${RANGER_ADMIN_LOG_DIR} -cp "${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/conf:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/lib/*:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/classes/META-INF:${XAPOLICYMGR_EWS_DIR}/webapp/WEB-INF/lib/*:${XAPOLICYMGR_EWS_DIR}/webapp/META-INF:${XAPOLICYMGR_EWS_DIR}/lib/*:${RANGER_JAAS_LIB_DIR}/*:${RANGER_JAAS_CONF_DIR}:${JAVA_HOME}/lib/*:${RANGER_HADOOP_CONF_DIR}/*:$CLASSPATH" org.apache.ranger.patch.cliutil.MetricUtil ${arg2} ${arg3} 2>/dev/null
 }
 
 if [ "${action}" == "START" ]; then

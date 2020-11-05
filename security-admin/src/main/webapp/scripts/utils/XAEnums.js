@@ -23,7 +23,7 @@ define(function(require) {
 	var $ = require('jquery');
 	var XAEnums = {};
 
-	mergeParams = function(defaults, params) {
+        var mergeParams = function(defaults, params) {
 		if (!params) {
 			return defaults;
 		}
@@ -57,6 +57,8 @@ define(function(require) {
 		ROLE_SYS_ADMIN:{value:0, label:'Admin', rbkey:'xa.enum.AccessResult.ACCESS_RESULT_ALLOWED', tt: 'lbl.AccessResult_ACCESS_RESULT_ALLOWED'},
 		ROLE_USER:{value:1, label:'User', rbkey:'xa.enum.AccessResult.ACCESS_RESULT_DENIED', tt: 'lbl.AccessResult_ACCESS_RESULT_DENIED'},
 		ROLE_KEY_ADMIN:{value:2, label:'KeyAdmin', rbkey:'xa.enum.AccessResult.ACCESS_RESULT_ALLOWED', tt: 'lbl.AccessResult_ACCESS_RESULT_ALLOWED'},
+        ROLE_ADMIN_AUDITOR:{value:3, label:'Auditor', rbkey:'xa.enum.AccessResult.ACCESS_RESULT_ALLOWED', tt: 'lbl.AccessResult_ACCESS_RESULT_ALLOWED'},
+        ROLE_KEY_ADMIN_AUDITOR:{value:4, label:'KMSAuditor', rbkey:'xa.enum.AccessResult.ACCESS_RESULT_ALLOWED', tt: 'lbl.AccessResult_ACCESS_RESULT_ALLOWED'}
 	});
 	
 	XAEnums.UserTypes = mergeParams(XAEnums.UserTypes, {
@@ -118,7 +120,8 @@ define(function(require) {
 		ASSET_HIVE:{value:3, label:'Hive', rbkey:'xa.enum.AssetType.ASSET_HIVE', tt: 'lbl.AssetType_ASSET_HIVE'},
 		ASSET_AGENT:{value:4, label:'Agent', rbkey:'xa.enum.AssetType.ASSET_KNOX', tt: 'lbl.AssetType_ASSET_KNOX'},
 		ASSET_KNOX:{value:5, label:'Knox', rbkey:'xa.enum.AssetType.ASSET_KNOX', tt: 'lbl.AssetType_ASSET_KNOX'},
-		ASSET_STORM:{value:6, label:'Storm', rbkey:'xa.enum.AssetType.ASSET_STORM', tt: 'lbl.AssetType_ASSET_STORM'}
+		ASSET_STORM:{value:6, label:'Storm', rbkey:'xa.enum.AssetType.ASSET_STORM', tt: 'lbl.AssetType_ASSET_STORM'},
+		ASSET_SOLR:{value:7, label:'Solr', rbkey:'xa.enum.AssetType.ASSET_SOLR', tt: 'lbl.AssetType_ASSET_SOLR'}
 	});
 	
 	XAEnums.ServiceType = mergeParams(XAEnums.ServiceType, {
@@ -128,7 +131,9 @@ define(function(require) {
 		Service_HBASE:{value:3, label:'hbase', rbkey:'xa.enum.AssetType.ASSET_HBASE', tt: 'lbl.AssetType_ASSET_HBASE'},
 		Service_KNOX:{value:4, label:'knox', rbkey:'xa.enum.AssetType.ASSET_KNOX', tt: 'lbl.AssetType_ASSET_KNOX'},
 		Service_STORM:{value:5, label:'storm', rbkey:'xa.enum.AssetType.ASSET_STORM', tt: 'lbl.AssetType_ASSET_STORM'},
-		SERVICE_TAG:{value:6, label:'tag', rbkey:'xa.enum.ServiceType.SERVICE_TAG', tt: 'lbl.ServiceType_SERVICE_TAG'}
+		Service_SOLR:{value:6, label:'solr', rbkey:'xa.enum.AssetType.ASSET_SOLR', tt: 'lbl.AssetType_ASSET_SOLR'},
+    SERVICE_TAG:{value:7, label:'tag', rbkey:'xa.enum.ServiceType.SERVICE_TAG', tt: 'lbl.ServiceType_SERVICE_TAG'},
+    Service_KMS:{value:8, label:'kms', rbkey:'xa.enum.ServiceType.SERVICE_KMS', tt: 'lbl.ServiceType_SERVICE_KMS'}
 	});
 
 	XAEnums.AuthStatus = mergeParams(XAEnums.AuthStatus, {
@@ -143,7 +148,10 @@ define(function(require) {
 
 	XAEnums.AuthType = mergeParams(XAEnums.AuthType, {
 		AUTH_TYPE_UNKNOWN:{value:0, label:'Unknown', rbkey:'xa.enum.AuthType.AUTH_TYPE_UNKNOWN', tt: 'lbl.AuthType_AUTH_TYPE_UNKNOWN'},
-		AUTH_TYPE_PASSWORD:{value:1, label:'Username/Password', rbkey:'xa.enum.AuthType.AUTH_TYPE_PASSWORD', tt: 'lbl.AuthType_AUTH_TYPE_PASSWORD'}
+		AUTH_TYPE_PASSWORD:{value:1, label:'Username/Password', rbkey:'xa.enum.AuthType.AUTH_TYPE_PASSWORD', tt: 'lbl.AuthType_AUTH_TYPE_PASSWORD'},
+		AUTH_TYPE_KERBEROS:{value:2, label:'Kerberos', rbkey:'xa.enum.AuthType.AUTH_TYPE_KERBEROS', tt: 'lbl.AuthType_AUTH_TYPE_KERBEROS'},
+		AUTH_TYPE_SSO:{value:3, label:'SingleSignOn', rbkey:'xa.enum.AuthType.AUTH_TYPE_SSO', tt: 'lbl.AuthType_AUTH_TYPE_SSO'},
+		AUTH_TYPE_TRUSTED_PROXY:{value:4, label:'Trusted Proxy', rbkey:'xa.enum.AuthType.AUTH_TYPE_TRUSTED_PROXY', tt: 'lbl.AuthType_AUTH_TYPE_TRUSTED_PROXY'}
 	});
 
 	XAEnums.BooleanValue = mergeParams(XAEnums.BooleanValue, {
@@ -181,7 +189,8 @@ define(function(require) {
 		CLASS_TYPE_XA_TRANSACTION_LOG_ATTRIBUTE:{value:1012, label:'Transaction log attribute', rbkey:'xa.enum.ClassTypes.CLASS_TYPE_XA_TRANSACTION_LOG_ATTRIBUTE', tt: 'lbl.ClassTypes_CLASS_TYPE_XA_TRANSACTION_LOG_ATTRIBUTE'},
 		CLASS_TYPE_RANGER_POLICY:{value:1020, label:'Ranger Policy', rbkey:'xa.enum.ClassTypes.CLASS_TYPE_RANGER_POLICY', modelName:'VXRangerPolicy', type:'vXResource', tt: 'lbl.ClassTypes_CLASS_TYPE_RANGER_POLICY'},
 		CLASS_TYPE_RANGER_SERVICE:{value:1030, label:'Ranger Service', rbkey:'xa.enum.ClassTypes.CLASS_TYPE_RANGER_SERVICE', modelName:'VXRangerService', type:'vXRangerService', tt: 'lbl.ClassTypes_CLASS_TYPE_RANGER_SERVICE'},
-	
+                CLASS_TYPE_RANGER_SECURITY_ZONE:{value:1056, label:'Ranger Security Zone', rbkey:'xa.enum.ClassTypes.CLASS_TYPE_RANGER_SECURITY_ZONE', modelName:'VXRangerService', type:'vXRangerService', tt: 'lbl.ClassTypes_CLASS_TYPE_RANGER_SECURITY_ZONE'},
+                CLASS_TYPE_RANGER_ROLE:{value:1057, label:'Ranger Role', rbkey:'xa.enum.ClassTypes.CLASS_TYPE_RANGER_ROLE', modelName:'VXRole', type:'vXRole', tt: 'lbl.ClassTypes_CLASS_TYPE_RANGER_ROLE'}
 	});
 
 	XAEnums.DataType = mergeParams(XAEnums.DataType, {
@@ -287,6 +296,7 @@ define(function(require) {
 		RESOURCE_VIEW_COL:{value:8, label:'View Column', rbkey:'xa.enum.ResourceType.RESOURCE_VIEW_COL', tt: 'lbl.ResourceType_RESOURCE_VIEW_COL'},
 		RESOURCE_TOPOLOGY:{value:9, label:'Topology', rbkey:'xa.enum.ResourceType.RESOURCE_TOPOLOGY', tt: 'lbl.RESOURCE_TOPOLOGY'},
 		RESOURCE_SERVICE:{value:10, label:'Service', rbkey:'xa.enum.ResourceType.RESOURCE_SERVICE', tt: 'lbl.RESOURCE_SERVICE'},
+		RESOURCE_GLOBAL:{value:11, label:'Global', rbkey:'xa.enum.ResourceType.RESOURCE_GLOBAL', tt: 'lbl.RESOURCE_GLOBAL'}
 	});
 
 	XAEnums.ResponseStatus = mergeParams(XAEnums.ResponseStatus, {
@@ -365,12 +375,19 @@ define(function(require) {
 	});
 	
 	XAEnums.MenuPermissions =  mergeParams(XAEnums.MenuPermissions, {
-		XA_RESOURCE_BASED_POLICIES:{value:0, label:'Resource Based Policies', rbkey:'xa.enum.MenuPermissions.XA_RESOURCE_BASED_POLICIES', tt: 'lbl.XAPermForType_XA_PERM_FOR_UNKNOWN'},
-		XA_USER_GROUPS:{value:1, label:'Users/Groups', rbkey:'xa.enum.MenuPermissions.XA_USER_GROUP', tt: 'lbl.XAPermForType_XA_PERM_FOR_USER'},
-		XA_REPORTS:{value:2, label:'Reports', rbkey:'xa.enum.MenuPermissions.XA_REPORTS', tt: 'lbl.XAPermForType_XA_PERM_FOR_GROUP'},
-		XA_AUDITS:{value:3, label:'Audit', rbkey:'xa.enum.MenuPermissions.XA_AUDITS', tt: 'lbl.XAPermForType_XA_PERM_FOR_GROUP'},
-		XA_KEY_MANAGER:{value:4, label:'Key Manager', rbkey:'xa.enum.MenuPermissions.XA_KEY_MANAGER', tt: 'lbl.XAPermForType_XA_PERM_FOR_GROUP'}
+                XA_RESOURCE_BASED_POLICIES:{value:1, label:'Resource Based Policies', rbkey:'xa.enum.MenuPermissions.XA_RESOURCE_BASED_POLICIES', tt: 'lbl.XAPermForType_XA_RESOURCE_BASED_POLICIES'},
+                XA_USER_GROUPS:{value:2, label:'Users/Groups', rbkey:'xa.enum.MenuPermissions.XA_USER_GROUP', tt: 'lbl.XAPermForType_XA_USER_GROUPS'},
+                XA_REPORTS:{value:3, label:'Reports', rbkey:'xa.enum.MenuPermissions.XA_REPORTS', tt: 'lbl.XAPermForType_XA_REPORTS'},
+                XA_AUDITS:{value:4, label:'Audit', rbkey:'xa.enum.MenuPermissions.XA_AUDITS', tt: 'lbl.XAPermForType_XA_AUDITS'},
+                XA_KEY_MANAGER:{value:5, label:'Key Manager', rbkey:'xa.enum.MenuPermissions.XA_KEY_MANAGER', tt: 'lbl.XAPermForType_XA_KEY_MANAGER'},
+                XA_TAG_BASED_POLICIES:{value:6, label:'Tag Based Policies', rbkey:'xa.enum.MenuPermissions.XA_TAG_BASED_POLICIES', tt: 'lbl.XAPermForType_XA_TAG_BASED_POLICIES'}
 	});
+
+        XAEnums.UserSyncSource = mergeParams(XAEnums.UserSyncSource, {
+                USER_SYNC_UNIX:{value:0, label:'Unix', rbkey:'xa.enum.UserSyncSource.USER_SYNC_UNIX', tt: 'lbl.USER_SYNC_UNIX'},
+                USER_SYNC_LDAPAD:{value:1, label:'LDAP/AD', rbkey:'xa.enum.UserSyncSource.USER_SYNC_LDAPAD', tt: 'lbl.USER_SYNC_LDAPAD'},
+                USER_SYNC_FILE:{value:2, label:'File', rbkey:'xa.enum.UserSyncSource.USER_SYNC_FILE', tt: 'lbl.USER_SYNC_FILE'}
+        });
 
 	return XAEnums;
 });

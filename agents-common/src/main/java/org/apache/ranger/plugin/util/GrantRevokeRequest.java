@@ -20,8 +20,10 @@
 package org.apache.ranger.plugin.util;
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -44,10 +46,14 @@ public class GrantRevokeRequest implements Serializable {
 	private static final long serialVersionUID = 1L;
 
 	private String              grantor;
+	private Set<String>         grantorGroups;
 	private Map<String, String> resource;
 	private Set<String>         users;
 	private Set<String>         groups;
+	private Set<String>         roles;
 	private Set<String>         accessTypes;
+	private List<String>        forwardedAddresses;
+	private String              remoteIPAddress;
 	private Boolean             delegateAdmin              = Boolean.FALSE;
 	private Boolean             enableAudit                = Boolean.TRUE;
 	private Boolean             replaceExistingPermissions = Boolean.FALSE;
@@ -57,16 +63,37 @@ public class GrantRevokeRequest implements Serializable {
 	private String              requestData;
 	private String              sessionId;
 	private String              clusterName;
+	private String              zoneName;
+	private String 				ownerUser;
 
 	public GrantRevokeRequest() {
-		this(null, null, null, null, null, null, null, null, null, null, null, null, null, null);
+		this(null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null);
 	}
 
-	public GrantRevokeRequest(String grantor, Map<String, String> resource, Set<String> users, Set<String> groups, Set<String> accessTypes, Boolean delegateAdmin, Boolean enableAudit, Boolean replaceExistingPermissions, Boolean isRecursive, String clientIPAddress, String clientType, String requestData, String sessionId, String clusterName) {
+	public GrantRevokeRequest(String grantor, Set<String> grantorGroups, Map<String, String> resource, Set<String> users,
+							  Set<String> groups, Set<String> accessTypes, Boolean delegateAdmin, Boolean enableAudit,
+							  Boolean replaceExistingPermissions, Boolean isRecursive, String clientIPAddress,
+							  String clientType, String requestData, String sessionId, String clusterName, String zoneName) {
+		this(grantor, grantorGroups, resource, users, groups, null, accessTypes, delegateAdmin, enableAudit, replaceExistingPermissions, isRecursive, clientIPAddress, clientType, requestData, sessionId, clusterName, zoneName);
+	}
+
+	public GrantRevokeRequest(String grantor, Set<String> grantorGroups, Map<String, String> resource, Set<String> users,
+							  Set<String> groups, Set<String> roles, Set<String> accessTypes, Boolean delegateAdmin, Boolean enableAudit,
+							  Boolean replaceExistingPermissions, Boolean isRecursive, String clientIPAddress,
+							  String clientType, String requestData, String sessionId, String clusterName, String zoneName) {
+		this(grantor, grantorGroups, resource, users, groups, roles, accessTypes, delegateAdmin, enableAudit, replaceExistingPermissions, isRecursive, clientIPAddress, clientType, requestData, sessionId, clusterName, zoneName, null);
+	}
+
+	public GrantRevokeRequest(String grantor, Set<String> grantorGroups, Map<String, String> resource, Set<String> users,
+							  Set<String> groups, Set<String> roles, Set<String> accessTypes, Boolean delegateAdmin, Boolean enableAudit,
+							  Boolean replaceExistingPermissions, Boolean isRecursive, String clientIPAddress,
+							  String clientType, String requestData, String sessionId, String clusterName, String zoneName, String ownerUser) {
 		setGrantor(grantor);
+		setGrantorGroups(grantorGroups);
 		setResource(resource);
 		setUsers(users);
 		setGroups(groups);
+		setRoles(roles);
 		setAccessTypes(accessTypes);
 		setDelegateAdmin(delegateAdmin);
 		setEnableAudit(enableAudit);
@@ -77,6 +104,8 @@ public class GrantRevokeRequest implements Serializable {
 		setRequestData(requestData);
 		setSessionId(sessionId);
 		setClusterName(clusterName);
+		setZoneName(zoneName);
+		setOwnerUser(ownerUser);
 	}
 
 	/**
@@ -94,11 +123,33 @@ public class GrantRevokeRequest implements Serializable {
 	}
 
 	/**
+	 * @return the grantorGroups
+	 */
+	public Set<String> getGrantorGroups() {
+		return grantorGroups;
+	}
+
+	/**
+	 * @param grantorGroups the grantorGroups to set
+	 */
+	public void setGrantorGroups(Set<String> grantorGroups) {
+		this.grantorGroups = grantorGroups == null ? new HashSet<String>() : grantorGroups;
+	}
+	/**
 	 * @return the resource
 	 */
 	public Map<String, String> getResource() {
 		return resource;
 	}
+	
+	public void setForwardedAddresses(List<String> forwardedAddresses) {
+		this.forwardedAddresses = (forwardedAddresses == null) ? new ArrayList<String>() : forwardedAddresses;
+	}
+
+	public void setRemoteIPAddress(String remoteIPAddress) {
+		this.remoteIPAddress = remoteIPAddress;
+	}
+
 
 	/**
 	 * @param resource the resource to set
@@ -134,6 +185,21 @@ public class GrantRevokeRequest implements Serializable {
 	public void setGroups(Set<String> groups) {
 		this.groups = groups == null ? new HashSet<String>() : groups;
 	}
+
+	/**
+	 * @return the roles
+	 */
+	public Set<String> getRoles() {
+		return roles;
+	}
+
+	/**
+	 * @param roles the roles to set
+	 */
+	public void setRoles(Set<String> roles) {
+		this.roles = roles == null ? new HashSet<String>() : roles;
+	}
+
 
 	/**
 	 * @return the accessTypes
@@ -175,6 +241,20 @@ public class GrantRevokeRequest implements Serializable {
 	 */
 	public void setEnableAudit(Boolean enableAudit) {
 		this.enableAudit = enableAudit == null ? Boolean.TRUE : enableAudit;
+	}
+
+	/**
+	 * @return the ownerUser
+	 */
+	public String getOwnerUser() {
+		return ownerUser;
+	}
+
+	/**
+	 * @param ownerUser the ownerUser to set
+	 */
+	public void setOwnerUser(String ownerUser) {
+		this.ownerUser = ownerUser;
 	}
 
 	/**
@@ -267,12 +347,34 @@ public class GrantRevokeRequest implements Serializable {
 	public String getClusterName() {
 		return clusterName;
 	}
+	
+	public String getRemoteIPAddress() {
+		return remoteIPAddress;
+	}
+
+	public List<String> getForwardedAddresses() { 
+		return forwardedAddresses; 
+	}
 
 	/**
 	 * @param clusterName the clusterName to set
 	 */
 	public void setClusterName(String clusterName) {
 		this.clusterName = clusterName;
+	}
+
+	/**
+	 * @return the clusterName
+	 */
+	public String getZoneName() {
+		return zoneName;
+	}
+
+	/**
+	 * @param zoneName the clusterName to set
+	 */
+	public void setZoneName(String zoneName) {
+		this.zoneName = zoneName;
 	}
 
 	@Override
@@ -288,6 +390,14 @@ public class GrantRevokeRequest implements Serializable {
 		sb.append("GrantRevokeRequest={");
 
 		sb.append("grantor={").append(grantor).append("} ");
+
+		sb.append("grantorGroups={");
+		if(grantorGroups != null) {
+			for(String grantorGroup : grantorGroups) {
+				sb.append(grantorGroup).append(" ");
+			}
+		}
+		sb.append("} ");
 
 		sb.append("resource={");
 		if(resource != null) {
@@ -330,6 +440,7 @@ public class GrantRevokeRequest implements Serializable {
 		sb.append("requestData={").append(requestData).append("} ");
 		sb.append("sessionId={").append(sessionId).append("} ");
 		sb.append("clusterName={").append(clusterName).append("} ");
+		sb.append("zoneName={").append(zoneName).append("} ");
 
 		sb.append("}");
 

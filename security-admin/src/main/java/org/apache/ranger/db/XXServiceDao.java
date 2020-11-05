@@ -24,10 +24,12 @@ import javax.persistence.NoResultException;
 
 import org.apache.ranger.common.db.BaseDao;
 import org.apache.ranger.entity.XXService;
+import org.springframework.stereotype.Service;
 
 /**
  */
 
+@Service
 public class XXServiceDao extends BaseDao<XXService> {
 	/**
 	 * Default Constructor
@@ -44,6 +46,19 @@ public class XXServiceDao extends BaseDao<XXService> {
 			return getEntityManager()
 					.createNamedQuery("XXService.findByName", tClass)
 					.setParameter("name", name).getSingleResult();
+		} catch (NoResultException e) {
+			return null;
+		}
+	}
+
+	public XXService findByDisplayName(String displayName) {
+		if (displayName == null) {
+			return null;
+		}
+		try {
+			return getEntityManager()
+					.createNamedQuery("XXService.findByDisplayName", tClass)
+					.setParameter("displayName", displayName).getSingleResult();
 		} catch (NoResultException e) {
 			return null;
 		}
@@ -108,4 +123,14 @@ public class XXServiceDao extends BaseDao<XXService> {
 
 		updateSequence("X_SERVICE_SEQ", maxId + 1);
 	}
+
+	public List<Long> getAllServiceIds() {
+		try {
+			return getEntityManager().createNamedQuery("XXService.getAllServiceIds", Long.class)
+					.getResultList();
+		} catch (NoResultException e) {
+			return new ArrayList<>();
+		}
+	}
+
 }

@@ -19,6 +19,7 @@
 
 package org.apache.ranger.authorization.knox;
 
+import java.util.List;
 import java.util.Set;
 
 import org.apache.ranger.authorization.knox.KnoxRangerPlugin.KnoxConstants.AccessType;
@@ -44,7 +45,7 @@ public class KnoxRangerPlugin extends RangerBasePlugin {
 			// mandatory call to base plugin
 			super.init();
 			// One time call to register the audit hander with the policy engine.
-			super.setResultProcessor(new RangerDefaultAuditHandler());
+			super.setResultProcessor(new RangerDefaultAuditHandler(getConfig()));
 			initialized = true;
 		}
 	}
@@ -55,7 +56,8 @@ public class KnoxRangerPlugin extends RangerBasePlugin {
 		String _user;
 		Set<String> _groups;
 		String _clientIp;
-		String _clusterName;
+		String _remoteIp;
+		List<String> _forwardedAddresses;
 		
 		RequestBuilder service(String service) {
 			_service = service;
@@ -77,8 +79,12 @@ public class KnoxRangerPlugin extends RangerBasePlugin {
 			_clientIp = clientIp;
 			return this;
 		}
-		RequestBuilder clusterName(String clusterName) {
-			_clusterName = clusterName;
+		RequestBuilder remoteIp(String remoteIp) {
+			_remoteIp = remoteIp;
+			return this;
+		}
+		RequestBuilder forwardedAddresses(List<String> forwardedAddresses) {
+			_forwardedAddresses = forwardedAddresses;
 			return this;
 		}
 		void verifyBuildable() {
@@ -100,7 +106,8 @@ public class KnoxRangerPlugin extends RangerBasePlugin {
 			request.setUser(_user);
 			request.setUserGroups(_groups);
 			request.setResource(resource);
-			request.setClusterName(_clusterName);
+			request.setRemoteIPAddress(_remoteIp);
+			request.setForwardedAddresses(_forwardedAddresses);
 			return request;
 		}
 	}

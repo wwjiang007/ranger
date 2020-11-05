@@ -126,6 +126,13 @@ public class ServiceUtil {
 		mapAccessTypeToPermType.put("getUserTopology", 29);
 		mapAccessTypeToPermType.put("getTopologyInfo", 30);
 		mapAccessTypeToPermType.put("uploadNewCredentials", 31);
+		mapAccessTypeToPermType.put("repladmin", 32);
+		mapAccessTypeToPermType.put("serviceadmin", 33);
+		mapAccessTypeToPermType.put("tempudfadmin", 34);
+		mapAccessTypeToPermType.put("idempotent_write", 35);
+		mapAccessTypeToPermType.put("describe_configs", 36);
+		mapAccessTypeToPermType.put("alter_configs", 37);
+		mapAccessTypeToPermType.put("cluster_action", 38);
 
 		version = "0";
 	}
@@ -245,6 +252,7 @@ public class ServiceUtil {
 		toRangerResourceList(resource.getUdfs(), "udf", Boolean.FALSE, Boolean.FALSE, ret.getResources());
 		toRangerResourceList(resource.getTopologies(), "topology", Boolean.FALSE, Boolean.FALSE, ret.getResources());
 		toRangerResourceList(resource.getServices(), "service", Boolean.FALSE, Boolean.FALSE, ret.getResources());
+		toRangerResourceList(resource.getHiveServices(), "hiveservice", Boolean.FALSE, Boolean.FALSE, ret.getResources());
 
 		HashMap<String, List<VXPermMap>> sortedPermMap = new HashMap<String, List<VXPermMap>>();
 		
@@ -371,6 +379,8 @@ public class ServiceUtil {
 				ret.setTopologies(resString);
 			} else if("service".equalsIgnoreCase(resType)) {
 				ret.setServices(resString);
+			} else if(resType.equalsIgnoreCase("hiveservice")) {
+				ret.setHiveServices(resString);
 			}
 		}
 		updateResourceName(ret);
@@ -479,7 +489,7 @@ public class ServiceUtil {
 			}
 		}
 
-		return ret;
+		return ret == null ? 0 : ret;
 	}
 	
 	private RangerBaseModelObject dataObjectToRangerObject(VXDataObject dataObject,RangerBaseModelObject rangerObject) {
@@ -833,6 +843,8 @@ public class ServiceUtil {
 				ret.setTopologies(resString);
 			} else if("service".equalsIgnoreCase(resType)) {
 				ret.setServices(resString);
+			} else if(resType.equalsIgnoreCase("hiveservice")) {
+				ret.setHiveServices(resString);
 			}
 		}
 		updateResourceName(ret);
@@ -854,21 +866,21 @@ public class ServiceUtil {
 		int permGroup = 0;
 		for(RangerPolicy.RangerPolicyItem policyItem : policy.getPolicyItems()) {
 			String ipAddress = null;
-			
-			for(RangerPolicy.RangerPolicyItemCondition condition : policyItem.getConditions()) {
-				if(condition.getType() == "ipaddress") {
-					List<String> values = condition.getValues();
-					if (CollectionUtils.isNotEmpty(values)) {
-						// TODO changes this to properly deal with collection for now just returning 1st item
-						ipAddress = values.get(0);
-					}
-				}
-	
-				if(ipAddress != null && !ipAddress.isEmpty()) {
-					break; // only 1 IP-address per permMap
-				}
-			}
-	
+
+            for (RangerPolicy.RangerPolicyItemCondition condition : policyItem.getConditions()) {
+                if ("ipaddress".equalsIgnoreCase(condition.getType())) {
+                    List<String> values = condition.getValues();
+                    if (CollectionUtils.isNotEmpty(values)) {
+                        // TODO changes this to properly deal with collection for now just returning 1st item
+                        ipAddress = values.get(0);
+                    }
+                }
+
+                if (ipAddress != null && !ipAddress.isEmpty()) {
+                    break; // only 1 IP-address per permMap
+                }
+            }
+
 			for(String userName : policyItem.getUsers()) {
 				for(RangerPolicyItemAccess access : policyItem.getAccesses()) {
 					if(! access.getIsAllowed()) {
@@ -1057,7 +1069,11 @@ public class ServiceUtil {
 		if (vXPolicy.getServices() != null) {
 			toRangerResourceList(vXPolicy.getServices(), "service", Boolean.FALSE, isRecursive, ret.getResources());
 		}
-		
+
+		if (vXPolicy.getHiveServices() != null) {
+			toRangerResourceList(vXPolicy.getHiveServices(), "hiveservice", Boolean.FALSE, isRecursive, ret.getResources());
+		}
+
 		if ( vXPolicy.getPermMapList() != null) {
 			List<VXPermObj> vXPermObjList = vXPolicy.getPermMapList();
 
@@ -1161,11 +1177,11 @@ public class ServiceUtil {
 		VXPolicyList vXPolicyListObj = new VXPolicyList(new ArrayList<VXPolicy>());
 		if(CollectionUtils.isNotEmpty(rangerPolicyList)) {
 			int    totalCount = rangerPolicyList.size();
-			int    startIndex = filter == null ? 0 : filter.getStartIndex();
-			int    pageSize   = filter == null ? totalCount : filter.getMaxRows();
+			int    startIndex = filter.getStartIndex();
+			int    pageSize   = filter.getMaxRows();
 			int    toIndex    = Math.min(startIndex + pageSize, totalCount);
-			String sortType   = filter == null ? null : filter.getSortType();
-			String sortBy     = filter == null ? null : filter.getSortBy();
+			String sortType   = filter.getSortType();
+			String sortBy     = filter.getSortBy();
 			for(int i = startIndex; i < toIndex; i++) {
 				RangerPolicy policy =rangerPolicyList.get(i);
 				try {
@@ -1252,6 +1268,7 @@ public class ServiceUtil {
 				mapResource.put("table", tableName);
 				mapResource.put("column-family", colFamily);
 				mapResource.put("column", qualifier);
+                                ret.setResource(mapResource);
 				
 			}
 			
@@ -1565,6 +1582,7 @@ public class ServiceUtil {
 	public List<RangerPolicy> getMatchingPoliciesForResource(HttpServletRequest request,
 			List<RangerPolicy> policyLists) {
 		List<RangerPolicy> policies = new ArrayList<RangerPolicy>();
+		final String serviceTypeForTag = EmbeddedServiceDefsUtil.EMBEDDED_SERVICEDEF_TAG_NAME;
 		if (request != null) {
 			String resource = request.getParameter(SearchFilter.POL_RESOURCE);
 			String serviceType = request.getParameter(SearchFilter.SERVICE_TYPE);
@@ -1574,32 +1592,25 @@ public class ServiceUtil {
 				RangerPolicy.RangerPolicyResource rangerPolicyResource = null;
 				for (RangerPolicy rangerPolicy : policyLists) {
 					if (rangerPolicy != null) {
-						rangerPolicyResourceMap = rangerPolicy.getResources();
-						if (rangerPolicyResourceMap != null) {
-							if (rangerPolicyResourceMap.containsKey("path")) {
-								rangerPolicyResource = rangerPolicyResourceMap.get("path");
-								if (rangerPolicyResource != null) {
-									resourceList = rangerPolicyResource.getValues();
-									if (CollectionUtils.isNotEmpty(resourceList) && resourceList.size() == 1) {
-										String resourcePath = resourceList.get(0);
-										if (!StringUtil.isEmpty(resourcePath)) {
-											if (resourcePath.equals(resource)
-													|| resourcePath.startsWith(resource + "/")) {
-												policies.add(rangerPolicy);
-											}
+						if(serviceTypeForTag.equals(rangerPolicy.getServiceType())) {
+							policies.add(rangerPolicy);
+						}else {
+							rangerPolicyResourceMap = rangerPolicy.getResources();
+							if (rangerPolicyResourceMap != null) {
+								if (rangerPolicyResourceMap.containsKey("path")) {
+									rangerPolicyResource = rangerPolicyResourceMap.get("path");
+									if (rangerPolicyResource != null) {
+										resourceList = rangerPolicyResource.getValues();
+										if (CollectionUtils.isNotEmpty(resourceList) && resourceList.contains(resource)) {
+													policies.add(rangerPolicy);
 										}
 									}
-								}
-							} else if (rangerPolicyResourceMap.containsKey("database")) {
-								rangerPolicyResource = rangerPolicyResourceMap.get("database");
-								if (rangerPolicyResource != null) {
-									resourceList = rangerPolicyResource.getValues();
-									if (CollectionUtils.isNotEmpty(resourceList) && resourceList.size() == 1) {
-										String resourcePath = resourceList.get(0);
-										if (!StringUtil.isEmpty(resourcePath)) {
-											if (resourcePath.equals(resource)) {
-												policies.add(rangerPolicy);
-											}
+								} else if (rangerPolicyResourceMap.containsKey("database")) {
+									rangerPolicyResource = rangerPolicyResourceMap.get("database");
+									if (rangerPolicyResource != null) {
+										resourceList = rangerPolicyResource.getValues();
+										if (CollectionUtils.isNotEmpty(resourceList) && resourceList.contains(resource)) {
+													policies.add(rangerPolicy);
 										}
 									}
 								}

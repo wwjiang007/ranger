@@ -19,6 +19,7 @@
 package org.apache.ranger.services.hdfs;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -27,6 +28,8 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.ranger.authorization.hadoop.RangerHdfsAuthorizer;
 import org.apache.ranger.plugin.client.HadoopException;
 import org.apache.ranger.plugin.model.RangerPolicy;
+import org.apache.ranger.plugin.model.RangerPolicy.RangerPolicyItem;
+import org.apache.ranger.plugin.model.RangerPolicy.RangerPolicyItemAccess;
 import org.apache.ranger.plugin.model.validation.RangerServiceDefHelper;
 import org.apache.ranger.plugin.model.RangerService;
 import org.apache.ranger.plugin.model.RangerServiceDef;
@@ -43,6 +46,7 @@ public class RangerServiceHdfs extends RangerBaseService {
 	private static final Log LOG = LogFactory.getLog(RangerServiceHdfs.class);
         private static final String AUDITTOHDFS_KMS_PATH = "/ranger/audit/kms";
         private static final String AUDITTOHDFS_POLICY_NAME = "kms-audit-path";
+        public static final String ACCESS_TYPE_READ  = "read";
 	
 	public RangerServiceHdfs() {
 		super();
@@ -115,35 +119,45 @@ public class RangerServiceHdfs extends RangerBaseService {
 		String pathResourceName = RangerHdfsAuthorizer.KEY_RESOURCE_PATH;
 
 		for (RangerPolicy defaultPolicy : ret) {
-			RangerPolicy.RangerPolicyResource pathPolicyResource = defaultPolicy.getResources().get(pathResourceName);
-			if (pathPolicyResource != null) {
-				List<RangerServiceDef.RangerResourceDef> resourceDefs = serviceDef.getResources();
-				RangerServiceDef.RangerResourceDef pathResourceDef = null;
-				for (RangerServiceDef.RangerResourceDef resourceDef : resourceDefs) {
-					if (resourceDef.getName().equals(pathResourceName)) {
-						pathResourceDef = resourceDef;
-						break;
-					}
+			if(defaultPolicy.getName().contains("all")){
+				if (StringUtils.isNotBlank(lookUpUser)) {
+					RangerPolicyItem policyItemForLookupUser = new RangerPolicyItem();
+					policyItemForLookupUser.setUsers(Collections.singletonList(lookUpUser));
+					policyItemForLookupUser.setAccesses(Collections.singletonList(new RangerPolicyItemAccess(ACCESS_TYPE_READ)));
+					policyItemForLookupUser.setDelegateAdmin(false);
+					defaultPolicy.getPolicyItems().add(policyItemForLookupUser);
 				}
-				if (pathResourceDef != null) {
-					String pathSeparator = pathResourceDef.getMatcherOptions().get(RangerPathResourceMatcher.OPTION_PATH_SEPARATOR);
-					if (StringUtils.isBlank(pathSeparator)) {
-						pathSeparator = Character.toString(RangerPathResourceMatcher.DEFAULT_PATH_SEPARATOR_CHAR);
+
+				RangerPolicy.RangerPolicyResource pathPolicyResource = defaultPolicy.getResources().get(pathResourceName);
+				if (pathPolicyResource != null) {
+					List<RangerServiceDef.RangerResourceDef> resourceDefs = serviceDef.getResources();
+					RangerServiceDef.RangerResourceDef pathResourceDef = null;
+					for (RangerServiceDef.RangerResourceDef resourceDef : resourceDefs) {
+						if (resourceDef.getName().equals(pathResourceName)) {
+							pathResourceDef = resourceDef;
+							break;
+						}
 					}
-					String value = pathSeparator + RangerAbstractResourceMatcher.WILDCARD_ASTERISK;
-					pathPolicyResource.setValue(value);
+					if (pathResourceDef != null) {
+						String pathSeparator = pathResourceDef.getMatcherOptions().get(RangerPathResourceMatcher.OPTION_PATH_SEPARATOR);
+						if (StringUtils.isBlank(pathSeparator)) {
+							pathSeparator = Character.toString(RangerPathResourceMatcher.DEFAULT_PATH_SEPARATOR_CHAR);
+						}
+						String value = pathSeparator + RangerAbstractResourceMatcher.WILDCARD_ASTERISK;
+						pathPolicyResource.setValue(value);
+					} else {
+						LOG.warn("No resourceDef found in HDFS service-definition for '" + pathResourceName + "'");
+					}
 				} else {
-					LOG.warn("No resourceDef found in HDFS service-definition for '" + pathResourceName + "'");
+					LOG.warn("No '" + pathResourceName + "' found in default policy");
 				}
-			} else {
-				LOG.warn("No '" + pathResourceName + "' found in default policy");
 			}
 		}
 
 		try {
 			// we need to create one policy for keyadmin user for audit to HDFS
 			RangerServiceDefHelper serviceDefHelper = new RangerServiceDefHelper(serviceDef);
-			for (List<RangerServiceDef.RangerResourceDef> aHierarchy : serviceDefHelper.getResourceHierarchies(RangerPolicy.POLICY_TYPE_ACCESS)) {
+			for (List<RangerServiceDef.RangerResourceDef> aHierarchy : serviceDefHelper.filterHierarchies_containsOnlyMandatoryResources(RangerPolicy.POLICY_TYPE_ACCESS)) {
 				RangerPolicy policy = getPolicyForKMSAudit(aHierarchy);
 				if (policy != null) {
 					ret.add(policy);

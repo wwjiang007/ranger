@@ -23,22 +23,18 @@ import java.io.IOException;
 import java.security.PrivilegedAction;
 import java.util.*;
 import java.util.Map.Entry;
+import java.util.regex.Pattern;
 
 import javax.security.auth.Subject;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.HBaseConfiguration;
-import org.apache.hadoop.hbase.HColumnDescriptor;
-import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.MasterNotRunningException;
-import org.apache.hadoop.hbase.ZooKeeperConnectionException;
-import org.apache.hadoop.hbase.client.HBaseAdmin;
+import org.apache.hadoop.hbase.*;
+import org.apache.hadoop.hbase.client.*;
 import org.apache.ranger.plugin.client.BaseClient;
 import org.apache.ranger.plugin.client.HadoopException;
 
-import com.google.protobuf.ServiceException;
 
 public class HBaseClient extends BaseClient {
 
@@ -86,7 +82,7 @@ public class HBaseClient extends BaseClient {
 	}
 
 	public static Map<String, Object> connectionTest (String dataSource,
-			Map<String, String> configs) throws Exception {
+													  Map<String, String> configs) throws Exception {
 
 		Map<String, Object> responseData = new HashMap<String, Object>();
 		final String errMsg = " You can still save the repository and start creating "
@@ -133,9 +129,9 @@ public class HBaseClient extends BaseClient {
 							LOG.info("getHBaseStatus: creating default Hbase configuration");
 
 							LOG.info("getHBaseStatus: setting config values from client");
-							setClientConfigValues(conf);						
+							setClientConfigValues(conf);
 							LOG.info("getHBaseStatus: checking HbaseAvailability with the new config");
-							HBaseAdmin.checkHBaseAvailable(conf);					
+							HBaseAdmin.available(conf);
 							LOG.info("getHBaseStatus: no exception: HbaseAvailability true");
 							hbaseStatus1 = true;
 						} catch (ZooKeeperConnectionException zce) {
@@ -158,15 +154,6 @@ public class HBaseClient extends BaseClient {
 									getMessage(mnre), msgDesc + errMsg,
 									null, null);
 							LOG.error(msgDesc + mnre);
-							throw hdpException;
-
-						} catch (ServiceException se) {
-							String msgDesc = "getHBaseStatus: Unable to check availability of "
-									+ "Hbase environment [" + getConfigHolder().getDatasourceName() + "].";
-							HadoopException hdpException = new HadoopException(msgDesc, se);
-							hdpException.generateResponseDataMap(false, getMessage(se),
-									msgDesc + errMsg, null, null);
-							LOG.error(msgDesc + se);
 							throw hdpException;
 
 						} catch(IOException io) {
@@ -217,7 +204,7 @@ public class HBaseClient extends BaseClient {
 			if (v != null && !v.equalsIgnoreCase(e.getValue())) {
 				conf.set(e.getKey(), e.getValue());
 			}
-		}		
+		}
 	}
 
 	public List<String> getTableList(final String tableNameMatching, final List<String> existingTableList ) throws HadoopException {
@@ -239,22 +226,23 @@ public class HBaseClient extends BaseClient {
 				public List<String> run() {
 
 					List<String> tableList = new ArrayList<String>();
-					HBaseAdmin admin = null;
+					Admin admin = null;
 					try {
 						LOG.info("getTableList: setting config values from client");
-						setClientConfigValues(conf);						
+						setClientConfigValues(conf);
 						LOG.info("getTableList: checking HbaseAvailability with the new config");
-						HBaseAdmin.checkHBaseAvailable(conf);					
+						Connection conn = ConnectionFactory.createConnection(conf);
+						//HBaseAdmin.checkHBaseAvailable(conf);
 						LOG.info("getTableList: no exception: HbaseAvailability true");
-						admin = new HBaseAdmin(conf);
-						HTableDescriptor [] htds = admin.listTables(tableNameMatching);
+						admin = conn.getAdmin();
+						List<TableDescriptor> htds = admin.listTableDescriptors(Pattern.compile(tableNameMatching));
 						if (htds != null) {
-							for (HTableDescriptor htd : htds) {
-								String tableName = htd.getNameAsString();
+							for (TableDescriptor htd : htds) {
+								String tableName = htd.getTableName().getNameAsString();
 								if (existingTableList != null && existingTableList.contains(tableName)) {
 									continue;
 								} else {
-									tableList.add(htd.getNameAsString());
+									tableList.add(htd.getTableName().getNameAsString());
 								}
 							}
 						} else {
@@ -339,20 +327,21 @@ public class HBaseClient extends BaseClient {
 					@Override
 					public List<String> run() {
 						List<String> colfList = new ArrayList<String>();
-						HBaseAdmin admin = null;
+						Admin admin = null;
 						try {
 							LOG.info("getColumnFamilyList: setting config values from client");
-							setClientConfigValues(conf);						
+							setClientConfigValues(conf);
 							LOG.info("getColumnFamilyList: checking HbaseAvailability with the new config");
-							HBaseAdmin.checkHBaseAvailable(conf);					
+							Connection conn = ConnectionFactory.createConnection(conf);
+							//HBaseAdmin.checkHBaseAvailable(conf);
 							LOG.info("getColumnFamilyList: no exception: HbaseAvailability true");
-							admin = new HBaseAdmin(conf);
+							admin = conn.getAdmin();
 							if (tableList != null) {
 								for (String tableName: tableList) {
 									tblName = tableName;
-									HTableDescriptor htd = admin.getTableDescriptor(tblName.getBytes());
+									TableDescriptor htd = admin.getDescriptor(TableName.valueOf(tableName));
 									if (htd != null) {
-										for (HColumnDescriptor hcd : htd.getColumnFamilies()) {
+										for (ColumnFamilyDescriptor hcd : htd.getColumnFamilies()) {
 											String colf = hcd.getNameAsString();
 											if (colf.matches(columnFamilyMatching)) {
 												if (existingColumnFamilies != null && existingColumnFamilies.contains(colf)) {
@@ -404,7 +393,7 @@ public class HBaseClient extends BaseClient {
 							hdpException.generateResponseDataMap(false, getMessage(se),
 									msgDesc + errMsg, null, null);
 							LOG.error(msgDesc + se);
-							throw hdpException;							
+							throw hdpException;
 
 						} catch (Throwable e) {
 							String msgDesc = "getColumnFamilyList: Unable to get HBase ColumnFamilyList for "

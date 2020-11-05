@@ -78,10 +78,12 @@
 		<class>org.apache.ranger.entity.XXPolicyItemRowFilterInfo</class>
 		<class>org.apache.ranger.entity.XXServiceVersionInfo</class>
 		<class>org.apache.ranger.entity.XXPluginInfo</class>
+		<class>org.apache.ranger.entity.XXUgsyncAuditInfo</class>
         <shared-cache-mode>NONE</shared-cache-mode>
 
 		<properties>
 			<property name="eclipselink.logging.level" value="WARNING"/>
+			<property name="eclipselink.jdbc.batch-writing" value="jdbc"/>
 		</properties>
 	</persistence-unit>
 	<persistence-unit name="loggingPU">
@@ -91,6 +93,7 @@
 
 		<properties>
 			<property name="eclipselink.logging.level" value="WARNING"/>
+			<property name="eclipselink.jdbc.batch-writing" value="jdbc"/>
 		</properties>
 	</persistence-unit>
 

@@ -32,6 +32,7 @@ define(function(require){
 	var VXGroupList		= require('collections/VXGroupList');
 	var GroupForm		= require('views/users/GroupForm');
 	var GroupcreateTmpl = require('hbs!tmpl/users/GroupCreate_tmpl');
+        var SessionMgr      = require('mgrs/SessionMgr');
 
 	var GroupCreate = Backbone.Marionette.Layout.extend(
 	/** @lends GroupCreate */
@@ -93,7 +94,8 @@ define(function(require){
 			this.rForm.show(this.form);
 			this.rForm.$el.dirtyFields();
 			XAUtil.preventNavigation(localization.tt('dialogMsg.preventNavGroupForm'),this.rForm.$el);
-			if(!_.isUndefined(this.model.get('groupSource')) && this.model.get('groupSource') == XAEnums.GroupSource.XA_GROUP.value){
+                        if((!_.isUndefined(this.model.get('groupSource')) && this.model.get('groupSource') == XAEnums.GroupSource.XA_GROUP.value)
+                                || XAUtil.isAuditorOrKMSAuditor(SessionMgr)){
                                 this.ui.btnSave.prop( "disabled", true );
 			}
 		},
@@ -113,6 +115,7 @@ define(function(require){
 				success: function () {
 					XAUtil.blockUI('unblock');
 					XAUtil.allowNavigation();
+					Backbone.fetchCache._cache = {}
 					var msg = that.editGroup ? 'Group updated successfully' :'Group created successfully';
 					XAUtil.notifySuccess('Success', msg);
 					if(that.editGroup){
@@ -126,30 +129,8 @@ define(function(require){
 						App.appRouter.navigate("#!/users/grouptab",{trigger: true});
 						return;
 					}
+					App.usersGroupsListing = {'showLastPage' : true}
 					App.appRouter.navigate("#!/users/grouptab",{trigger: true});
-					
-					var groupList = new VXGroupList();
-					 _.extend(groupList.queryParams, XAUtil.getUserDataParams());   
-					groupList.fetch({
-						   cache:false
-					   }).done(function(){
-							var newColl;
-							groupList.getLastPage({
-								cache : false,
-								success : function(collection, response, options){
-									App.rContent.show(new UserTableLayout({
-										groupList : collection,
-										tab : 'grouptab'
-									}));
-									newColl = collection;
-								}
-							}).done(function(){
-								var model = newColl.get(that.model.id);
-								if(model){
-									model.trigger("model:highlightBackgridRow1");
-								}
-							});
-					   });
 				},
 				error : function (model, response, options) {
 					XAUtil.blockUI('unblock');

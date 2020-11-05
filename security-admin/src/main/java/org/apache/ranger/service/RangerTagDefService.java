@@ -23,6 +23,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.ranger.authorization.utils.JsonUtils;
+import org.apache.ranger.biz.RangerTagDBRetriever;
 import org.apache.ranger.common.SearchField;
 import org.apache.ranger.common.SearchField.DATA_TYPE;
 import org.apache.ranger.common.SearchField.SEARCH_TYPE;
@@ -48,15 +50,6 @@ public class RangerTagDefService extends RangerTagDefServiceBase<XXTagDef, Range
 	@Override
 	protected void validateForUpdate(RangerTagDef vObj, XXTagDef entityObj) {
 
-	}
-
-	@Override
-	public RangerTagDef postUpdate(XXTagDef tagDef) {
-		RangerTagDef ret = super.postUpdate(tagDef);
-
-		daoMgr.getXXServiceVersionInfo().updateServiceVersionInfoForTagDefUpdate(tagDef.getId(), tagDef.getUpdateTime());
-
-		return ret;
 	}
 
 	public RangerTagDef getPopulatedViewObject(XXTagDef xObj) {
@@ -102,5 +95,27 @@ public class RangerTagDefService extends RangerTagDefServiceBase<XXTagDef, Range
 
 		return ret;
 	}
+
+    @Override
+    protected RangerTagDef mapEntityToViewBean(RangerTagDef vObj, XXTagDef xObj) {
+        RangerTagDef ret = super.mapEntityToViewBean(vObj, xObj);
+
+        List<RangerTagDef.RangerTagAttributeDef> attributeDefs = RangerTagDBRetriever.gsonBuilder.fromJson(xObj.getTagAttrDefs(), RangerTagDBRetriever.subsumedDataType);
+        ret.setAttributeDefs(attributeDefs);
+
+        return ret;
+    }
+
+    @Override
+    protected XXTagDef mapViewToEntityBean(RangerTagDef vObj, XXTagDef xObj, int OPERATION_CONTEXT) {
+        XXTagDef ret = super.mapViewToEntityBean(vObj, xObj, OPERATION_CONTEXT);
+        ret.setTagAttrDefs(JsonUtils.listToJson(vObj.getAttributeDefs()));
+        return ret;
+    }
+
+    @Override
+    public List<RangerTagDef.RangerTagAttributeDef> getAttributeDefForTagDef(XXTagDef xtagDef) {
+        return new ArrayList<>();
+    }
 	
 }

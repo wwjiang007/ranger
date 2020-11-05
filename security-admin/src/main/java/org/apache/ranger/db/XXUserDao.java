@@ -17,17 +17,22 @@
  * under the License.
  */
 
- package org.apache.ranger.db;
-
-
-import java.util.List;
+package org.apache.ranger.db;
 
 import javax.persistence.NoResultException;
 
 import org.apache.log4j.Logger;
 import org.apache.ranger.common.db.BaseDao;
 import org.apache.ranger.entity.XXUser;
+import org.springframework.stereotype.Service;
 
+import java.util.List;
+import java.util.Set;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.HashMap;
+
+@Service
 public class XXUserDao extends BaseDao<XXUser> {
 	private static final Logger logger = Logger.getLogger(XXResourceDao.class);
 
@@ -51,20 +56,6 @@ public class XXUserDao extends BaseDao<XXUser> {
 		return null;
 	}
 
-	@SuppressWarnings("unchecked")
-	public List<String> findByPolicyItemId(Long polItemId) {
-		if (polItemId == null) {
-			return null;
-		}
-		try {
-			return getEntityManager()
-					.createNamedQuery("XXUser.findByPolicyItemId")
-					.setParameter("polItemId", polItemId).getResultList();
-		} catch (NoResultException e) {
-			return null;
-		}
-	}
-
 	public XXUser findByPortalUserId(Long portalUserId) {
 		if (portalUserId == null) {
 			return null;
@@ -76,4 +67,46 @@ public class XXUserDao extends BaseDao<XXUser> {
 			return null;
 		}
 	}
+
+	public Map<String, Set<String>> findGroupsByUserIds() {
+		Map<String, Set<String>> userGroups = new HashMap<>();
+
+		try {
+			List<Object[]> rows = (List<Object[]>) getEntityManager()
+					.createNamedQuery("XXUser.findGroupsByUserIds")
+					.getResultList();
+			if (rows != null) {
+				for (Object[] row : rows) {
+					if (userGroups.containsKey((String)row[0])) {
+						userGroups.get((String)row[0]).add((String)row[1]);
+					} else {
+						Set<String> groups = new HashSet<>();
+						groups.add((String)row[1]);
+						userGroups.put((String)row[0], groups);
+					}
+				}
+			}
+		} catch (NoResultException e) {
+			//Ignore
+		}
+		return userGroups;
+	}
+
+	public Map<String, Long> getAllUserIds() {
+		Map<String, Long> users = new HashMap<>();
+		try {
+			List<Object[]> rows = (List<Object[]>) getEntityManager().createNamedQuery("XXUser.getAllUserIds").getResultList();
+			if (rows != null) {
+				for (Object[] row : rows) {
+					users.put((String)row[0], (Long)row[1]);
+				}
+			}
+		} catch (NoResultException e) {
+			if (logger.isDebugEnabled()) {
+				logger.debug(e.getMessage());
+			}
+		}
+		return users;
+	}
+
 }

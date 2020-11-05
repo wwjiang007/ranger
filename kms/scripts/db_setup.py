@@ -44,7 +44,7 @@ def check_output(query):
 	elif os_name == "WINDOWS":
 		p = subprocess.Popen(query, stdout=subprocess.PIPE, shell=True)
 	output = p.communicate ()[0]
-	return output
+	return output.decode()
 
 def log(msg,type):
 	if type == 'info':
@@ -103,13 +103,14 @@ class BaseDB(object):
 
 class MysqlConf(BaseDB):
 	# Constructor
-	def __init__(self, host,SQL_CONNECTOR_JAR,JAVA_BIN,db_ssl_enabled,db_ssl_required,db_ssl_verifyServerCertificate,javax_net_ssl_keyStore,javax_net_ssl_keyStorePassword,javax_net_ssl_trustStore,javax_net_ssl_trustStorePassword):
+	def __init__(self, host,SQL_CONNECTOR_JAR,JAVA_BIN,db_ssl_enabled,db_ssl_required,db_ssl_verifyServerCertificate,javax_net_ssl_keyStore,javax_net_ssl_keyStorePassword,javax_net_ssl_trustStore,javax_net_ssl_trustStorePassword,db_ssl_auth_type):
 		self.host = host
 		self.SQL_CONNECTOR_JAR = SQL_CONNECTOR_JAR
 		self.JAVA_BIN = JAVA_BIN
 		self.db_ssl_enabled=db_ssl_enabled.lower()
 		self.db_ssl_required=db_ssl_required.lower()
 		self.db_ssl_verifyServerCertificate=db_ssl_verifyServerCertificate.lower()
+		self.db_ssl_auth_type=db_ssl_auth_type.lower()
 		self.javax_net_ssl_keyStore=javax_net_ssl_keyStore
 		self.javax_net_ssl_keyStorePassword=javax_net_ssl_keyStorePassword
 		self.javax_net_ssl_trustStore=javax_net_ssl_trustStore
@@ -122,7 +123,10 @@ class MysqlConf(BaseDB):
 		if self.db_ssl_enabled == 'true':
 			db_ssl_param="?useSSL=%s&requireSSL=%s&verifyServerCertificate=%s" %(self.db_ssl_enabled,self.db_ssl_required,self.db_ssl_verifyServerCertificate)
 			if self.db_ssl_verifyServerCertificate == 'true':
-				db_ssl_cert_param=" -Djavax.net.ssl.keyStore=%s -Djavax.net.ssl.keyStorePassword=%s -Djavax.net.ssl.trustStore=%s -Djavax.net.ssl.trustStorePassword=%s " %(self.javax_net_ssl_keyStore,self.javax_net_ssl_keyStorePassword,self.javax_net_ssl_trustStore,self.javax_net_ssl_trustStorePassword)
+				if self.db_ssl_auth_type == '1-way':
+					db_ssl_cert_param=" -Djavax.net.ssl.trustStore=%s -Djavax.net.ssl.trustStorePassword=%s " %(self.javax_net_ssl_trustStore,self.javax_net_ssl_trustStorePassword)
+				else:
+					db_ssl_cert_param=" -Djavax.net.ssl.keyStore=%s -Djavax.net.ssl.keyStorePassword=%s -Djavax.net.ssl.trustStore=%s -Djavax.net.ssl.trustStorePassword=%s " %(self.javax_net_ssl_keyStore,self.javax_net_ssl_keyStorePassword,self.javax_net_ssl_trustStore,self.javax_net_ssl_trustStorePassword)
 		self.JAVA_BIN = self.JAVA_BIN.strip("'")
 		if is_unix:
 			jisql_cmd = "%s %s -cp %s:%s/jisql/lib/* org.apache.util.sql.Jisql -driver mysqlconj -cstring jdbc:mysql://%s/%s%s -u '%s' -p '%s' -noheader -trim -c \;" %(self.JAVA_BIN,db_ssl_cert_param,self.SQL_CONNECTOR_JAR,path,self.host,db_name,db_ssl_param,user,password)
@@ -264,21 +268,21 @@ class OracleConf(BaseDB):
 		output = check_output(query).strip()
 		output = output.strip(' |')
 		db_name = db_name.upper()
-		if output == db_name:
-			log("[I] User name " + db_user + " and tablespace " + db_name + " already exists.","info")
-			log("[I] Verifying table " + TABLE_NAME +" in tablespace " + db_name, "info")
+		if ((output == db_name) or (db_name =='' and output is not None and output != '')):
+			log("[I] User name " + db_user + " and tablespace " + output + " already exists.","info")
+			log("[I] Verifying table " + TABLE_NAME +" in tablespace " + output, "info")
 			get_cmd = self.get_jisql_cmd(db_user, db_password)
 			if is_unix:
-				query = get_cmd + " -c \; -query \"select UPPER(table_name) from all_tables where UPPER(tablespace_name)=UPPER('%s') and UPPER(table_name)=UPPER('%s');\"" %(db_name ,TABLE_NAME)
+				query = get_cmd + " -c \; -query \"select UPPER(table_name) from all_tables where UPPER(tablespace_name)=UPPER('%s') and UPPER(table_name)=UPPER('%s');\"" %(output ,TABLE_NAME)
 			elif os_name == "WINDOWS":
-				query = get_cmd + " -query \"select UPPER(table_name) from all_tables where UPPER(tablespace_name)=UPPER('%s') and UPPER(table_name)=UPPER('%s');\" -c ;" %(db_name ,TABLE_NAME)
+				query = get_cmd + " -query \"select UPPER(table_name) from all_tables where UPPER(tablespace_name)=UPPER('%s') and UPPER(table_name)=UPPER('%s');\" -c ;" %(output ,TABLE_NAME)
 			jisql_log(query, db_password)
 			output = check_output(query)
 			if output.strip(TABLE_NAME.upper() + ' |'):
-				log("[I] Table " + TABLE_NAME +" already exists in tablespace " + db_name + "","info")
+				log("[I] Table " + TABLE_NAME +" already exists in tablespace " + output + "","info")
 				return True
 			else:
-				log("[I] Table " + TABLE_NAME +" does not exist in tablespace " + db_name + "","info")
+				log("[I] Table " + TABLE_NAME +" does not exist in tablespace " + output + "","info")
 				return False
 		else:
 			log("[E] "+db_user + " user already assigned to some other tablespace , provide different DB name.","error")
@@ -288,19 +292,39 @@ class OracleConf(BaseDB):
 
 class PostgresConf(BaseDB):
 	# Constructor
-	def __init__(self, host, SQL_CONNECTOR_JAR, JAVA_BIN):
+	def __init__(self, host,SQL_CONNECTOR_JAR,JAVA_BIN,db_ssl_enabled,db_ssl_required,db_ssl_verifyServerCertificate,javax_net_ssl_keyStore,javax_net_ssl_keyStorePassword,javax_net_ssl_trustStore,javax_net_ssl_trustStorePassword,db_ssl_auth_type):
 		self.host = host
 		self.SQL_CONNECTOR_JAR = SQL_CONNECTOR_JAR
 		self.JAVA_BIN = JAVA_BIN
+		self.db_ssl_enabled=db_ssl_enabled.lower()
+		self.db_ssl_required=db_ssl_required.lower()
+		self.db_ssl_verifyServerCertificate=db_ssl_verifyServerCertificate.lower()
+		self.db_ssl_auth_type=db_ssl_auth_type.lower()
+		self.javax_net_ssl_keyStore=javax_net_ssl_keyStore
+		self.javax_net_ssl_keyStorePassword=javax_net_ssl_keyStorePassword
+		self.javax_net_ssl_trustStore=javax_net_ssl_trustStore
+		self.javax_net_ssl_trustStorePassword=javax_net_ssl_trustStorePassword
 
 	def get_jisql_cmd(self, user, password, db_name):
 		#TODO: User array for forming command
 		path = RANGER_KMS_HOME
 		self.JAVA_BIN = self.JAVA_BIN.strip("'")
+		db_ssl_param=''
+		db_ssl_cert_param=''
+		if self.db_ssl_enabled == 'true':
+			db_ssl_param="?ssl=%s" %(self.db_ssl_enabled)
+			if self.db_ssl_verifyServerCertificate == 'true' or self.db_ssl_required == 'true':
+				db_ssl_param="?ssl=%s" %(self.db_ssl_enabled)
+				if self.db_ssl_auth_type == '1-way':
+					db_ssl_cert_param=" -Djavax.net.ssl.trustStore=%s -Djavax.net.ssl.trustStorePassword=%s " %(self.javax_net_ssl_trustStore,self.javax_net_ssl_trustStorePassword)
+				else:
+					db_ssl_cert_param=" -Djavax.net.ssl.keyStore=%s -Djavax.net.ssl.keyStorePassword=%s -Djavax.net.ssl.trustStore=%s -Djavax.net.ssl.trustStorePassword=%s " %(self.javax_net_ssl_keyStore,self.javax_net_ssl_keyStorePassword,self.javax_net_ssl_trustStore,self.javax_net_ssl_trustStorePassword)
+			else:
+				db_ssl_param="?ssl=%s&sslfactory=org.postgresql.ssl.NonValidatingFactory" %(self.db_ssl_enabled)
 		if is_unix:
-			jisql_cmd = "%s -cp %s:%s/jisql/lib/* org.apache.util.sql.Jisql -driver postgresql -cstring jdbc:postgresql://%s/%s -u %s -p '%s' -noheader -trim -c \;" %(self.JAVA_BIN, self.SQL_CONNECTOR_JAR, path,self.host, db_name, user, password)
+			jisql_cmd = "%s %s -cp %s:%s/jisql/lib/* org.apache.util.sql.Jisql -driver postgresql -cstring jdbc:postgresql://%s/%s%s -u %s -p '%s' -noheader -trim -c \;" %(self.JAVA_BIN, db_ssl_cert_param,self.SQL_CONNECTOR_JAR,path, self.host, db_name, db_ssl_param,user, password)
 		elif os_name == "WINDOWS":
-			jisql_cmd = "%s -cp %s;%s\jisql\\lib\\* org.apache.util.sql.Jisql -driver postgresql -cstring jdbc:postgresql://%s/%s -u %s -p \"%s\" -noheader -trim" %(self.JAVA_BIN, self.SQL_CONNECTOR_JAR, path, self.host, db_name, user, password)
+			jisql_cmd = "%s %s -cp %s;%s\jisql\\lib\\* org.apache.util.sql.Jisql -driver postgresql -cstring jdbc:postgresql://%s/%s%s -u %s -p \"%s\" -noheader -trim" %(self.JAVA_BIN, db_ssl_cert_param,self.SQL_CONNECTOR_JAR, path, self.host, db_name, db_ssl_param,user, password)
 		return jisql_cmd
 
 	def check_connection(self, db_name, db_user, db_password):
@@ -573,12 +597,13 @@ def main(argv):
 	db_ssl_enabled='false'
 	db_ssl_required='false'
 	db_ssl_verifyServerCertificate='false'
+	db_ssl_auth_type='2-way'
 	javax_net_ssl_keyStore=''
 	javax_net_ssl_keyStorePassword=''
 	javax_net_ssl_trustStore=''
 	javax_net_ssl_trustStorePassword=''
 
-	if XA_DB_FLAVOR == "MYSQL":
+	if XA_DB_FLAVOR == "MYSQL" or XA_DB_FLAVOR == "POSTGRES":
 		if 'db_ssl_enabled' in globalDict:
 			db_ssl_enabled=globalDict['db_ssl_enabled'].lower()
 			if db_ssl_enabled == 'true':
@@ -586,30 +611,34 @@ def main(argv):
 					db_ssl_required=globalDict['db_ssl_required'].lower()
 				if 'db_ssl_verifyServerCertificate' in globalDict:
 					db_ssl_verifyServerCertificate=globalDict['db_ssl_verifyServerCertificate'].lower()
+				if 'db_ssl_auth_type' in globalDict:
+					db_ssl_auth_type=globalDict['db_ssl_auth_type'].lower()
 				if db_ssl_verifyServerCertificate == 'true':
-					if 'javax_net_ssl_keyStore' in globalDict:
-						javax_net_ssl_keyStore=globalDict['javax_net_ssl_keyStore']
-					if 'javax_net_ssl_keyStorePassword' in globalDict:
-						javax_net_ssl_keyStorePassword=globalDict['javax_net_ssl_keyStorePassword']
 					if 'javax_net_ssl_trustStore' in globalDict:
 						javax_net_ssl_trustStore=globalDict['javax_net_ssl_trustStore']
 					if 'javax_net_ssl_trustStorePassword' in globalDict:
 						javax_net_ssl_trustStorePassword=globalDict['javax_net_ssl_trustStorePassword']
-					if not os.path.exists(javax_net_ssl_keyStore):
-						log("[E] Invalid file Name! Unable to find keystore file:"+javax_net_ssl_keyStore,"error")
-						sys.exit(1)
 					if not os.path.exists(javax_net_ssl_trustStore):
 						log("[E] Invalid file Name! Unable to find truststore file:"+javax_net_ssl_trustStore,"error")
-						sys.exit(1)
-					if javax_net_ssl_keyStorePassword is None or javax_net_ssl_keyStorePassword =="":
-						log("[E] Invalid ssl keystore password!","error")
 						sys.exit(1)
 					if javax_net_ssl_trustStorePassword is None or javax_net_ssl_trustStorePassword =="":
 						log("[E] Invalid ssl truststore password!","error")
 						sys.exit(1)
+					if db_ssl_auth_type == '2-way':
+						if 'javax_net_ssl_keyStore' in globalDict:
+							javax_net_ssl_keyStore=globalDict['javax_net_ssl_keyStore']
+						if 'javax_net_ssl_keyStorePassword' in globalDict:
+							javax_net_ssl_keyStorePassword=globalDict['javax_net_ssl_keyStorePassword']
+						if not os.path.exists(javax_net_ssl_keyStore):
+							log("[E] Invalid file Name! Unable to find keystore file:"+javax_net_ssl_keyStore,"error")
+							sys.exit(1)
+						if javax_net_ssl_keyStorePassword is None or javax_net_ssl_keyStorePassword =="":
+							log("[E] Invalid ssl keystore password!","error")
+							sys.exit(1)
 
+	if XA_DB_FLAVOR == "MYSQL":
 		MYSQL_CONNECTOR_JAR=globalDict['SQL_CONNECTOR_JAR']
-		xa_sqlObj = MysqlConf(xa_db_host, MYSQL_CONNECTOR_JAR, JAVA_BIN,db_ssl_enabled,db_ssl_required,db_ssl_verifyServerCertificate,javax_net_ssl_keyStore,javax_net_ssl_keyStorePassword,javax_net_ssl_trustStore,javax_net_ssl_trustStorePassword)
+		xa_sqlObj = MysqlConf(xa_db_host, MYSQL_CONNECTOR_JAR, JAVA_BIN,db_ssl_enabled,db_ssl_required,db_ssl_verifyServerCertificate,javax_net_ssl_keyStore,javax_net_ssl_keyStorePassword,javax_net_ssl_trustStore,javax_net_ssl_trustStorePassword,db_ssl_auth_type)
 		xa_db_core_file = os.path.join(RANGER_KMS_HOME , mysql_core_file)
 		
 	elif XA_DB_FLAVOR == "ORACLE":
@@ -621,7 +650,7 @@ def main(argv):
 		db_user=db_user.lower()
 		db_name=db_name.lower()
 		POSTGRES_CONNECTOR_JAR = globalDict['SQL_CONNECTOR_JAR']
-		xa_sqlObj = PostgresConf(xa_db_host, POSTGRES_CONNECTOR_JAR, JAVA_BIN)
+		xa_sqlObj = PostgresConf(xa_db_host, POSTGRES_CONNECTOR_JAR, JAVA_BIN,db_ssl_enabled,db_ssl_required,db_ssl_verifyServerCertificate,javax_net_ssl_keyStore,javax_net_ssl_keyStorePassword,javax_net_ssl_trustStore,javax_net_ssl_trustStorePassword,db_ssl_auth_type)
 		xa_db_core_file = os.path.join(RANGER_KMS_HOME , postgres_core_file)
 
 	elif XA_DB_FLAVOR == "MSSQL":

@@ -29,6 +29,7 @@ import java.util.List;
 import org.apache.ranger.common.MapUtil;
 import org.apache.ranger.common.SearchCriteria;
 import org.apache.ranger.entity.XXPolicyExportAudit;
+import org.apache.ranger.entity.XXService;
 import org.apache.ranger.view.VXPolicyExportAudit;
 import org.apache.ranger.view.VXPolicyExportAuditList;
 
@@ -50,6 +51,8 @@ public abstract class XPolicyExportAuditServiceBase<T extends XXPolicyExportAudi
 		mObj.setExportedJson( vObj.getExportedJson());
 		mObj.setHttpRetCode( vObj.getHttpRetCode());
 		mObj.setClusterName( vObj.getClusterName());
+		mObj.setZoneName( vObj.getZoneName());
+		mObj.setPolicyVersion( vObj.getPolicyVersion());
 		return mObj;
 	}
 
@@ -64,6 +67,8 @@ public abstract class XPolicyExportAuditServiceBase<T extends XXPolicyExportAudi
 		vObj.setHttpRetCode( mObj.getHttpRetCode());
 		vObj.setSyncStatus( MapUtil.getPolicyExportAuditSyncStatus(mObj.getHttpRetCode()));
 		vObj.setClusterName( mObj.getClusterName());
+		vObj.setZoneName( mObj.getZoneName());
+		vObj.setPolicyVersion( mObj.getPolicyVersion());
 		return vObj;
 	}
 
@@ -81,6 +86,11 @@ public abstract class XPolicyExportAuditServiceBase<T extends XXPolicyExportAudi
 		// Iterate over the result list and create the return list
 		for (T gjXPolicyExportAudit : resultList) {
 			VXPolicyExportAudit vXPolicyExportAudit = populateViewBean(gjXPolicyExportAudit);
+			XXService xxService = daoManager.getXXService().findByName(vXPolicyExportAudit.getRepositoryName());
+
+			if (xxService != null) {
+				vXPolicyExportAudit.setRepositoryDisplayName(xxService.getDisplayName());
+			}
 			xPolicyExportAuditList.add(vXPolicyExportAudit);
 		}
 

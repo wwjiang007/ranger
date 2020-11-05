@@ -27,6 +27,7 @@ import org.apache.ranger.audit.dao.DaoManager;
 import org.apache.ranger.biz.RangerBizUtil;
 import org.apache.ranger.biz.SessionMgr;
 import org.apache.ranger.biz.XUserMgr;
+import org.apache.ranger.common.ContextUtil;
 import org.apache.ranger.common.MessageEnums;
 import org.apache.ranger.common.RESTErrorUtil;
 import org.apache.ranger.common.SearchCriteria;
@@ -35,6 +36,7 @@ import org.apache.ranger.common.SortField;
 import org.apache.ranger.common.AppConstants;
 import org.apache.ranger.common.RangerConstants;
 import org.apache.ranger.common.StringUtil;
+import org.apache.ranger.common.UserSessionBase;
 import org.apache.ranger.db.RangerDaoManager;
 import org.apache.ranger.db.XXGroupDao;
 import org.apache.ranger.entity.XXResource;
@@ -42,6 +44,8 @@ import org.apache.ranger.plugin.model.RangerPolicy;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerPolicyItem;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerDataMaskPolicyItem;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerRowFilterPolicyItem;
+import org.apache.ranger.security.context.RangerContextHolder;
+import org.apache.ranger.security.context.RangerSecurityContext;
 import org.apache.ranger.service.AuthSessionService;
 import org.apache.ranger.service.XGroupGroupService;
 import org.apache.ranger.service.XGroupPermissionService;
@@ -84,7 +88,9 @@ import org.apache.ranger.entity.XXAsset;
 import org.apache.ranger.entity.XXGroupGroup;
 import org.apache.ranger.entity.XXGroupPermission;
 import org.apache.ranger.entity.XXPermMap;
+import org.apache.ranger.entity.XXPortalUser;
 import org.apache.ranger.service.XPermMapService;
+import org.junit.After;
 import org.junit.FixMethodOrder;
 import org.junit.Rule;
 import org.junit.Test;
@@ -105,11 +111,13 @@ import org.apache.ranger.db.XXUserDao;
 import org.apache.ranger.entity.XXPolicy;
 import org.apache.ranger.entity.XXUser;
 import org.apache.ranger.db.XXAuditMapDao;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+
 import javax.servlet.http.HttpServletRequest;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -129,6 +137,7 @@ public class TestXUserREST {
 	@Mock SearchCriteria searchCriteria;
 	@Mock XGroupService xGroupService;
 	@Mock SearchUtil searchUtil;
+	@Mock StringUtil stringUtil;
 	@Mock VXLong vXLong;
 	@Mock HttpServletRequest request;
 	@Mock VXUser vXUser1;
@@ -325,7 +334,7 @@ public class TestXUserREST {
 	
 		Mockito.when(searchUtil.extractString(request, testSearchCriteria, "name", "group name", null)).thenReturn("");
 		Mockito.when(searchUtil.extractInt(request, testSearchCriteria, "isVisible", "Group Visibility")).thenReturn(1);
-		Mockito.when(searchUtil.extractString(request, testSearchCriteria, "groupSource", "group source", null)).thenReturn("");
+		Mockito.when(searchUtil.extractInt(request, testSearchCriteria, "groupSource", "group source")).thenReturn(1);
 		VXGroupList testvXGroupList=createxGroupList();
 		Mockito.when(xUserMgr.searchXGroups(testSearchCriteria)).thenReturn(testvXGroupList);
 		VXGroupList outputvXGroupList=xUserRest.searchXGroups(request);
@@ -334,7 +343,7 @@ public class TestXUserREST {
 		Mockito.verify(searchUtil).extractCommonCriterias((HttpServletRequest)Mockito.any() ,(List<SortField>)Mockito.any());
 		Mockito.verify(searchUtil).extractString(request, testSearchCriteria, "name", "group name", null);
 		Mockito.verify(searchUtil).extractInt(request, testSearchCriteria, "isVisible", "Group Visibility");
-		Mockito.verify(searchUtil).extractString(request, testSearchCriteria, "groupSource", "group source", null);
+		Mockito.verify(searchUtil).extractInt(request, testSearchCriteria, "groupSource", "group source");
 		assertNotNull(outputvXGroupList);
 		assertEquals(outputvXGroupList.getTotalCount(),testvXGroupList.getTotalCount());
 		assertEquals(outputvXGroupList.getClass(),testvXGroupList.getClass());
@@ -504,7 +513,7 @@ public class TestXUserREST {
 		Mockito.when(searchUtil.extractInt(request, testSearchCriteria, "isVisible", "User Visibility")).thenReturn(1);
 		Mockito.when(searchUtil.extractInt(request, testSearchCriteria, "status", "User Status")).thenReturn(1);
 		Mockito.when(searchUtil.extractStringList(request, testSearchCriteria, "userRoleList", "User Role List", "userRoleList", null,null)).thenReturn(new ArrayList<String>());
-		Mockito.when(searchUtil.extractString(request, testSearchCriteria, "userRole", "UserRole", null)).thenReturn("");
+		Mockito.when(searchUtil.extractRoleString(request, testSearchCriteria, "userRole", "Role", null)).thenReturn("");
 		
 		List<VXUser> vXUsersList= new ArrayList<VXUser>();
 		vXUsersList.add(vxUser);
@@ -523,11 +532,14 @@ public class TestXUserREST {
 		Mockito.verify(searchUtil).extractInt(request, testSearchCriteria, "isVisible", "User Visibility");
 		Mockito.verify(searchUtil).extractInt(request, testSearchCriteria, "status", "User Status");
 		Mockito.verify(searchUtil).extractStringList(request, testSearchCriteria, "userRoleList", "User Role List", "userRoleList", null,null);
-		Mockito.verify(searchUtil).extractString(request, testSearchCriteria, "userRole", "UserRole", null);
+		Mockito.verify(searchUtil).extractRoleString(request, testSearchCriteria, "userRole", "Role", null);
 		assertNotNull(gotVXUserList);
 		assertEquals(testVXUserList.getTotalCount(),gotVXUserList.getTotalCount());
 		assertEquals(testVXUserList.getClass(),gotVXUserList.getClass());
 	}
+	
+	
+	
 	@SuppressWarnings("unchecked")
 	@Test
 	public void test25countXUsers() {
@@ -833,10 +845,9 @@ public class TestXUserREST {
 	}
 	@Test
 	public void test45updateXPermMap() {
-		Mockito.when(xUserMgr.updateXPermMap(null)).thenReturn(null);
-		VXPermMap retVxGroup=xUserRest.updateXPermMap(null);
+		VXPermMap vXPermMap=null ;
+		VXPermMap retVxGroup=xUserRest.updateXPermMap(vXPermMap);
 		assertNull(retVxGroup);
-		Mockito.verify(xUserMgr).updateXPermMap(null);
 	}
 	@Test
 	public void test46updateXPermMap() {
@@ -1037,12 +1048,9 @@ public class TestXUserREST {
 	}
 	@Test
 	public void test58updateXAuditMapVXResourceNull() {
-		
-		Mockito.when(xUserMgr.updateXAuditMap(null)).thenReturn(null);
-		VXAuditMap retvXAuditMap=xUserRest.updateXAuditMap(null);
-		Mockito.verify(xUserMgr).updateXAuditMap(null);
+		VXAuditMap vXAuditMap =null;
+		VXAuditMap retvXAuditMap=xUserRest.updateXAuditMap(vXAuditMap);
 		assertNull(retvXAuditMap);
-		
 	}
 	@Test
 	public void test59deleteXAuditMap() {
@@ -1259,10 +1267,15 @@ public class TestXUserREST {
 		assertEquals(groupList.getResultSize(),retVxGroupList.getResultSize());
 		Mockito.verify(xUserMgr).getXUserGroups(id);
 	}
+        @SuppressWarnings("unchecked")
 	@Test
 	public void test73getXGroupUsers() {
 		
 		HttpServletRequest request = Mockito.mock(HttpServletRequest.class);
+                SearchCriteria testSearchCriteria=createsearchCriteria();
+                testSearchCriteria.addParam("xGroupId", id);
+
+                Mockito.when(searchUtil.extractCommonCriterias((HttpServletRequest)Mockito.any() ,(List<SortField>)Mockito.any())).thenReturn(testSearchCriteria);
 		
 		VXUser testVXUser=createVXUser();
 		VXUserList testVXUserList= new VXUserList();
@@ -1271,13 +1284,13 @@ public class TestXUserREST {
 		testVXUserList.setVXUsers(testVXUsers);
 		testVXUserList.setStartIndex(1);
 		testVXUserList.setTotalCount(1);
-		Mockito.when(xUserMgr.getXGroupUsers(id)).thenReturn(testVXUserList);
+                Mockito.when(xUserMgr.getXGroupUsers(testSearchCriteria)).thenReturn(testVXUserList);
 		VXUserList retVxGroupList= xUserRest.getXGroupUsers(request,id);
 		
 		assertNotNull(retVxGroupList);
 		assertEquals(testVXUserList.getTotalCount(),retVxGroupList.getTotalCount());
 		assertEquals(testVXUserList.getStartIndex(),retVxGroupList.getStartIndex());
-		Mockito.verify(xUserMgr).getXGroupUsers(id);
+                Mockito.verify(xUserMgr).getXGroupUsers(testSearchCriteria);
 	}
 	@SuppressWarnings("unchecked")
 	@Test
@@ -1967,6 +1980,111 @@ public class TestXUserREST {
 		
 	}
 	
+	@SuppressWarnings({ "unchecked", "static-access" })
+	@Test
+	public void test113ErrorWhenRoleUserIsTryingToFetchAnotherUserDetails() {
+	
+		destroySession();
+		String userLoginID = "testuser";
+		Long userId = 8L;
+		
+		RangerSecurityContext context = new RangerSecurityContext();
+		context.setUserSession(new UserSessionBase());
+		RangerContextHolder.setSecurityContext(context);
+		UserSessionBase currentUserSession = ContextUtil.getCurrentUserSession();
+		currentUserSession.setUserAdmin(false);
+		XXPortalUser xXPortalUser = new XXPortalUser();
+		xXPortalUser.setLoginId(userLoginID);
+		xXPortalUser.setId(userId);
+		currentUserSession.setXXPortalUser(xXPortalUser);
+		
+		VXUser loggedInUser = createVXUser();
+		List<String> loggedInUserRole = new ArrayList<String>();
+		loggedInUserRole.add(RangerConstants.ROLE_USER);
+		loggedInUser.setId(8L);
+		loggedInUser.setName("testuser");
+		loggedInUser.setUserRoleList(loggedInUserRole);
+		
+		HttpServletRequest request = Mockito.mock(HttpServletRequest.class);
+		SearchCriteria testSearchCriteria=createsearchCriteria();
+		testSearchCriteria.addParam("name", "admin");
+		
+		Mockito.when(searchUtil.extractCommonCriterias((HttpServletRequest)Mockito.any(), (List<SortField>)Mockito.any())).thenReturn(testSearchCriteria);
+		
+		Mockito.when(searchUtil.extractCommonCriterias(request, xUserService.sortFields)).thenReturn(testSearchCriteria);
+		Mockito.when(searchUtil.extractString(request, testSearchCriteria, "emailAddress", "Email Address",null)).thenReturn("");
+		Mockito.when(searchUtil.extractInt(request, testSearchCriteria, "userSource", "User Source")).thenReturn(1);
+		Mockito.when(searchUtil.extractInt(request, testSearchCriteria, "isVisible", "User Visibility")).thenReturn(1);
+		Mockito.when(searchUtil.extractInt(request, testSearchCriteria, "status", "User Status")).thenReturn(1);
+		Mockito.when(searchUtil.extractStringList(request, testSearchCriteria, "userRoleList", "User Role List", "userRoleList", null,null)).thenReturn(new ArrayList<String>());
+		Mockito.when(searchUtil.extractRoleString(request, testSearchCriteria, "userRole", "Role", null)).thenReturn("");
+		Mockito.when(xUserService.getXUserByUserName("testuser")).thenReturn(loggedInUser);
+		Mockito.when(restErrorUtil.create403RESTException("Logged-In user is not allowed to access requested user data.")).thenThrow(new WebApplicationException());
+		thrown.expect(WebApplicationException.class);
+		
+		xUserRest.searchXUsers(request);
+	}
+	
+	@SuppressWarnings({ "unchecked", "static-access" })
+	@Test
+	public void test114RoleUserWillGetOnlyHisOwnUserDetails() {
+	
+		destroySession();
+		String userLoginID = "testuser";
+		Long userId = 8L;
+		
+		RangerSecurityContext context = new RangerSecurityContext();
+		context.setUserSession(new UserSessionBase());
+		RangerContextHolder.setSecurityContext(context);
+		UserSessionBase currentUserSession = ContextUtil.getCurrentUserSession();
+		currentUserSession.setUserAdmin(false);
+		XXPortalUser xXPortalUser = new XXPortalUser();
+		xXPortalUser.setLoginId(userLoginID);
+		xXPortalUser.setId(userId);
+		currentUserSession.setXXPortalUser(xXPortalUser);
+		
+		VXUser loggedInUser = createVXUser();
+		List<String> loggedInUserRole = new ArrayList<String>();
+		loggedInUserRole.add(RangerConstants.ROLE_USER);
+		loggedInUser.setId(8L);
+		loggedInUser.setName("testuser");
+		loggedInUser.setUserRoleList(loggedInUserRole);
+		
+		VXUserList expecteUserList = new VXUserList();
+		VXUser expectedUser = new VXUser();
+		expectedUser.setId(8L);
+		expectedUser.setName("testuser");
+		List<VXUser> userList = new ArrayList<VXUser>();
+		userList.add(expectedUser);
+		expecteUserList.setVXUsers(userList);
+		
+		HttpServletRequest request = Mockito.mock(HttpServletRequest.class);
+		SearchCriteria testSearchCriteria=createsearchCriteria();
+		
+		Mockito.when(searchUtil.extractCommonCriterias((HttpServletRequest)Mockito.any(), (List<SortField>)Mockito.any())).thenReturn(testSearchCriteria);
+		
+		Mockito.when(searchUtil.extractCommonCriterias(request, xUserService.sortFields)).thenReturn(testSearchCriteria);
+		Mockito.when(searchUtil.extractString(request, testSearchCriteria, "emailAddress", "Email Address",null)).thenReturn("");
+		Mockito.when(searchUtil.extractInt(request, testSearchCriteria, "userSource", "User Source")).thenReturn(1);
+		Mockito.when(searchUtil.extractInt(request, testSearchCriteria, "isVisible", "User Visibility")).thenReturn(1);
+		Mockito.when(searchUtil.extractInt(request, testSearchCriteria, "status", "User Status")).thenReturn(1);
+		Mockito.when(searchUtil.extractStringList(request, testSearchCriteria, "userRoleList", "User Role List", "userRoleList", null,null)).thenReturn(new ArrayList<String>());
+		Mockito.when(searchUtil.extractRoleString(request, testSearchCriteria, "userRole", "Role", null)).thenReturn("");
+		Mockito.when(xUserService.getXUserByUserName("testuser")).thenReturn(loggedInUser);
+		Mockito.when(xUserMgr.searchXUsers(testSearchCriteria)).thenReturn(expecteUserList);
+		VXUserList gotVXUserList=xUserRest.searchXUsers(request);
+		
+		assertEquals(gotVXUserList.getList().size(), 1);
+		assertEquals(gotVXUserList.getList().get(0).getId(), expectedUser.getId());
+		assertEquals(gotVXUserList.getList().get(0).getName(), expectedUser.getName());
+	}
+	
+	@After
+	public void destroySession() {
+		RangerSecurityContext context = new RangerSecurityContext();
+		context.setUserSession(null);
+		RangerContextHolder.setSecurityContext(context);
+	}
 	
 	private HashMap<Long, Integer> creategroupVisibilityMap()
 	{

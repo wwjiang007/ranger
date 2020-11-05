@@ -65,10 +65,15 @@ public class XGroupService extends XGroupServiceBase<XXGroup, VXGroup> {
 		searchFields.add(new SearchField("name", "obj.name",
 				SearchField.DATA_TYPE.STRING, SearchField.SEARCH_TYPE.PARTIAL));
 		searchFields.add(new SearchField("groupSource", "obj.groupSource",
-				SearchField.DATA_TYPE.STRING, SearchField.SEARCH_TYPE.FULL));
+				SearchField.DATA_TYPE.INTEGER, SearchField.SEARCH_TYPE.FULL));
 
 		searchFields.add(new SearchField("isVisible", "obj.isVisible",
 				SearchField.DATA_TYPE.INTEGER, SearchField.SEARCH_TYPE.FULL ));
+		
+		searchFields.add(new SearchField("userId", "groupUser.userId",
+				SearchField.DATA_TYPE.INTEGER, SearchField.SEARCH_TYPE.FULL,
+				"XXGroupUser groupUser", "obj.id = groupUser.parentGroupId"));
+
 
 		createdByUserId = PropertiesUtil.getLongProperty("ranger.xuser.createdByUserId", 1);
 
@@ -243,14 +248,12 @@ public class XGroupService extends XGroupServiceBase<XXGroup, VXGroup> {
 	
 	@Override
 	protected XXGroup mapViewToEntityBean(VXGroup vObj, XXGroup mObj, int OPERATION_CONTEXT) {
-		super.mapViewToEntityBean(vObj, mObj, OPERATION_CONTEXT);
-		return mObj;
+		return super.mapViewToEntityBean(vObj, mObj, OPERATION_CONTEXT);
 	}
 
 	@Override
 	protected VXGroup mapEntityToViewBean(VXGroup vObj, XXGroup mObj) {
-		super.mapEntityToViewBean(vObj, mObj);
-		return vObj;
+		return super.mapEntityToViewBean(vObj, mObj);
         }
 
         public Map<Long, XXGroup> getXXGroupIdXXGroupMap(){

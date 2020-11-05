@@ -19,12 +19,20 @@
 
  package org.apache.ranger.authorization.utils;
 
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.GregorianCalendar;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.TimeZone;
+
+import org.apache.commons.lang.StringUtils;
 
 public class StringUtil {
 
@@ -272,5 +280,62 @@ public class StringUtil {
 		utc.add(Calendar.MILLISECOND, -offset);
 
 		return utc.getTime();
+	}
+
+	public static Map<String, Object> toStringObjectMap(Map<String, String> map) {
+		Map<String, Object> ret = null;
+
+		if (map != null) {
+			ret = new HashMap<>(map.size());
+
+			for (Map.Entry<String, String> e : map.entrySet()) {
+				ret.put(e.getKey(), e.getValue());
+			}
+		}
+
+		return ret;
+	}
+
+	public static Set<String> toSet(String str) {
+		Set<String> values = new HashSet<String>();
+		if (StringUtils.isNotBlank(str)) {
+			for (String item : str.split(",")) {
+				if (StringUtils.isNotBlank(item)) {
+					values.add(StringUtils.trim(item));
+				}
+			}
+		}
+		return values;
+	}
+
+	public static List<String> toList(String str) {
+		List<String> values;
+		if (StringUtils.isNotBlank(str)) {
+			values = new ArrayList<>();
+			for (String item : str.split(",")) {
+				if (StringUtils.isNotBlank(item)) {
+					values.add(StringUtils.trim(item));
+				}
+			}
+		} else {
+			values = Collections.emptyList();
+		}
+		return values;
+	}
+
+	public static List<String> getURLs(String configURLs) {
+		List<String> configuredURLs = new ArrayList<>();
+		if(configURLs!=null) {
+			String[] urls = configURLs.split(",");
+			for (String strUrl : urls) {
+				if (StringUtils.isNotEmpty(StringUtils.trimToEmpty(strUrl))) {
+					if (strUrl.endsWith("/")) {
+						strUrl = strUrl.substring(0, strUrl.length() - 1);
+					}
+					configuredURLs.add(strUrl);
+				}
+			}
+		}
+		return configuredURLs;
 	}
 }

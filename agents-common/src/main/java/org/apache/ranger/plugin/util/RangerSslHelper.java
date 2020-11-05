@@ -24,7 +24,6 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.security.KeyManagementException;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
@@ -46,8 +45,6 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.ranger.authorization.hadoop.utils.RangerCredentialProvider;
 import org.apache.ranger.authorization.utils.StringUtil;
 
-import com.google.common.base.Objects;
-
 public class RangerSslHelper {
 	private static final Log LOG = LogFactory.getLog(RangerSslHelper.class);
 
@@ -65,7 +62,7 @@ public class RangerSslHelper {
 
 	static final String RANGER_SSL_KEYMANAGER_ALGO_TYPE                   = KeyManagerFactory.getDefaultAlgorithm();
 	static final String RANGER_SSL_TRUSTMANAGER_ALGO_TYPE                 = TrustManagerFactory.getDefaultAlgorithm();
-	static final String RANGER_SSL_CONTEXT_ALGO_TYPE                      = "SSL";
+	static final String RANGER_SSL_CONTEXT_ALGO_TYPE                      = "TLS";
 
 	private String mKeyStoreURL;
 	private String mKeyStoreAlias;
@@ -130,16 +127,7 @@ public class RangerSslHelper {
 			mTrustStoreFile  = conf.get(RANGER_POLICYMGR_TRUSTSTORE_FILE);
 
 			if (LOG.isDebugEnabled()) {
-				LOG.debug(Objects.toStringHelper("RangerSslHelper")
-					.add("keyStoreAlias", mKeyStoreAlias)
-					.add("keyStoreFile", mKeyStoreFile)
-					.add("keyStoreType", mKeyStoreType)
-					.add("keyStoreURL", mKeyStoreURL)
-					.add("trustStoreAlias", mTrustStoreAlias)
-					.add("trustStoreFile", mTrustStoreFile)
-					.add("trustStoreType", mTrustStoreType)
-					.add("trustStoreURL", mTrustStoreURL)
-					.toString());
+				LOG.debug(toString());
 			}
 		}
 		catch(IOException ioe) {
@@ -238,7 +226,7 @@ public class RangerSslHelper {
 	
 	private SSLContext getSSLContext(KeyManager[] kmList, TrustManager[] tmList) {
 		try {
-			if(kmList != null && tmList != null) {
+			if(tmList != null) {
 				SSLContext sslContext = SSLContext.getInstance(RANGER_SSL_CONTEXT_ALGO_TYPE);
 	
 				sslContext.init(kmList, tmList, new SecureRandom());
@@ -247,7 +235,7 @@ public class RangerSslHelper {
 			}
 		} catch (NoSuchAlgorithmException e) {
 			LOG.error("SSL algorithm is available in the environment", e);
-		} catch (KeyManagementException e) {
+		} catch (Exception e) {
 			LOG.error("Unable to initialize the SSLContext", e);
 		}
 		
@@ -255,9 +243,7 @@ public class RangerSslHelper {
 	}
 
 	private String getCredential(String url, String alias) {
-		char[] credStr = RangerCredentialProvider.getInstance().getCredentialString(url, alias);
-
-		return credStr == null ? null : new String(credStr);
+		return RangerCredentialProvider.getInstance().getCredentialString(url, alias);
 	}
 
 	private InputStream getFileInputStream(String fileName)  throws IOException {
@@ -285,5 +271,18 @@ public class RangerSslHelper {
 				LOG.error("Error while closing file: [" + filename + "]", excp);
 			}
 		}
+	}
+
+	@Override
+	public String toString() {
+		return "keyStoreAlias=" + mKeyStoreAlias + ", "
+				+ "keyStoreFile=" + mKeyStoreFile + ", "
+				+ "keyStoreType="+ mKeyStoreType + ", "
+				+ "keyStoreURL=" + mKeyStoreURL + ", "
+				+ "trustStoreAlias=" + mTrustStoreAlias + ", "
+				+ "trustStoreFile=" + mTrustStoreFile + ", "
+				+ "trustStoreType=" + mTrustStoreType + ", "
+				+ "trustStoreURL=" + mTrustStoreURL
+				;
 	}
 }

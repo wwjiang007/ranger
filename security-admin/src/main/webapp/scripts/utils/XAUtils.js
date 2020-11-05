@@ -23,7 +23,8 @@ define(function(require) {
 	var XAEnums = require('utils/XAEnums');
 	var localization = require('utils/XALangSupport');
 	var XAUtils = {};
-	require('bootstrap-notify');
+	var notify = require('bootstrap-notify');
+	var bootbox = require('bootbox');
 
 	// ///////////////////////////////////////////////////////
 	// Enum utility methods
@@ -208,20 +209,11 @@ define(function(require) {
 	 *            text - Plugin options
 	 */
 	XAUtils.notifyInfo = function(type, text, options) {
-		var html = '<div style="width: 245px;"><div style="min-height: 16px;"><div><span class="icon-exclamation-sign"></span>\
-			</div><h4 style="margin-top: -19px;margin-left: 15px;">Info</h4><div>'
-				+ text + '</div></div></div>';
-		if (_.isUndefined(options)) {
-			options = {
-				message : {
-					html : html,
-					text : text
-				},
-				type : 'info',
-				pausable: true
-			};
-		}
-		$('.top-right').notify(options).show();
+		$.notify({
+			icon: 'fa-fw fa fa-exclamation-circle',
+			title: '<strong>Info!</strong>',
+			message: text
+		});
 	};
 
 	/**
@@ -235,20 +227,13 @@ define(function(require) {
 	 *            text - Plugin options
 	 */
 	XAUtils.notifyError = function(type, text, options) {
-		var html = '<div style="width: 245px;"><div style="min-height: 16px;"><div><span class="icon-warning-sign"></span>\
-			</div><h4 style="margin-top: -19px;margin-left: 15px;">Error</h4><div>'
-                                + _.escape(text) + '</div></div></div>';
-		if (_.isUndefined(options)) {
-			options = {
-				message : {
-					html : html,
-					text : text
-				},
-				type : 'error',
-				pausable: true
-			};
-		}
-		$('.top-right').notify(options).show();
+		$.notify({
+			icon: 'fa-fw fa fa-exclamation-triangle',
+			title: '<strong>Error!</strong>',
+			message: text
+		},{
+			type: 'danger',
+		});
 	};
 
 	/**
@@ -262,19 +247,13 @@ define(function(require) {
 	 *            text - Plugin options
 	 */
 	XAUtils.notifySuccess = function(type, text, options) {
-		var html = '<div style="width: 245px;"><div style="min-height: 16px;"><div><span class="icon-ok-sign"></span>\
-							</div><h4 style="margin-top: -19px;margin-left: 15px;">Success</h4><div>'
-				+ text + '</div></div></div>';
-		if (_.isUndefined(options)) {
-			options = {
-				message : {
-					html : html
-				},
-				type : 'success',
-				pausable: true
-			};
-		}
-		$('.top-right').notify(options).show();
+		$.notify({
+			icon: 'fa-fw fa fa-check-circle',
+			title: '<strong>Success!</strong>',
+			message: text
+		},{
+			type: 'success'
+		});
 	};
 
 	/**
@@ -345,7 +324,7 @@ define(function(require) {
 	XAUtils.preventNavigation = function(msg, $form) {
 		window._preventNavigation = true;
 		window._preventNavigationMsg = msg;
-		$("body a, i[class^='icon-']").on("click.blockNavigation", function(e) {
+		$("body a, i[class^='fa-fw fa fa-']").on("click.blockNavigation", function(e) {
 			XAUtils.preventNavigationHandler.call(this, e, msg, $form);
 		});
 	};
@@ -356,7 +335,7 @@ define(function(require) {
 	XAUtils.allowNavigation = function() {
 		window._preventNavigation = false;
 		window._preventNavigationMsg = undefined;
-		$("body a, i[class^='icon-']").off('click.blockNavigation');
+		$("body a, i[class^='fa-fw fa fa-']").off('click.blockNavigation');
 	};
 
 	XAUtils.preventNavigationHandler = function(e, msg, $form) {
@@ -368,19 +347,26 @@ define(function(require) {
 
 			e.preventDefault();
 			e.stopImmediatePropagation();
-			bootbox.dialog(msg, [ {
-				"label" : localization.tt('btn.stayOnPage'),
-				"class" : "btn-success btn-small",
-				"callback" : function() {
+			bootbox.dialog(
+			{
+				message: msg,
+				buttons: {
+				    noclose: {
+				        "label" : localization.tt('btn.stayOnPage'),
+						"className" : "btn-success btn-sm",
+						"callback" : function() {
+						}
+				    },
+				    cancel: {
+						"label" : localization.tt('btn.leavePage'),
+						"className" : "btn-danger btn-sm",
+						"callback" : function() {
+							XAUtils.allowNavigation();
+							target.click();
+						}
+					}
 				}
-			}, {
-				"label" : localization.tt('btn.leavePage'),
-				"class" : "btn-danger btn-small",
-				"callback" : function() {
-					XAUtils.allowNavigation();
-					target.click();
-				}
-			} ]);
+			});
 			return false;
 		}
 	};
@@ -406,6 +392,7 @@ define(function(require) {
 	 *            params - The params
 	 */
 	XAUtils.alertPopup = function(params) {
+		bootbox.hideAll();
 		if (params.callback == undefined) {
 			bootbox.alert(params.msg);
 		} else {
@@ -466,40 +453,40 @@ define(function(require) {
 		options = _.isUndefined(options) ? Opt : options;
 		$.msg(options);
 	};
-	XAUtils.showGroups = function(rawValue) {
+        XAUtils.showMoreLessBtnForGroupsUsersRoles = function(rawValue , type) {
 		var showMoreLess = false, id;
 		if (_.isArray(rawValue))
 			rawValue = new Backbone.Collection(rawValue);
 		if (!_.isUndefined(rawValue) && rawValue.models.length > 0) {
 			var groupArr = _.uniq(_.compact(_.map(rawValue.models, function(m,
 					i) {
-				if (m.has('groupName'))
-					return _.escape(m.get('groupName'));
+                                if (m.has('entityName'))
+                                        return _.escape(m.get('entityName'));
 			})));
 			if (groupArr.length > 0) {
 				if (rawValue.first().has('resourceId'))
 					id = rawValue.first().get('resourceId');
 				else
-					id = rawValue.first().get('userId');
+                                        id = rawValue.first().get('modelId');
 			}
 			var newGroupArr = _.map(groupArr, function(name, i) {
 				if (i >= 4)
-					return '<span class="label label-info float-left-margin-2" policy-group-id="'
+                                        return '<span class="badge badge-info float-left-margin-2" data-name='+type+' model-'+ type +'-id="'
 							+ id + '" style="display:none;">' + name
 							+ '</span>';
 				else if (i == 3 && groupArr.length > 4) {
 					showMoreLess = true;
-					return '<span class="label label-info float-left-margin-2" policy-group-id="'
+                                        return '<span class="badge badge-info float-left-margin-2" data-name='+type+' model-'+ type +'-id="'
 							+ id + '">' + name + '</span>';
 				} else
-					return '<span class="label label-info float-left-margin-2" policy-group-id="'
+                                        return '<span class="badge badge-info float-left-margin-2" data-name='+type+' model-'+ type +'-id="'
 							+ id + '">' + name + '</span>';
 			});
 			if (showMoreLess) {
 				newGroupArr
-						.push('<span class="float-left-margin-2"><a href="javascript:void(0);" data-id="showMore" class="" policy-group-id="'
+                                                .push('<span class="float-left-margin-2"><a href="javascript:void(0);" data-id="showMore" class="" data-name='+type+' model-'+ type +'-id="'
 								+ id
-								+ '"><code style=""> + More..</code></a></span><span class="float-left-margin-2"><a href="javascript:void(0);" data-id="showLess" class="" policy-group-id="'
+                                                                + '"><code style=""> + More..</code></a></span><span class="float-left-margin-2"><a href="javascript:void(0);" data-id="showLess" class="" data-name='+type+' model-'+ type +'-id="'
 								+ id
 								+ '" style="display:none;"><code> - Less..</code></a></span>');
 			}
@@ -509,7 +496,7 @@ define(function(require) {
 		} else
 			return '--';
 	};
-	XAUtils.showGroupsOrUsersForPolicy = function(rawValue, model, showGroups, rangerServiceDefModel) {
+        XAUtils.showGroupsOrUsersForPolicy = function(rawValue, model, showType, rangerServiceDefModel) {
 		var showMoreLess = false, groupArr = [], items = [];
 		var itemList = ['policyItems','allowExceptions','denyPolicyItems','denyExceptions','dataMaskPolicyItems','rowFilterPolicyItems']
 		if(!_.isUndefined(rangerServiceDefModel)){
@@ -521,7 +508,7 @@ define(function(require) {
 				: this.isMaskingPolicy(model.get('policyType')) ? _.difference(itemList, ["rowFilterPolicyItems"])
 				: this.isRowFilterPolicy(model.get('policyType')) ? _.difference(itemList, ["dataMaskPolicyItems"]) : itemList; 
 						
-		var type = _.isUndefined(showGroups) || showGroups ? 'groups' : 'users';
+                var type = _.isUndefined(showType) || (showType == 'groups') ? 'groups' : ((showType == 'users') ? 'users' : 'roles');
 		_.each(itemList, function(item){
 		    if(!_.isUndefined(model.get(item)) && !_.isEmpty(model.get(item))) {
 		    	items =_.union(items,  model.get(item))
@@ -534,15 +521,15 @@ define(function(require) {
 			return '--';
 		var newGroupArr = _.map(groupArr, function(name, i) {
 			if (i >= 4) {
-				return '<span class="label label-info float-left-margin-2" policy-' + type
+				return '<span class="badge badge-info float-left-margin-2" policy-' + type
 						+ '-id="' + model.id + '" style="display:none;">'
 						+ _.escape(name) + '</span>';
 			} else if (i == 3 && groupArr.length > 4) {
 				showMoreLess = true;
-				return '<span class="label label-info float-left-margin-2" policy-' + type
+				return '<span class="badge badge-info float-left-margin-2" policy-' + type
 						+ '-id="' + model.id + '">' + _.escape(name) + '</span>';
 			} else {
-				return '<span class="label label-info float-left-margin-2" policy-' + type
+				return '<span class="badge badge-info float-left-margin-2" policy-' + type
 						+ '-id="' + model.id + '">' + _.escape(name) + '</span>';
 			}
 		});
@@ -571,7 +558,7 @@ define(function(require) {
                 objArr = (userOrGroups == 'groups') ? _.pluck(rawValue, 'groupName') : _.pluck(rawValue, 'userName');
 		var newObjArr = _.map(objArr, function(name, i) {
 			if (i >= 4) {
-                                var eleStr = '', span = '<span class="label label-info float-left-margin-2" policy-' + userOrGroups
+                                var eleStr = '', span = '<span class="badge badge-info float-left-margin-2" policy-' + userOrGroups
                                         + '-id="' + model.id +'">'
                                         +  _.escape(name) + '</span>';
                                 if( (i + listShownCnt ) === (listShownCnt*j) + 4){
@@ -590,10 +577,10 @@ define(function(require) {
                                 return eleStr;
 			} else if (i == 3 && objArr.length > 4) {
 				showMoreLess = true;
-				return '<span class="label label-info float-left-margin-2" policy-' + userOrGroups
+				return '<span class="badge badge-info float-left-margin-2" policy-' + userOrGroups
                                                 + '-id="' + model.id + '">' +  _.escape(name) + '</span>';
 			} else {
-				return '<span class="label label-info float-left-margin-2" policy-' + userOrGroups
+				return '<span class="badge badge-info float-left-margin-2" policy-' + userOrGroups
                                                 + '-id="' + model.id + '">' +  _.escape(name) + '</span>';
 			}
 		});
@@ -631,7 +618,14 @@ define(function(require) {
 				status : error.status
 			}));
 		} else if (error.status == 419) {
-			window.location = 'login.jsp?sessionTimeout=true';
+			if(!_.isNull(error.getResponseHeader("X-Rngr-Redirect-Url"))) {
+				XAUtils.notifyError('error', 'Session Timeout')
+				setTimeout( function(){
+					window.location = error.getResponseHeader("X-Rngr-Redirect-Url");
+				}, 4000);
+			} else {
+				window.location = 'login.jsp?sessionTimeout=true';
+			}
 		}
 	};
 	XAUtils.select2Focus = function(event) {
@@ -655,11 +649,13 @@ define(function(require) {
 				// _.filter(policyItems,function(m){if(!_.isEmpty(m.groups))
 				// return m;});
 				_.each(policyItems, function(obj) {
-					var groupNames = null, userNames = null;
+                                        var groupNames = null, userNames = null, roleNames = null;
 					if (!_.isEmpty(obj.groups))
 						groupNames = obj.groups;
 					if (!_.isEmpty(obj.users))
 						userNames = obj.users;
+                                        if (!_.isEmpty(obj.roles))
+                                                roleNames = obj.roles;
 					var m = new Backbone.Model({
 						groupName : groupNames,
 						userName : userNames,
@@ -667,6 +663,7 @@ define(function(require) {
 						conditions : obj.conditions,
 						delegateAdmin : obj.delegateAdmin,
 						editMode : true,
+                                                roleName : roleNames,
 					});
 					if(that.isMaskingPolicy(model.get('policyType'))){
 						m.set('dataMaskInfo', obj.dataMaskInfo)
@@ -759,33 +756,93 @@ define(function(require) {
 	XAUtils.addVisualSearch = function(searchOpt, serverAttrName, collection,
 			pluginAttr) {
 		var visualSearch, that = this;
-		var search = function(searchCollection, serverAttrName, searchOpt,
-				collection) {
-			var params = {};
+		var supportMultipleItems = pluginAttr.supportMultipleItems || false;
+                var multipleFacet = serverAttrName.filter(function(elem) {
+			return elem['addMultiple'];
+		}).map(function(elem) {
+			return elem.text;
+		});
+		var search = function(searchCollection, collection) {
+                        var params = {}, urlParams = {};
+			if($('.popover')){
+					$('.popover').remove();
+			}
 			searchCollection.each(function(m) {
-				var serverParamName = _.findWhere(serverAttrName, {
-					text : m.attributes.category
-				});
-				var extraParam = {};
-				if (_.has(serverParamName, 'multiple')
-						&& serverParamName.multiple) {
-					extraParam[serverParamName.label] = XAUtils
-							.enumLabelToValue(serverParamName.optionsArr, m
-									.get('value'));
-					;
-					$.extend(params, extraParam);
-				} else {
+                //For url params
+                if(_.has(urlParams, m.get('category'))) {
+                        var oldValue = urlParams[m.get('category')], newValue = m.get('value');
+                        if (Array.isArray(oldValue)) {
+                                // if it's a list, append to the end
+                                oldValue.push(newValue);
+                        } else {
+                                // convert to a list
+                                urlParams[m.get('category')] = [oldValue, newValue];
+                        }
+                } else {
+                        urlParams[m.get('category')] = m.get('value')
+                }
+                var serverParamName = _.findWhere(serverAttrName, {
+                        text : m.attributes.category
+                });
+                var extraParam = {};
+                if (serverParamName && _.has(serverParamName, 'multiple') && serverParamName.multiple) {
+                        extraParam[serverParamName.label] = XAUtils.enumLabelToValue(serverParamName.optionsArr, m.get('value'));
+                        $.extend(params, extraParam);
+                } else {
 					if (!_.isUndefined(serverParamName)) {
-						extraParam[serverParamName.label] = m.get('value');
-						$.extend(params, extraParam);
+						var oldValue = params[serverParamName.label];
+						var newValue = m.get('value');
+						if (oldValue && serverParamName.addMultiple) {
+							// if a value is already there
+							if (Array.isArray(oldValue)) {
+								// if it's a list, append to the end
+								oldValue.push(newValue);
+							} else {
+								// convert to a list
+								params[serverParamName.label] = [oldValue, newValue];
+							}
+						} else {
+							params[serverParamName.label] = newValue;
+						}
 					}
 				}
 			});
 			collection.queryParams = $.extend(collection.queryParams, params);
 			collection.state.currentPage = collection.state.firstPage;
+            //Add urlLabel to URL
+            var urlLabelParam = {};
+            _.map(urlParams, function(attr, key) {
+                _.filter(serverAttrName, function(val) {
+                    if(val.text === key) {
+                        return urlLabelParam[val.urlLabel] = attr
+                    }
+                })
+            })
+
+            if(!_.contains(["vXUsers","vXGroups","roles","vXModuleDef"], collection.modelAttrName)) {
+                //set sortBy value to url
+                if(!_.isUndefined(collection.queryParams) && collection.queryParams.sortBy && !_.isNull(collection.queryParams.sortBy)) {
+                    var sortparams = _.pick(collection.queryParams, 'sortBy');
+                    collection.state.order == 1 ? sortparams['sortType'] = "descending" : sortparams['sortType'] = "ascending";
+                    urlLabelParam = _.extend(urlLabelParam, sortparams)
+                }
+                //set sortKey value to url
+                if(!_.isUndefined(collection.state) && collection.state.sortKey && !_.isNull(collection.state.sortKey) && !_.contains(urlLabelParam, 'sortBy')) {
+                    var sortparams = _.pick(collection.state, 'sortKey');
+                    collection.state.order == 1 ? sortparams['sortType'] = "descending" : sortparams['sortType'] = "ascending";
+                    urlLabelParam = _.extend(urlLabelParam, sortparams)
+                }
+                //set excludeServiceUser value to url
+                if(!_.isUndefined(collection.queryParams) && _.has(collection.queryParams, 'excludeServiceUser')) {
+                    var sortparams = _.pick(collection.queryParams, 'excludeServiceUser');
+                    urlLabelParam = _.extend(urlLabelParam, sortparams)
+                }
+            }
+            XAUtils.changeParamToUrlFragment(urlLabelParam, collection.modelName);
 			collection.fetch({
 				reset : true,
 				cache : false,
+				traditional: supportMultipleItems, // for sending multiple values without []
 				error : function(coll, response, options) {
 					that.blockUI('unblock');
                                         if(response && response.responseJSON && response.responseJSON.msgDesc){
@@ -801,7 +858,7 @@ define(function(require) {
 		var callbackCommon = {
 			search : function(query, searchCollection) {
 				collection.VSQuery = query;
-				search(searchCollection, serverAttrName, searchOpt, collection);
+				search(searchCollection, collection);
 			},
 			clearSearch : function(callback) {
                                 //Remove search history when click on clear search
@@ -818,8 +875,9 @@ define(function(require) {
 				// console.log(visualSearch);
 				var searchOptTemp = $.extend(true, [], searchOpt);
 				visualSearch.searchQuery.each(function(m) {
-					if ($.inArray(m.get('category'), searchOptTemp) >= 0) {
-						searchOptTemp.splice($.inArray(m.get('category'),
+					var cat = m.get('category');
+					if ($.inArray(cat, searchOptTemp) >= 0 && $.inArray(cat, multipleFacet) < 0) {
+						searchOptTemp.splice($.inArray(cat,
 								searchOptTemp), 1);
 					}
 				});
@@ -836,7 +894,15 @@ define(function(require) {
 					text : removedFacet.get('category')
 				});
 				if (!_.isUndefined(removedFacetSeverName)) {
-					delete collection.queryParams[removedFacetSeverName.label];
+					var queryValue = collection.queryParams[removedFacetSeverName.label];
+					if ($.inArray(removedFacetSeverName.text, multipleFacet) && Array.isArray(queryValue)) {
+						var idx = queryValue.indexOf(removedFacet.get("value"));
+						if (idx != -1) {
+							queryValue.splice(idx);
+						}
+					} else {
+						delete collection.queryParams[removedFacetSeverName.label];
+					}
 					collection.state.currentPage = collection.state.firstPage;
 				}
 				// TODO Added for Demo to remove datapicker popups
@@ -853,8 +919,7 @@ define(function(require) {
 		}));
 
 		if (visualSearch.searchQuery.length > 0) // For On Load Visual Search
-			search(visualSearch.searchQuery, serverAttrName, searchOpt,
-					collection);
+			search(visualSearch.searchQuery, collection);
 
 		return visualSearch;
 	};
@@ -1012,7 +1077,7 @@ define(function(require) {
 		}
 	};
 	XAUtils.customXEditableForPolicyCond = function(template,selectionList) {
-		// $.fn.editable.defaults.mode = 'inline';
+		// $.fn.editable.defaults.mode = 'list-inline';
 
 		var PolicyConditions = function(options) {
 			this.init('policyConditions', options, PolicyConditions.defaults);
@@ -1103,6 +1168,9 @@ define(function(require) {
 	XAUtils.getRangerServiceDef = function(name) {
 		return "service/plugins/definitions/name/" + name;
 	};
+	XAUtils.getZonesURL = function(zoneId) {
+		return "service/zones/" + zoneId;
+	};
 	XAUtils.filterAllowedActions = function(controller) {
 		var SessionMgr = require('mgrs/SessionMgr');
 			var XAGlobals = require('utils/XAGlobals');
@@ -1145,7 +1213,7 @@ define(function(require) {
 			var denyControllerActions = [], denyModulesObj = [];
 			var userModuleNames = _.pluck(vXPortalUser.get('userPermList'),'moduleName');
 			//add by default permission module to admin user
-			if (SessionMgr.isSystemAdmin()){
+                        if (XAUtils.isAuditorOrSystemAdmin(SessionMgr)){
 				userModuleNames.push('Permissions')
 			}
 			var groupModuleNames = _.pluck(vXPortalUser.get('groupPermissions'), 'moduleName'),
@@ -1213,16 +1281,23 @@ define(function(require) {
 		var SessionMgr  = require('mgrs/SessionMgr');
 		var userRoleList = []
 		_.each(XAEnums.UserRoles,function(val, key){
-			if(SessionMgr.isKeyAdmin() && XAEnums.UserRoles.ROLE_SYS_ADMIN.value != val.value){
+            if(SessionMgr.isKeyAdmin() && XAEnums.UserRoles.ROLE_SYS_ADMIN.value != val.value
+                && XAEnums.UserRoles.ROLE_ADMIN_AUDITOR.value != val.value){
 				userRoleList.push(key)
-			}else if(SessionMgr.isSystemAdmin() && XAEnums.UserRoles.ROLE_KEY_ADMIN.value != val.value){
+            }else if(SessionMgr.isSystemAdmin() && XAEnums.UserRoles.ROLE_KEY_ADMIN.value != val.value
+                && XAEnums.UserRoles.ROLE_KEY_ADMIN_AUDITOR.value != val.value){
 				userRoleList.push(key)
 			}else if(SessionMgr.isUser() && XAEnums.UserRoles.ROLE_USER.value == val.value){
 				userRoleList.push(key)
+            }else if(SessionMgr.isAuditor() && XAEnums.UserRoles.ROLE_KEY_ADMIN.value != val.value
+                && XAEnums.UserRoles.ROLE_KEY_ADMIN_AUDITOR.value != val.value){
+                userRoleList.push(key)
+            }else if(SessionMgr.isKMSAuditor() && XAEnums.UserRoles.ROLE_SYS_ADMIN.value != val.value
+                && XAEnums.UserRoles.ROLE_ADMIN_AUDITOR.value != val.value){
+                userRoleList.push(key)
 			}
 		})
-		return {'userRoleList' : userRoleList };
-	};
+		return {'userRoleList' : userRoleList };	};
 	XAUtils.showErrorMsg = function(respMsg){
 		var respArr = respMsg.split(/\([0-9]*\)/);
 		respArr = respArr.filter(function(str){ return str; });
@@ -1237,7 +1312,7 @@ define(function(require) {
 				}
 			var reason = str.lastIndexOf("reason") != -1 ? (str.substring(str.lastIndexOf("reason")+7, str.indexOf("field[")-3 ))
 					: str;
-			erroCodeMsg = erroCodeMsg != "" ? erroCodeMsg +"<br/>" : ""; 
+                        erroCodeMsg = erroCodeMsg != "" ? erroCodeMsg +"   " : "";
 			var erroMsg = erroCodeMsg +""+ XAUtils.capitaliseFirstLetter(reason);
 			return XAUtils.notifyError('Error', erroMsg);
 		});
@@ -1251,6 +1326,22 @@ define(function(require) {
 				singleValue = UIHint.singleValue;
 		}
 		return singleValue;
+	};
+	XAUtils.hideIfNull = function(obj, form){
+		//resorces hide show
+		var hideIfNull = false;
+		if(!_.isEmpty(obj.uiHint)){
+			var UIHint = JSON.parse(obj.uiHint);
+			if(!_.isUndefined(form.model.get('resources')) && !_.isEmpty(form.model.get('resources')) &&
+					_.has(form.model.get('resources'), obj.name)){
+				 hideIfNull = false;
+			}else{
+				if(!_.isUndefined(UIHint.hideIfNull) && ! obj.mandatory){
+					hideIfNull = UIHint.hideIfNull;
+				}
+			}
+		}
+		return hideIfNull;
 	};
 	XAUtils.getBaseUrl = function (){
 		if(!window.location.origin){
@@ -1352,6 +1443,455 @@ define(function(require) {
     			return obj.get('rowFilterDef').resources;
     		}
     	}
+    };
+    XAUtils.showMoreAndLessButton = function(rawValue, model){
+        var showMoreLess = false;
+        var newLabelArr = _.map(rawValue, function(name, i) {
+            if (i >= 4) {
+                return '<span class="badge badge-info float-left-margin-2 shorten-label" title="'+ _.escape(name) +'" policy-label-id ="'+ model.id +'" style="display:none;">'+ _.escape(name) + '</span>';
+            } else if (i == 3 && rawValue.length > 4) {
+                showMoreLess = true;
+                return '<span class="badge badge-info float-left-margin-2 shorten-label" title="'+ _.escape(name) +'" policy-label-id ="'+ model.id +'">' + _.escape(name) + '</span>';
+            } else {
+                return '<span class="badge badge-info float-left-margin-2 shorten-label" title="'+ _.escape(name) +'" policy-label-id ="'+ model.id +'">' + _.escape(name) + '</span>';
+            }
+        });
+        if (showMoreLess) {
+            newLabelArr.push('<span class="pull-left float-left-margin-2"><a href="javascript:void(0);" data-id="showMore" policy-label-id ="'+ model.id +'"><code style=""> + More..</code></a></span>\
+                    <span class="pull-left float-left-margin-2" ><a href="javascript:void(0);" data-id="showLess" style="display:none;" policy-label-id ="'+ model.id +'"><code> - Less..</code></a></span>');
+        }
+        newLabelArr.unshift('<div data-id="groupsDiv">');
+        newLabelArr.push('</div>');
+        return newLabelArr.length ? newLabelArr.join(' ') : '--';
+    };
+    XAUtils.isAuditorOrSystemAdmin = function(SessionMgr){
+        return (SessionMgr.isAuditor() || SessionMgr.isSystemAdmin()) ? true : false ;
+    };
+    XAUtils.isAuditorOrKMSAuditor = function(SessionMgr){
+        return (SessionMgr.isAuditor() || SessionMgr.isKMSAuditor()) ? true : false ;
+    };
+    XAUtils.isPolicyExpierd = function(model){
+        var moment = require('moment');
+        var momontTz = require('momentTz');
+        return !_.some(model.get('validitySchedules') , function(m){
+            if(!m.endTime){
+                return true;
+            } else if(_.isEmpty(m.timeZone)){
+                return new Date().valueOf() > new Date(m.endTime).valueOf() ? false : true;
+            }else{
+                return new Date(moment.tz(m.timeZone).format('MM/DD/YYYY HH:mm:ss')).valueOf() >
+                new Date(m.endTime).valueOf() ? false : true;
+            }
+        });
+    };
+    XAUtils.copyToClipboard = function(e , copyText ){
+        var input = document.createElement('input');
+        if(_.isArray(copyText)){
+            input.setAttribute('value', copyText.join(' | '));
+        }else{
+            input.setAttribute('value', copyText);
+        }
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+        e.currentTarget.title="Copied!";
+    };
+    //If view is closed, closed all new DOM element that added in DOM like popup, modal, date-selector and select-list etc.
+    XAUtils.removeUnwantedDomElement = function(){
+        $('.modal').remove();
+        $('.modal-backdrop').remove();
+        $('#select2-drop').select2('close');
+        $('.datepicker').remove();
+        $('.popover').remove();
+        $('.datetimepicker').remove();
+        $('body').removeClass('modal-open')
+    };
+    //select2 option
+    XAUtils.select2OptionForUserCreateChoice = function(){
+        var opts = {
+                multiple: true,
+                data:[],
+                closeOnSelect : true,
+                width :'220px',
+                allowClear: true,
+                tokenSeparators: ["," , " "],
+                minimumInputLength: 1,
+                initSelection : function (element, callback) {
+                    var data = [];
+                    //to set single select value
+                    if(!_.isUndefined(opts.singleValueInput) && opts.singleValueInput){
+                        callback({ id : element.val(), text : element.val() });
+                        return;
+                    }
+                    //this is form multi-select value
+                    $(element.val().split(",")).each(function () {
+                        data.push({id: this, text: this});
+                    });
+                    callback(data);
+                },
+                createSearchChoice: function(term, data) {
+                    term = _.escape(term);
+                    if ($(data).filter(function() {
+                        return this.text.localeCompare(term) === 0;
+                    }).length === 0) {
+                        if($.inArray(term, this.val()) >= 0){
+                            return null;
+                        }else{
+                            return {
+                                id : term,
+                                text: term
+                            };
+                        }
+                    }
+                },
+            };
+
+        return opts;
     }
+
+    //get policy conditions details
+    XAUtils.getPolicyConditionDetails = function(policyCondtions, serviceDef){
+        var condtionsDetails = [];
+        _.each(policyCondtions, function(val){
+        var conditionsVal = serviceDef.get('policyConditions').find(function(m){return m.name == val.type});
+            condtionsDetails.push({'name' : conditionsVal.label, 'values' : val.values});
+        })
+        return condtionsDetails;
+    }
+
+    //get list of all tag base services
+    XAUtils.getTagBaseServices = function(){
+        return {
+            closeOnSelect : true,
+            placeholder : 'Select Tag Services',
+            width :'600px',
+            allowClear: true,
+            multiple: true,
+            tokenSeparators: ["," , " "],
+            initSelection : function (element, callback) {
+                var tags = [];
+                _.each(element.val().split(','), function(name) {
+                    tags.push({
+                        'id': _.escape(name),
+                        'text': _.escape(name)
+                    });
+                });
+                callback(tags)
+            },
+            ajax: {
+                url: "service/plugins/services",
+                dataType: 'json',
+                data: function (term, page) {
+                    return { serviceNamePartial : term, serviceType : 'tag' };
+                },
+                results: function (data, page) {
+                    var results = [];
+                    if(data.resultSize != "0"){
+                        results = data.services.map(function(m, i){ return {id : _.escape(m.name), text: _.escape(m.name) };    });
+                        return {results : results};
+                    }
+                    return {results : results};
+                },
+                transport : function (options) {
+                                            $.ajax(options).fail(function(respones) {
+                        XAUtils.defaultErrorHandler('error',respones);
+                        this.success({
+                            resultSize : 0
+                        });
+                    });
+                }
+            },
+            formatResult : function(result){
+                return result.text;
+            },
+            formatSelection : function(result){
+                return result.text;
+            },
+            formatNoMatches: function(result){
+                return 'No tag service found.';
+            }
+        };
+    }
+
+    //Custom popover
+    XAUtils.customPopover = function($element, title, msg, placement){
+        $element.popover({
+            trigger: "manual",
+            title:title,
+            html: true,
+            animation:false,
+            content: msg,
+            container:'body',
+            placement: placement,
+        }).on("mouseenter", function () {
+            var _this = this;
+            $(this).popover("show");
+            $(".popover").on("mouseleave", function () {
+                $(_this).popover('hide');
+            });
+        }).on("mouseleave", function () {
+            var _this = this;
+            setTimeout(function () {
+                if (!$(".popover:hover").length) {
+                    $(_this).popover("hide");
+                }
+            }, 300);
+        });
+    }
+
+    XAUtils.getUsersGroupsList = function($select, domElement){
+        var that = domElement,
+            tags = [],
+            placeholder = $select === 'users' ? "Select User" : $select === 'groups' ? "Select Group" : "Select Role",
+            searchUrl = $select === 'users' ? "service/xusers/lookup/users" : $select === 'groups' ? "service/xusers/lookup/groups"
+                : "service/roles/roles";
+            // if(that.model && !_.isEmpty(that.model.get('name'))){
+            //     tags.push({
+            //         'id': _.escape(that.model.get('name')),
+            //         'text': _.escape(that.model.get('name'))
+            //     });
+            //     domElement.ui['selectUsersOrGroups'].val(tags.map(function(val) {
+            //         return val.text
+            //     }));
+            // }
+
+        return {
+            closeOnSelect : true,
+            placeholder   : placeholder,
+            tags : true,
+            width : '300px',
+            initSelection: function(element, callback) {
+                callback(tags);
+            },
+            ajax: {
+                url: searchUrl,
+                dataType: 'json',
+                data: function(term, page) {
+                    if($select === 'roles') {
+                        return {
+                            roleNamePartial: term
+                        }
+                    } else {
+                        return {
+                            name: term,
+                            isVisible : XAEnums.VisibilityStatus.STATUS_VISIBLE.value,
+                        }
+                    }
+                },
+                results: function(data, page) {
+                    var results = [],
+                        selectedVals = [];
+                    //Get selected values of groups/users dropdown
+                    if (data.totalCount != "0") {
+                        //remove users {USER} and {OWNER}
+                        if ($select == 'users' || $select == 'groups') {
+                            data.vXStrings = _.reject(data.vXStrings, function(m){return (m.value == '{USER}' || m.value == '{OWNER}')})
+                            results = data.vXStrings.map(function(m) {
+                                return {
+                                    id: _.escape(m.value),
+                                    text: _.escape(m.value)
+                                };
+                            });
+                        } else {
+                            if(that.model && !_.isEmpty(that.model.get('name'))){
+                                data.roles = _.reject(data.roles, function(m){
+                                    return (m.name == that.model.get('name'))
+                                })
+                            }
+                            results = data.roles.map(function(m){
+                                return {
+                                    id : _.escape(m.name),
+                                    text: _.escape(m.name)
+                                };
+                            });
+                        }
+                        //remove selected values
+                        if(that.collection && that.collection.models){
+                            _.filter(that.collection.models, function(model){
+                                if(model && !_.isUndefined(model.get('name'))){
+                                    selectedVals.push(model.get('name'));
+                                }
+                            })
+                        }
+                        if (!_.isEmpty(selectedVals)) {
+                            results = XAUtils.filterResultByText(results, selectedVals);
+                        }
+                        return {
+                            results: results
+                        };
+                    }
+                    return {
+                        results: results
+                    };
+                },
+                transport: function(options) {
+                    $.ajax(options).fail(function(respones) {
+                        XAUtils.defaultErrorHandler('error', respones);
+                        this.success({
+                            resultSize: 0
+                        });
+                    });
+                }
+            },
+            formatResult: function(result) {
+                return result.text;
+            },
+            formatSelection: function(result) {
+                return result.text;
+            },
+            formatNoMatches: function(result) {
+                return $select === 'users' ? "No user found." : $select === 'groups' ? "No group found." : "No role found.";
+            }
+
+        }
+    }
+
+    //string contain escape character or not
+    XAUtils.checkForEscapeCharacter = function(policyName){
+        var escapeCharacter = ["&amp;", "&lt;", "&gt;", "&quot;", "&#96;", "&#x27;"];
+        return _.some(escapeCharacter, function(m){
+            return policyName.includes(m);
+        });
+    }
+
+    //remove sort caret on grids
+    XAUtils.backgridSort = function(col){
+        if(!_.isUndefined(col.queryParams) && col.queryParams.sortBy && !_.isNull(col.queryParams.sortBy)) {
+                var sortparams = _.pick(col.queryParams, 'sortBy');
+            col.state.order == 1 ? sortparams['sortType'] = "descending" : sortparams['sortType'] = "ascending";
+            XAUtils.changeParamToUrlFragment(sortparams);
+        }
+        col.on('backgrid:sort', function(model) {
+            // No ids so identify model with CID
+            var cid = model.cid, urlObj = {};
+            var filtered = model.collection.filter(function(model) {
+                return model.cid !== cid;
+            });
+            _.each(filtered, function(model) {
+               model.set('direction', null);
+            });
+            if(Backbone.history.fragment.indexOf("?") !== -1) {
+                var urlFragment = Backbone.history.fragment.substring(Backbone.history.fragment.indexOf("?") + 1);
+                urlObj = XAUtils.changeUrlToSearchQuery(decodeURIComponent(urlFragment));
+            }
+            urlObj['sortBy'] = model.get('name');
+            if(_.isNull(model.get('direction'))) {
+                delete urlObj.sortType;
+                delete urlObj.sortBy;
+            } else {
+                urlObj['sortType'] = model.get('direction');
+            }
+            XAUtils.changeParamToUrlFragment(urlObj);
+        });
+    }
+
+    //Scroll up for roles create page
+    XAUtils.scrollToRolesField = function(field) {
+        $("html, body").animate({
+            scrollTop : field.position().top - 150
+        }, 1100, function() {
+            field.focus();
+        });
+    };
+
+    //Get service details By Service name
+    XAUtils.getServiceByName = function(name) {
+        return "service/plugins/services/name/" + name
+    };
+
+    //Add visual search query parameter to URL
+    XAUtils.changeParamToUrlFragment = function(obj, modelName) {
+	var App = require('App');
+        var baseUrlFregment = Backbone.history.fragment.split('?')[0],
+        str = [];
+        for (var p in obj) {
+            if (obj.hasOwnProperty(p)) {
+                if(_.isArray(obj[p])) {
+                    _.each(obj[p], function(val) {
+                        str.push(encodeURIComponent(p) + "=" + encodeURIComponent(val));
+                    })
+                } else {
+                    str.push(encodeURIComponent(p) + "=" + encodeURIComponent(obj[p]));
+                }
+            }
+        }
+        if(App.vZone && App.vZone.vZoneName && !_.isEmpty(App.vZone.vZoneName) && !obj.hasOwnProperty("securityZone") &&
+            modelName && (modelName === "RangerServiceDef" || modelName === "RangerPolicy")) {
+		str.push(encodeURIComponent("securityZone")+"="+ encodeURIComponent(App.vZone.vZoneName));
+        }
+        if( _.isEmpty(str)) {
+            Backbone.history.navigate(baseUrlFregment , false);
+        } else {
+            Backbone.history.navigate(baseUrlFregment+"?"+str.join("&") , false);
+        }
+    }
+
+    //convert URL to object params
+    XAUtils.changeUrlToSearchQuery = function(query) {
+        var query_string = {};
+        var vars = query.split("&");
+        for (var i=0;i<vars.length;i++) {
+            var pair = vars[i].split("=");
+            pair[0] = decodeURIComponent(pair[0]);
+            pair[1] = decodeURIComponent(pair[1]);
+            // If first entry with this name
+            if (typeof query_string[pair[0]] === "undefined") {
+                query_string[pair[0]] = pair[1];
+                // If second entry with this name
+            } else if (typeof query_string[pair[0]] === "string") {
+                var arr = [ query_string[pair[0]], pair[1] ];
+                query_string[pair[0]] = arr;
+                // If third or later entry with this name
+            } else {
+                query_string[pair[0]].push(pair[1]);
+            }
+        }
+        return query_string;
+    }
+
+    //Return key from serverAttrName for vsSearch
+    XAUtils.filterKeyForVSQuery = function(list, key) {
+        var value = _.filter(list, function(m) {
+            return m.urlLabel === key
+        })
+        if(_.isEmpty(value) || _.isUndefined(value)) {
+            value = _.filter(list, function(m) {
+                return m.text === key
+            })
+        }
+       return value[0].text
+    }
+
+    //convert string to Camel Case
+    XAUtils.stringToCamelCase = function(str) {
+        return str.replace(/(?:^\w|[A-Z]|\b\w)/g, function(word, index) {
+            return index == 0 ? word.toLowerCase() : word.toUpperCase();
+        }).replace(/\s+/g, '');
+    }
+
+    //Set backgrid table sorting direction
+    XAUtils.backgridSortType = function(collection, column) {
+        _.filter(column, function(val, key){
+            if(key == collection.queryParams.sortBy) {
+                val['direction'] =  collection.state.order == 1 ? "descending" : "ascending"
+            }
+        })
+    }
+
+    //Set default sort by and sort order in collection
+    XAUtils.setSorting = function(collectin, sortParams) {
+        _.extend(collectin.queryParams,{ 'sortBy'  :  sortParams.sortBy });
+        if(sortParams.sortType) {
+            sortParams.sortType == "ascending" ? collectin.setSorting(sortParams.sortBy,-1) : collectin.setSorting(sortParams.sortBy,1);
+        }
+    }
+
+    //Separate query parameters string from URL hash
+    XAUtils.urlQueryParams = function() {
+    	var urlHash = Backbone.history.location.hash;
+    	return urlHash.indexOf("?") !== -1 ? urlHash.substring(urlHash.indexOf("?") + 1) : undefined;
+    }
+
 	return XAUtils;
 });

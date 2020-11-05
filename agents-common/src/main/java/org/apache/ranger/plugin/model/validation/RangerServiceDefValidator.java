@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.HashMap;
 
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang.StringUtils;
@@ -40,10 +41,12 @@ import org.apache.ranger.plugin.model.RangerServiceDef.RangerEnumElementDef;
 import org.apache.ranger.plugin.model.RangerServiceDef.RangerPolicyConditionDef;
 import org.apache.ranger.plugin.model.RangerServiceDef.RangerResourceDef;
 import org.apache.ranger.plugin.model.RangerServiceDef.RangerServiceConfigDef;
+import org.apache.ranger.plugin.model.RangerServiceDef.RangerDataMaskTypeDef;
 import org.apache.ranger.plugin.store.ServiceStore;
 
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
+import org.apache.ranger.plugin.util.ServiceDefUtil;
 
 public class RangerServiceDefValidator extends RangerValidator {
 
@@ -58,8 +61,14 @@ public class RangerServiceDefValidator extends RangerValidator {
 			LOG.debug(String.format("==> RangerServiceDefValidator.validate(%s, %s)", serviceDef, action));
 		}
 
+		RangerServiceDef normalizedServiceDef = ServiceDefUtil.normalize(serviceDef);
+
+		if(LOG.isDebugEnabled()) {
+			LOG.debug(String.format("Normalized Service Definition being validated: (%s, %s)", serviceDef, action));
+		}
+
 		List<ValidationFailureDetails> failures = new ArrayList<>();
-		boolean valid = isValid(serviceDef, action, failures);
+		boolean valid = isValid(normalizedServiceDef, action, failures);
 		String message = "";
 		try {
 			if (!valid) {
@@ -68,7 +77,7 @@ public class RangerServiceDefValidator extends RangerValidator {
 			}
 		} finally {
 			if(LOG.isDebugEnabled()) {
-				LOG.debug(String.format("<== RangerServiceDefValidator.validate(%s, %s): %s, reason[%s]", serviceDef, action, valid, message));
+				LOG.debug(String.format("<== RangerServiceDefValidator.validate(%s, %s): %s, reason[%s]", normalizedServiceDef, action, valid, message));
 			}
 		}
 	}
@@ -130,8 +139,9 @@ public class RangerServiceDefValidator extends RangerValidator {
 			Long id = serviceDef.getId();
 			valid = isValidServiceDefId(id, action, failures) && valid;
 			valid = isValidServiceDefName(serviceDef.getName(), id, action, failures) && valid;
-			valid = isValidAccessTypes(serviceDef.getAccessTypes(), failures) && valid;
-			if (isValidResources(serviceDef, failures)) {
+			valid = isValidServiceDefDisplayName(serviceDef.getDisplayName(), id, action, failures) && valid;
+			valid = isValidAccessTypes(serviceDef.getId(), serviceDef.getAccessTypes(), failures, action) && valid;
+			if (isValidResources(serviceDef, failures, action)) {
 				// Semantic check of resource graph can only be done if resources are "syntactically" valid
 				valid = isValidResourceGraph(serviceDef, failures) && valid;
 			} else {
@@ -144,7 +154,8 @@ public class RangerServiceDefValidator extends RangerValidator {
 			} else {
 				valid = false;
 			}
-			valid = isValidPolicyConditions(serviceDef.getPolicyConditions(), failures) && valid;
+			valid = isValidPolicyConditions(serviceDef.getId(), serviceDef.getPolicyConditions(), failures, action) && valid;
+			valid = isValidDataMaskTypes(serviceDef.getId(), serviceDef.getDataMaskDef().getMaskTypes(), failures, action) && valid;
 		}
 		
 		if(LOG.isDebugEnabled()) {
@@ -230,8 +241,61 @@ public class RangerServiceDefValidator extends RangerValidator {
 		}
 		return valid;
 	}
-	
-	boolean isValidAccessTypes(final List<RangerAccessTypeDef> accessTypeDefs, final List<ValidationFailureDetails> failures) {
+
+	/**
+	 * Performs all validations related to ServiceDef displayName.
+	 * @param displayName
+	 * @param id
+	 * @param action
+	 * @param failures
+	 * @return
+	 */
+	boolean isValidServiceDefDisplayName(final String displayName, Long id, final Action action, final List<ValidationFailureDetails> failures) {
+		if(LOG.isDebugEnabled()) {
+			LOG.debug(String.format("==> RangerServiceDefValidator.isValidServiceDefDisplayName(%s, %s, %s, %s)", displayName, id, action, failures));
+		}
+		boolean valid = true;
+
+		if (StringUtils.isBlank(displayName)) {
+			ValidationErrorCode error = ValidationErrorCode.SERVICE_DEF_VALIDATION_ERR_INVALID_SERVICE_DEF_DISPLAY_NAME;
+			failures.add(new ValidationFailureDetailsBuilder()
+					.field("displayName")
+					.isMissing()
+					.errorCode(error.getErrorCode())
+					.becauseOf(error.getMessage(displayName))
+					.build());
+			valid = false;
+		} else {
+			RangerServiceDef otherServiceDef = getServiceDefByDisplayName(displayName);
+			if (otherServiceDef != null && action == Action.CREATE) {
+				ValidationErrorCode error = ValidationErrorCode.SERVICE_DEF_VALIDATION_ERR_SERVICE_DEF__DISPLAY_NAME_CONFICT;
+				failures.add(new ValidationFailureDetailsBuilder()
+						.field("displayName")
+						.isSemanticallyIncorrect()
+						.errorCode(error.getErrorCode())
+						.becauseOf(error.getMessage(displayName, otherServiceDef.getName()))
+						.build());
+				valid = false;
+			} else if (otherServiceDef != null && !Objects.equals(id, otherServiceDef.getId())) {
+				ValidationErrorCode error = ValidationErrorCode.SERVICE_DEF_VALIDATION_ERR_SERVICE_DEF__DISPLAY_NAME_CONFICT;
+				failures.add(new ValidationFailureDetailsBuilder()
+						.field("id/displayName")
+						.isSemanticallyIncorrect()
+						.errorCode(error.getErrorCode())
+						.becauseOf(error.getMessage(displayName, otherServiceDef.getName()))
+						.build());
+				valid = false;
+			}
+		}
+
+		if(LOG.isDebugEnabled()) {
+			LOG.debug(String.format("<== RangerServiceDefValidator.isValidServiceDefName(%s, %s, %s, %s): %s", displayName, id, action, failures, valid));
+		}
+		return valid;
+	}
+
+	boolean isValidAccessTypes(final Long serviceDefId, final List<RangerAccessTypeDef> accessTypeDefs,
+							   final List<ValidationFailureDetails> failures, final Action action) {
 		if(LOG.isDebugEnabled()) {
 			LOG.debug(String.format("==> RangerServiceDefValidator.isValidAccessTypes(%s, %s)", accessTypeDefs, failures));
 		}
@@ -247,13 +311,32 @@ public class RangerServiceDefValidator extends RangerValidator {
 				.build());
 			valid = false;
 		} else {
+			Map<Long, String> existingAccessTypeIDNameMap = new HashMap<>();
+			if (action == Action.UPDATE) {
+				List<RangerAccessTypeDef> existingAccessTypes = this.getServiceDef(serviceDefId).getAccessTypes();
+				for (RangerAccessTypeDef existingAccessType : existingAccessTypes) {
+					existingAccessTypeIDNameMap.put(existingAccessType.getItemId(), existingAccessType.getName());
+				}
+			}
+			if(LOG.isDebugEnabled()) {
+				LOG.debug("accessType names from db = " + existingAccessTypeIDNameMap.values());
+			}
 			List<RangerAccessTypeDef> defsWithImpliedGrants = new ArrayList<>();
 			Set<String> accessNames = new HashSet<>();
 			Set<Long> ids = new HashSet<>();
 			for (RangerAccessTypeDef def : accessTypeDefs) {
 				String name = def.getName();
+				Long itemId = def.getItemId();
 				valid = isUnique(name, accessNames, "access type name", "access types", failures) && valid;
 				valid = isUnique(def.getItemId(), ids, "access type itemId", "access types", failures) && valid;
+				if (action == Action.UPDATE) {
+					if (existingAccessTypeIDNameMap.get(itemId) != null && !existingAccessTypeIDNameMap.get(itemId).equals(name)) {
+						ValidationErrorCode error;
+						error = ValidationErrorCode.SERVICE_DEF_VALIDATION_ERR_SERVICE_DEF_NAME_CONFICT;
+						failures.add((new ValidationFailureDetailsBuilder()).field("access type name").isSemanticallyIncorrect().errorCode(error.getErrorCode()).becauseOf(String.format("changing %s[%s] in %s is not supported", "access type name", name, "access types")).build());
+						valid = false;
+					}
+				}
 				if (CollectionUtils.isNotEmpty(def.getImpliedGrants())) {
 					defsWithImpliedGrants.add(def);
 				}
@@ -295,7 +378,8 @@ public class RangerServiceDefValidator extends RangerValidator {
 		return valid;
 	}
 
-	boolean isValidPolicyConditions(List<RangerPolicyConditionDef> policyConditions, List<ValidationFailureDetails> failures) {
+	boolean isValidPolicyConditions(Long serviceDefId, List<RangerPolicyConditionDef> policyConditions,
+									List<ValidationFailureDetails> failures, final Action action) {
 		if(LOG.isDebugEnabled()) {
 			LOG.debug(String.format("==> RangerServiceDefValidator.isValidPolicyConditions(%s, %s)", policyConditions, failures));
 		}
@@ -304,12 +388,31 @@ public class RangerServiceDefValidator extends RangerValidator {
 		if (CollectionUtils.isEmpty(policyConditions)) {
 			LOG.debug("Configs collection was null/empty! ok");
 		} else {
+			Map<Long, String> existingPolicyCondIDNameMap = new HashMap<>();
+			if (action == Action.UPDATE) {
+				List<RangerPolicyConditionDef> existingPolicyConditions = this.getServiceDef(serviceDefId).getPolicyConditions();
+				for (RangerPolicyConditionDef existingPolicyCondition : existingPolicyConditions) {
+					existingPolicyCondIDNameMap.put(existingPolicyCondition.getItemId(), existingPolicyCondition.getName());
+				}
+			}
+			if(LOG.isDebugEnabled()) {
+				LOG.debug("policy condition names from db = " + existingPolicyCondIDNameMap.values());
+			}
 			Set<Long> ids = new HashSet<>();
 			Set<String> names = new HashSet<>();
 			for (RangerPolicyConditionDef conditionDef : policyConditions) {
-				valid = isUnique(conditionDef.getItemId(), ids, "policy condition def itemId", "policy condition defs", failures) && valid;
+				Long itemId = conditionDef.getItemId();
+				valid = isUnique(itemId, ids, "policy condition def itemId", "policy condition defs", failures) && valid;
 				String name = conditionDef.getName();
 				valid = isUnique(name, names, "policy condition def name", "policy condition defs", failures) && valid;
+				if (action == Action.UPDATE) {
+					if (existingPolicyCondIDNameMap.get(itemId) != null && !existingPolicyCondIDNameMap.get(itemId).equals(name)) {
+						ValidationErrorCode error;
+						error = ValidationErrorCode.SERVICE_DEF_VALIDATION_ERR_SERVICE_DEF_NAME_CONFICT;
+						failures.add((new ValidationFailureDetailsBuilder()).field("policy condition def name").isSemanticallyIncorrect().errorCode(error.getErrorCode()).becauseOf(String.format("changing %s[%s] in %s is not supported", "policy condition def name", name, "policy condition defs")).build());
+						valid = false;
+					}
+				}
 				if (StringUtils.isBlank(conditionDef.getEvaluator())) {
 					ValidationErrorCode error = ValidationErrorCode.SERVICE_DEF_VALIDATION_ERR_POLICY_CONDITION_NULL_EVALUATOR;
 					failures.add(new ValidationFailureDetailsBuilder()
@@ -445,7 +548,7 @@ public class RangerServiceDefValidator extends RangerValidator {
 		return valid;
 	}
 
-	boolean isValidResources(RangerServiceDef serviceDef, List<ValidationFailureDetails> failures) {
+	public boolean isValidResources(RangerServiceDef serviceDef, List<ValidationFailureDetails> failures, final Action action) {
 		if(LOG.isDebugEnabled()) {
 			LOG.debug(String.format("==> RangerServiceDefValidator.isValidResources(%s, %s)", serviceDef, failures));
 		}
@@ -462,14 +565,37 @@ public class RangerServiceDefValidator extends RangerValidator {
 					.build());
 			valid = false;
 		} else {
+			Map<Long, String> existingResourceIDNameMap = new HashMap<>();
+			if (action == Action.UPDATE) {
+				List<RangerResourceDef> existingResources = this.getServiceDef(serviceDef.getId()).getResources();
+				for (RangerResourceDef existingResource : existingResources) {
+					existingResourceIDNameMap.put(existingResource.getItemId(), existingResource.getName());
+				}
+			}
+			if(LOG.isDebugEnabled()) {
+				LOG.debug("resource names from db = " + existingResourceIDNameMap.values());
+			}
+
 			Set<String> names = new HashSet<String>(resources.size());
 			Set<Long> ids = new HashSet<Long>(resources.size());
 			for (RangerResourceDef resource : resources) {
+				valid = isValidResourceName(resource.getName(), "resource type name", failures) && valid;
+
 				/*
 				 * While id is the natural key, name is a surrogate key.  At several places code expects resource name to be unique within a service.
 				 */
-				valid = isUnique(resource.getName(), names, "resource name", "resources", failures) && valid;
-				valid = isUnique(resource.getItemId(), ids, "resource itemId", "resources", failures) && valid;
+				String name = resource.getName();
+				Long itemId = resource.getItemId();
+				valid = isUnique(name, names, "resource name", "resources", failures) && valid;
+				valid = isUnique(itemId, ids, "resource itemId", "resources", failures) && valid;
+				if (action == Action.UPDATE) {
+					if (existingResourceIDNameMap.get(itemId) != null && !existingResourceIDNameMap.get(itemId).equals(name)) {
+						ValidationErrorCode error;
+						error = ValidationErrorCode.SERVICE_DEF_VALIDATION_ERR_SERVICE_DEF_NAME_CONFICT;
+						failures.add((new ValidationFailureDetailsBuilder()).field("resource name").isSemanticallyIncorrect().errorCode(error.getErrorCode()).becauseOf(String.format("changing %s[%s] in %s is not supported", "resource name", name, "resources")).build());
+						valid = false;
+					}
+				}
 			}
 		}
 
@@ -522,6 +648,38 @@ public class RangerServiceDefValidator extends RangerValidator {
 						break;
 					} else {
 						lastResourceLevel = resourceDef.getLevel();
+					}
+				}
+			}
+		}
+		// If a resource is not mandatory, then it cannot be non-leaf in any hierarchy (RANGER-2207)
+		List<RangerResourceDef> resources = serviceDef.getResources();
+		List<String> resourceNames = new ArrayList<>(resources.size());
+		for (RangerResourceDef resourceDef : resources) {
+			resourceNames.add(resourceDef.getName());
+		}
+		for (String resourceName : resourceNames) {
+			for (int policyType : RangerPolicy.POLICY_TYPES) {
+				Set<List<RangerResourceDef>> hierarchies = defHelper.getResourceHierarchies(policyType);
+				for (List<RangerResourceDef> aHierarchy : hierarchies) {
+					boolean foundOptionalResource = false;
+					for (RangerResourceDef resourceDef : aHierarchy) {
+						if (!foundOptionalResource) {
+							if (resourceDef.getName().equalsIgnoreCase(resourceName) && !Boolean.TRUE.equals(resourceDef.getMandatory())) {
+								foundOptionalResource = true;
+							}
+						} else {
+							if (Boolean.TRUE.equals(resourceDef.getMandatory())) {
+								valid = false;
+								ValidationErrorCode error = ValidationErrorCode.SERVICE_DEF_VALIDATION_ERR_INVALID_MANADORY_VALUE_FOR_SERVICE_RESOURCE;
+								failures.add(new ValidationFailureDetailsBuilder()
+										.field(resourceDef.getName())
+										.isSemanticallyIncorrect()
+										.errorCode(error.getErrorCode())
+										.becauseOf(error.getMessage(resourceDef.getName(), resourceName))
+										.build());
+							}
+						}
 					}
 				}
 			}
@@ -628,6 +786,50 @@ public class RangerServiceDefValidator extends RangerValidator {
 		
 		if(LOG.isDebugEnabled()) {
 			LOG.debug(String.format("<== RangerServiceDefValidator.isValidEnumElements(%s, %s): %s", enumElementsDefs, failures, valid));
+		}
+		return valid;
+	}
+
+	boolean isValidDataMaskTypes(Long serviceDefId, List<RangerDataMaskTypeDef> dataMaskTypes, List<ValidationFailureDetails> failures, final Action action) {
+		if(LOG.isDebugEnabled()) {
+			LOG.debug(String.format("==> RangerServiceDefValidator.isValidDataMaskTypes(%s, %s)", dataMaskTypes, failures));
+		}
+		boolean valid = true;
+
+		if (CollectionUtils.isEmpty(dataMaskTypes)) {
+			LOG.debug("Configs collection was null/empty! ok");
+		} else {
+			Map<Long, String> existingDataMaskTypeIDNameMap = new HashMap<>();
+			if (action == Action.UPDATE) {
+				List<RangerDataMaskTypeDef> existingDataMaskTypes = this.getServiceDef(serviceDefId).getDataMaskDef().getMaskTypes();
+				for (RangerDataMaskTypeDef existingDataMaskType : existingDataMaskTypes) {
+					existingDataMaskTypeIDNameMap.put(existingDataMaskType.getItemId(), existingDataMaskType.getName());
+				}
+			}
+			if(LOG.isDebugEnabled()) {
+				LOG.debug("data mask type names from db = " + existingDataMaskTypeIDNameMap.values());
+			}
+
+			Set<Long> ids = new HashSet<Long>();
+			Set<String> names = new HashSet<String>();
+			for (RangerDataMaskTypeDef dataMaskType : dataMaskTypes) {
+				String name = dataMaskType.getName();
+				Long itemId = dataMaskType.getItemId();
+				valid = isUnique(itemId, ids, "data mask type def itemId", "data mask type defs", failures) && valid;
+				valid = isUnique(name, names, "data mask type def name", "data mask type defs", failures) && valid;
+				if (action == Action.UPDATE) {
+					if (existingDataMaskTypeIDNameMap.get(itemId) != null && !existingDataMaskTypeIDNameMap.get(itemId).equals(name)) {
+						ValidationErrorCode error;
+						error = ValidationErrorCode.SERVICE_DEF_VALIDATION_ERR_SERVICE_DEF_NAME_CONFICT;
+						failures.add((new ValidationFailureDetailsBuilder()).field("data mask type def name").isSemanticallyIncorrect().errorCode(error.getErrorCode()).becauseOf(String.format("changing %s[%s] in %s is not supported", "data mask type def name", name, "data mask type defs")).build());
+						valid = false;
+					}
+				}
+			}
+		}
+
+		if(LOG.isDebugEnabled()) {
+			LOG.debug(String.format("<== RangerServiceDefValidator.isValidDataMaskTypes(%s, %s): %s", dataMaskTypes, failures, valid));
 		}
 		return valid;
 	}

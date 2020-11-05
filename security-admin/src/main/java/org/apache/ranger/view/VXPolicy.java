@@ -102,6 +102,11 @@ public class VXPolicy extends VXDataObject implements java.io.Serializable {
 	 */
 	protected String services;
 	/**
+	 * Hive Services
+	 */
+	protected String hiveservices;
+
+	/**
 	 * Resource/Policy Status, boolean values : true/false
 	 *
 	 */
@@ -121,6 +126,8 @@ public class VXPolicy extends VXDataObject implements java.io.Serializable {
 
 	protected String grantor;
 	protected boolean replacePerm;
+
+        protected String policyLabel;
 
 	/**
 	 * Default constructor. This will set all the attributes to default value.
@@ -431,6 +438,26 @@ public class VXPolicy extends VXDataObject implements java.io.Serializable {
 	}
 
 	/**
+	 * Returns the value for the member attribute <b>hiveservices</b>
+	 *
+	 * @return String - value of member attribute <b>hiveservices</b>.
+	 */
+	public String getHiveServices() {
+		return hiveservices;
+	}
+
+	/**
+	 * This method sets the value to the member attribute <b>hiveservices</b>. You
+	 * cannot set null to the attribute.
+	 *
+	 * @param hiveservices
+	 *            Value to set member attribute <b>hiveservices</b>
+	 */
+	public void setHiveServices(String hiveservices) {
+		this.hiveservices = hiveservices;
+	}
+
+	/**
 	 * This method sets the value to the member attribute <b>resourceStatus</b>.
 	 * You cannot set null to the attribute.
 	 *
@@ -526,6 +553,14 @@ public class VXPolicy extends VXDataObject implements java.io.Serializable {
 		this.replacePerm = replacePerm;
 	}	
 
+        public String getPolicyLabel() {
+                return policyLabel;
+        }
+
+        public void setPolicyLabel(String policyLabel) {
+                this.policyLabel = policyLabel;
+        }
+
 	@Override
 	public int getMyClassType() {
 		return AppConstants.CLASS_TYPE_XA_RESOURCE;
@@ -557,6 +592,7 @@ public class VXPolicy extends VXDataObject implements java.io.Serializable {
 		str += "isRecursive={" + isRecursive + "} ";
 		str += "isAuditEnabled={" + isAuditEnabled + "} ";
 		str += "version={" + version + "} ";
+                str += "policyLabel={" + policyLabel + "} ";
 		str += "}";
 		return str;
 	}

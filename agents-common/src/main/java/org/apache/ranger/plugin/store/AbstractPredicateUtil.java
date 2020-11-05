@@ -38,6 +38,7 @@ import org.apache.ranger.plugin.model.RangerBaseModelObject;
 import org.apache.ranger.plugin.model.RangerPolicy;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerPolicyItem;
 import org.apache.ranger.plugin.model.RangerPolicy.RangerPolicyResource;
+import org.apache.ranger.plugin.model.RangerSecurityZone;
 import org.apache.ranger.plugin.model.RangerService;
 import org.apache.ranger.plugin.model.RangerServiceDef;
 import org.apache.ranger.plugin.model.RangerServiceDef.RangerResourceDef;
@@ -91,15 +92,20 @@ public class AbstractPredicateUtil {
 		// addPredicateForTagServiceId(filter.getParam(SearchFilter.TAG_SERVICE_ID), predicates); // not supported
 		addPredicateForUserName(filter.getParam(SearchFilter.USER), predicates);
 		addPredicateForGroupName(filter.getParam(SearchFilter.GROUP), predicates);
+		addPredicateForRoleName(filter.getParam(SearchFilter.ROLE), predicates);
 		addPredicateForResources(filter.getParamsWithPrefix(SearchFilter.RESOURCE_PREFIX, true), predicates);
 		addPredicateForPolicyResource(filter.getParam(SearchFilter.POL_RESOURCE), predicates);
 		addPredicateForPartialPolicyName(filter.getParam(SearchFilter.POLICY_NAME_PARTIAL), predicates);
 		addPredicateForResourceSignature(filter.getParam(SearchFilter.RESOURCE_SIGNATURE), predicates);
 		addPredicateForPolicyType(filter.getParam(SearchFilter.POLICY_TYPE), predicates);
+		addPredicateForPolicyPriority(filter.getParam(SearchFilter.POLICY_PRIORITY), predicates);
+		addPredicateForPartialPolicyLabels(filter.getParam(SearchFilter.POLICY_LABELS_PARTIAL), predicates);
+		addPredicateForZoneName(filter.getParam(SearchFilter.ZONE_NAME), predicates);
+		// addPredicateForZoneId(filter.getParam(SearchFilter.ZONE_ID), predicates); // not supported
 	}
 
 	public Comparator<RangerBaseModelObject> getSorter(SearchFilter filter) {
-		String sortBy = filter == null ? null : filter.getParam(SearchFilter.SORT_BY);
+		String sortBy = filter == null ? null : filter.getSortBy();
 
 		if(StringUtils.isEmpty(sortBy)) {
 			return null;
@@ -212,6 +218,16 @@ public class AbstractPredicateUtil {
 		}
 	};
 
+    protected final static Comparator<RangerBaseModelObject> zoneNameComparator = new Comparator<RangerBaseModelObject>() {
+        @Override
+        public int compare(RangerBaseModelObject o1, RangerBaseModelObject o2) {
+            String val1 = (o1 instanceof RangerSecurityZone) ? ((RangerSecurityZone)o1).getName() : null;
+            String val2 = (o2 instanceof RangerSecurityZone) ? ((RangerSecurityZone)o2).getName() : null;
+
+            return ObjectUtils.compare(val1, val2);
+        }
+    };
+
 	static {
 		sorterMap.put(SearchFilter.SERVICE_TYPE, serviceDefNameComparator);
 		sorterMap.put(SearchFilter.SERVICE_TYPE_ID, idComparator);
@@ -221,6 +237,8 @@ public class AbstractPredicateUtil {
 		sorterMap.put(SearchFilter.POLICY_ID, idComparator);
 		sorterMap.put(SearchFilter.CREATE_TIME, createTimeComparator);
 		sorterMap.put(SearchFilter.UPDATE_TIME, updateTimeComparator);
+		sorterMap.put(SearchFilter.ZONE_ID, idComparator);
+		sorterMap.put(SearchFilter.ZONE_NAME, zoneNameComparator);
 	}
 
 	private Predicate addPredicateForServiceType(final String serviceType, List<Predicate> predicates) {
@@ -461,10 +479,13 @@ public class AbstractPredicateUtil {
 						List<RangerPolicyItem> policyItems = (List<RangerPolicyItem>)policyItemsObj;
 
 						for(RangerPolicyItem policyItem : policyItems) {
-							if(policyItem.getUsers().contains(userName)) {
-								ret = true;
-
-								break;
+                                                        if(! policyItem.getUsers().isEmpty()) {
+                                                                for(String user : policyItem.getUsers()) {
+                                                                        if(StringUtils.containsIgnoreCase(user, userName)) {
+                                                                                ret = true;
+                                                                                break;
+                                                                        }
+                                                                }
 							}
 						}
 						if (ret) {
@@ -516,10 +537,13 @@ public class AbstractPredicateUtil {
 						List<RangerPolicyItem> policyItems = (List<RangerPolicyItem>)policyItemsObj;
 
 						for(RangerPolicyItem policyItem : policyItems) {
-							if(policyItem.getGroups().contains(groupName)) {
-								ret = true;
-
-								break;
+                                                        if(! policyItem.getGroups().isEmpty()) {
+                                                                for(String group : policyItem.getGroups()) {
+                                                                        if(StringUtils.containsIgnoreCase(group, groupName)) {
+                                                                                ret = true;
+                                                                                break;
+                                                                        }
+                                                                }
 							}
 						}
 						if (ret) {
@@ -539,6 +563,64 @@ public class AbstractPredicateUtil {
 		}
 
 		return ret;
+	}
+
+	private Predicate addPredicateForRoleName(final String roleName, List<Predicate> predicates) {
+		if(StringUtils.isEmpty(roleName)) {
+			return null;
+		}
+
+		Predicate ret = new Predicate() {
+			@Override
+			public boolean evaluate(Object object) {
+				if(object == null) {
+					return false;
+				}
+
+				boolean ret = false;
+
+				if(object instanceof RangerPolicy) {
+					RangerPolicy policy = (RangerPolicy)object;
+
+					List<?>[] policyItemsList = new List<?>[] { policy.getPolicyItems(),
+																policy.getDenyPolicyItems(),
+																policy.getAllowExceptions(),
+																policy.getDenyExceptions(),
+																policy.getDataMaskPolicyItems(),
+																policy.getRowFilterPolicyItems()
+															};
+					for(List<?> policyItemsObj : policyItemsList) {
+						@SuppressWarnings("unchecked")
+						List<RangerPolicyItem> policyItems = (List<RangerPolicyItem>)policyItemsObj;
+
+						for(RangerPolicyItem policyItem : policyItems) {
+							if(! policyItem.getRoles().isEmpty()) {
+								for(String role : policyItem.getRoles()) {
+									if(StringUtils.containsIgnoreCase(role, roleName)) {
+										ret = true;
+										break;
+									}
+								}
+							}
+						}
+						if (ret) {
+							break;
+						}
+					}
+				}else {
+					ret = true;
+				}
+
+				return ret;
+			}
+		};
+
+		if(predicates != null) {
+			predicates.add(ret);
+		}
+
+		return ret;
+
 	}
 
 	private Predicate addPredicateForIsEnabled(final String status, List<Predicate> predicates) {
@@ -818,6 +900,88 @@ public class AbstractPredicateUtil {
 		return ret;
 	}
 
+	private Predicate addPredicateForPartialPolicyLabels(final String policyLabels, List<Predicate> predicates) {
+		if (StringUtils.isEmpty(policyLabels)) {
+			return null;
+		}
+
+		Predicate ret = new Predicate() {
+			@Override
+			public boolean evaluate(Object object) {
+				if (object == null) {
+					return false;
+				}
+				boolean ret = false;
+
+				if (object instanceof RangerPolicy) {
+					RangerPolicy policy = (RangerPolicy) object;
+					//	exact match
+                                        /*if (policy.getPolicyLabels().contains(policyLabels)) {
+                                                ret = true;
+                                        }*/
+					/*partial match*/
+					for (String label :policy.getPolicyLabels()){
+						ret = StringUtils.containsIgnoreCase(label, policyLabels);
+						if(ret){
+							return ret;
+						}
+					}
+
+				} else {
+					ret = true;
+				}
+				return ret;
+			}
+		};
+		if (predicates != null) {
+			predicates.add(ret);
+		}
+
+		return ret;
+	}
+
+	private Predicate addPredicateForPolicyPriority(final String policyPriority, List<Predicate> predicates) {
+		if(StringUtils.isEmpty(policyPriority)) {
+			return null;
+		}
+
+		Predicate ret = new Predicate() {
+			@Override
+			public boolean evaluate(Object object) {
+				if (object == null) {
+					return false;
+				}
+
+				boolean ret = true;
+
+				if (object instanceof RangerPolicy) {
+					RangerPolicy policy = (RangerPolicy) object;
+
+					Integer priority = policy.getPolicyPriority() != null ? policy.getPolicyPriority() : RangerPolicy.POLICY_PRIORITY_NORMAL;
+
+					if (priority == RangerPolicy.POLICY_PRIORITY_NORMAL) {
+						ret = StringUtils.equalsIgnoreCase(policyPriority, policy.POLICY_PRIORITY_NAME_NORMAL)
+								|| StringUtils.equalsIgnoreCase(policyPriority, priority.toString());
+					} else if (priority == RangerPolicy.POLICY_PRIORITY_OVERRIDE) {
+						ret = StringUtils.equalsIgnoreCase(policyPriority, policy.POLICY_PRIORITY_NAME_OVERRIDE)
+								|| StringUtils.equalsIgnoreCase(policyPriority, priority.toString());
+					} else {
+						ret = false;
+					}
+				}
+				return ret;
+			}
+
+		};
+
+		if(predicates != null) {
+			predicates.add(ret);
+		}
+
+		return ret;
+	}
+
+
 	public Predicate createPredicateForResourceSignature(final String policySignature) {
 
 		if (StringUtils.isEmpty(policySignature)) {
@@ -845,4 +1009,45 @@ public class AbstractPredicateUtil {
 			}
 		};
 	}
+    private Predicate addPredicateForZoneName(final String zoneName, List<Predicate> predicates) {
+
+    if(StringUtils.isEmpty(zoneName)) {
+    	return null;
+    }
+
+        Predicate ret = new Predicate() {
+            @Override
+            public boolean evaluate(Object object) {
+                if(object == null) {
+                    return false;
+                }
+
+                final boolean ret;
+
+                if(object instanceof RangerPolicy) {
+                    RangerPolicy policy = (RangerPolicy)object;
+
+                    if (policy.getZoneName() != null) {
+                        ret = StringUtils.equals(zoneName, policy.getZoneName());
+                    } else {
+                        ret = StringUtils.isEmpty(zoneName);
+                    }
+                } else if (object instanceof RangerSecurityZone) {
+                    RangerSecurityZone securityZone = (RangerSecurityZone)object;
+
+                    return StringUtils.equals(securityZone.getName(), zoneName);
+                } else {
+                    ret = true;
+                }
+
+                return ret;
+            }
+        };
+
+        if(predicates != null) {
+            predicates.add(ret);
+        }
+
+        return ret;
+    }
 }

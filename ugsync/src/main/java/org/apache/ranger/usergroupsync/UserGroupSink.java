@@ -19,16 +19,18 @@
 
  package org.apache.ranger.usergroupsync;
 
-import java.util.List;
+import org.apache.ranger.ugsyncutil.model.UgsyncAuditInfo;
+
+import java.util.Map;
+import java.util.Set;
 
 public interface UserGroupSink {
 	void init() throws Throwable;
 
-	void addOrUpdateUser(String user, List<String> groups) throws Throwable;
-	
-	void addOrUpdateUser(String user) throws Throwable;
-	
-	void addOrUpdateGroup(String group) throws Throwable;
-	
-	void addOrUpdateGroup(String group, List<String> users) throws Throwable;
+	void postUserGroupAuditInfo(UgsyncAuditInfo ugsyncAuditInfo) throws Throwable;
+
+	void addOrUpdateUsersGroups(Map<String, Map<String, String>> sourceGroups,
+								Map<String, Map<String, String>> sourceUsers,
+								Map<String, Set<String>> sourceGroupUsers) throws Throwable;
+
 }

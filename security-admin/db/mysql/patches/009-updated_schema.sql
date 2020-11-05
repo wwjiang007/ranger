@@ -16,7 +16,27 @@
 -- Temporary table structure for view `vx_trx_log`
 --
 
+DROP TABLE IF EXISTS `x_data_hist`;
+DROP TABLE IF EXISTS `x_policy_item_group_perm`;
+DROP TABLE IF EXISTS `x_policy_item_user_perm`;
+DROP TABLE IF EXISTS `x_policy_item_condition`;
+DROP TABLE IF EXISTS `x_policy_item_access`;
+DROP TABLE IF EXISTS `x_policy_item`;
+DROP TABLE IF EXISTS `x_policy_resource_map`;
+DROP TABLE IF EXISTS `x_policy_resource`;
+DROP TABLE IF EXISTS `x_service_config_map`;
+DROP TABLE IF EXISTS `x_enum_element_def`;
+DROP TABLE IF EXISTS `x_enum_def`;
+DROP TABLE IF EXISTS `x_context_enricher_def`;
+DROP TABLE IF EXISTS `x_policy_condition_def`;
+DROP TABLE IF EXISTS `x_access_type_def_grants`;
+DROP TABLE IF EXISTS `x_access_type_def`;
+DROP TABLE IF EXISTS `x_resource_def`;
+DROP TABLE IF EXISTS `x_service_config_def`;
+DROP TABLE IF EXISTS `x_policy`;
+DROP TABLE IF EXISTS `x_service`;
 DROP TABLE IF EXISTS `x_service_def`;
+
 CREATE TABLE `x_service_def` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -41,8 +61,6 @@ CONSTRAINT `x_service_def_FK_added_by_id` FOREIGN KEY (`added_by_id`) REFERENCES
 CONSTRAINT `x_service_def_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-
-DROP TABLE IF EXISTS `x_service`;
 CREATE TABLE `x_service` ( 
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -69,7 +87,6 @@ CONSTRAINT `x_service_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_port
 CONSTRAINT `x_service_FK_type` FOREIGN KEY (`type`) REFERENCES `x_service_def` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-DROP TABLE IF EXISTS `x_policy`;
 CREATE TABLE  `x_policy` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -97,8 +114,6 @@ CONSTRAINT `x_policy_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_porta
 CONSTRAINT `x_policy_FK_service` FOREIGN KEY (`service`) REFERENCES `x_service` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-
-DROP TABLE IF EXISTS `x_service_config_def`;
 CREATE TABLE `x_service_config_def` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -121,15 +136,13 @@ CREATE TABLE `x_service_config_def` (
 `rb_key_label` varchar(1024) DEFAULT NULL,
 `rb_key_description` varchar(1024) DEFAULT NULL,
 `rb_key_validation_message` varchar(1024) DEFAULT NULL,
-`sort_order` tinyint(3) DEFAULT '0',
+`sort_order` int DEFAULT 0,
 primary key (`id`),
 CONSTRAINT `x_service_config_def_FK_defid` FOREIGN KEY (`def_id`) REFERENCES `x_service_def` (`id`),
 CONSTRAINT `x_service_config_def_FK_added_by_id` FOREIGN KEY (`added_by_id`) REFERENCES `x_portal_user` (`id`),
 CONSTRAINT `x_service_config_def_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-
-DROP TABLE IF EXISTS `x_resource_def`;
 CREATE TABLE `x_resource_def` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -157,7 +170,7 @@ CREATE TABLE `x_resource_def` (
 `rb_key_label` varchar(1024) DEFAULT NULL,  
 `rb_key_description` varchar(1024) DEFAULT NULL, 
 `rb_key_validation_message` varchar(1024) DEFAULT NULL,
-`sort_order` tinyint(3) DEFAULT '0', 
+`sort_order` int DEFAULT 0,
 primary key (`id`),
 KEY `x_resource_def_FK_parent` (`parent`),   
 CONSTRAINT `x_resource_def_FK_parent` FOREIGN KEY (`parent`) REFERENCES `x_resource_def` (`id`) ,
@@ -166,7 +179,6 @@ CONSTRAINT `x_resource_def_FK_added_by_id` FOREIGN KEY (`added_by_id`) REFERENCE
 CONSTRAINT `x_resource_def_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-DROP TABLE IF EXISTS `x_access_type_def`;
 CREATE TABLE `x_access_type_def` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -179,14 +191,13 @@ CREATE TABLE `x_access_type_def` (
 `name` varchar(1024) DEFAULT NULL,  
 `label` varchar(1024) DEFAULT NULL,   
 `rb_key_label` varchar(1024) DEFAULT NULL, 
-`sort_order` tinyint(3) DEFAULT '0', 
+`sort_order` int DEFAULT 0,
 primary key (`id`)   ,
 CONSTRAINT `x_access_type_def_FK_defid` FOREIGN KEY (`def_id`) REFERENCES `x_service_def` (`id`),
 CONSTRAINT `x_access_type_def_FK_added_by_id` FOREIGN KEY (`added_by_id`) REFERENCES `x_portal_user` (`id`),
 CONSTRAINT `x_access_type_def_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-DROP TABLE IF EXISTS `x_access_type_def_grants`;
 CREATE TABLE `x_access_type_def_grants` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -202,7 +213,6 @@ CONSTRAINT `x_atd_grants_FK_added_by_id` FOREIGN KEY (`added_by_id`) REFERENCES 
 CONSTRAINT `x_atd_grants_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-DROP TABLE IF EXISTS `x_policy_condition_def`;
 CREATE TABLE `x_policy_condition_def` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -223,14 +233,13 @@ CREATE TABLE `x_policy_condition_def` (
 `rb_key_label` varchar(1024) DEFAULT NULL,  
 `rb_key_description` varchar(1024) DEFAULT NULL,  
 `rb_key_validation_message` varchar(1024) DEFAULT NULL,
-`sort_order` tinyint(3) DEFAULT '0',
+`sort_order` int DEFAULT 0,
 primary key (`id`)   ,
 CONSTRAINT `x_policy_condition_def_FK_defid` FOREIGN KEY (`def_id`) REFERENCES `x_service_def` (`id`),
 CONSTRAINT `x_policy_condition_def_FK_added_by_id` FOREIGN KEY (`added_by_id`) REFERENCES `x_portal_user` (`id`),
 CONSTRAINT `x_policy_condition_def_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-DROP TABLE IF EXISTS `x_context_enricher_def`;
 CREATE TABLE `x_context_enricher_def` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -243,14 +252,13 @@ CREATE TABLE `x_context_enricher_def` (
 `name` varchar(1024) DEFAULT NULL,  
 `enricher` varchar(1024) DEFAULT NULL,
 `enricher_options` varchar(1024) DEFAULT NULL,
-`sort_order` tinyint(3) DEFAULT '0',
+`sort_order` int DEFAULT 0,
 primary key (`id`)   ,
 CONSTRAINT `x_context_enricher_def_FK_defid` FOREIGN KEY (`def_id`) REFERENCES `x_service_def` (`id`),
 CONSTRAINT `x_context_enricher_def_FK_added_by_id` FOREIGN KEY (`added_by_id`) REFERENCES `x_portal_user` (`id`),
 CONSTRAINT `x_context_enricher_def_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-DROP TABLE IF EXISTS `x_enum_def`;
 CREATE TABLE `x_enum_def` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -268,8 +276,6 @@ CONSTRAINT `x_enum_def_FK_added_by_id` FOREIGN KEY (`added_by_id`) REFERENCES `x
 CONSTRAINT `x_enum_def_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-
-DROP TABLE IF EXISTS `x_enum_element_def`;
 CREATE TABLE `x_enum_element_def` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -282,15 +288,13 @@ CREATE TABLE `x_enum_element_def` (
 `name` varchar(1024) DEFAULT NULL,  
 `label` varchar(1024) DEFAULT NULL,  
 `rb_key_label` varchar(1024) DEFAULT NULL,   
-`sort_order` tinyint(3) DEFAULT '0', 
+`sort_order` int DEFAULT 0,
 primary key (`id`),    
 CONSTRAINT `x_enum_element_def_FK_defid` FOREIGN KEY (`enum_def_id`) REFERENCES `x_enum_def` (`id`),
 CONSTRAINT `x_enum_element_def_FK_added_by_id` FOREIGN KEY (`added_by_id`) REFERENCES `x_portal_user` (`id`),
 CONSTRAINT `x_enum_element_def_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-
-DROP TABLE IF EXISTS `x_service_config_map`;
 CREATE TABLE `x_service_config_map` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -307,8 +311,6 @@ CONSTRAINT `x_service_config_map_FK_added_by_id` FOREIGN KEY (`added_by_id`) REF
 CONSTRAINT `x_service_config_map_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-
-DROP TABLE IF EXISTS `x_policy_resource`;
 CREATE TABLE `x_policy_resource` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -327,8 +329,6 @@ CONSTRAINT `x_policy_resource_FK_added_by_id` FOREIGN KEY (`added_by_id`) REFERE
 CONSTRAINT `x_policy_resource_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-
-DROP TABLE IF EXISTS `x_policy_resource_map`;
 CREATE TABLE `x_policy_resource_map` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -338,16 +338,13 @@ CREATE TABLE `x_policy_resource_map` (
 `upd_by_id` bigint(20) DEFAULT NULL,
 `resource_id` bigint(20) NOT NULL, 
 `value` varchar(1024) DEFAULT NULL,  
-`sort_order` tinyint(3) DEFAULT '0',
+`sort_order` int DEFAULT 0,
 primary key (`id`),    
 CONSTRAINT `x_policy_resource_map_FK_resource_id` FOREIGN KEY (`resource_id`) REFERENCES `x_policy_resource` (`id`),
 CONSTRAINT `x_policy_resource_map_FK_added_by_id` FOREIGN KEY (`added_by_id`) REFERENCES `x_portal_user` (`id`),
 CONSTRAINT `x_policy_resource_map_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-
-
-DROP TABLE IF EXISTS `x_policy_item`;
 CREATE TABLE `x_policy_item` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -357,15 +354,13 @@ CREATE TABLE `x_policy_item` (
 `upd_by_id` bigint(20) DEFAULT NULL,
 `policy_id` bigint(20) NOT NULL,
 `delegate_admin` tinyint(1) NOT NULL DEFAULT '0',
-`sort_order` tinyint(3) DEFAULT '0',
+`sort_order` int DEFAULT 0,
 primary key (`id`), 
 CONSTRAINT `x_policy_item_FK_policy_id` FOREIGN KEY (`policy_id`) REFERENCES `x_policy` (`id`),
 CONSTRAINT `x_policy_item_FK_added_by_id` FOREIGN KEY (`added_by_id`) REFERENCES `x_portal_user` (`id`),
 CONSTRAINT `x_policy_item_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-
-DROP TABLE IF EXISTS `x_policy_item_access`;
 CREATE TABLE `x_policy_item_access` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -376,7 +371,7 @@ CREATE TABLE `x_policy_item_access` (
 `policy_item_id` bigint(20) NOT NULL, 
 `type` bigint(20) NOT NULL,
 `is_allowed` tinyint(11) NOT NULL DEFAULT '0',
-`sort_order` tinyint(3) DEFAULT '0',
+`sort_order` int DEFAULT 0,
 primary key (id), 
 CONSTRAINT `x_policy_item_access_FK_pi_id` FOREIGN KEY (`policy_item_id`) REFERENCES `x_policy_item` (`id`) ,
 CONSTRAINT `x_policy_item_access_FK_atd_id` FOREIGN KEY (`type`) REFERENCES `x_access_type_def` (`id`),
@@ -384,7 +379,6 @@ CONSTRAINT `x_policy_item_access_FK_added_by_id` FOREIGN KEY (`added_by_id`) REF
 CONSTRAINT `x_policy_item_access_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-DROP TABLE IF EXISTS `x_policy_item_condition`;
 CREATE TABLE `x_policy_item_condition` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -395,7 +389,7 @@ CREATE TABLE `x_policy_item_condition` (
 `policy_item_id` bigint(20) NOT NULL, 
 `type` bigint(20) NOT NULL,
 `value` varchar(1024) DEFAULT NULL, 
-`sort_order` tinyint(3) DEFAULT '0',
+`sort_order` int DEFAULT 0,
 primary key (id), 
 CONSTRAINT `x_policy_item_condition_FK_pi_id` FOREIGN KEY (`policy_item_id`) REFERENCES `x_policy_item` (`id`) ,
 CONSTRAINT `x_policy_item_condition_FK_pcd_id` FOREIGN KEY (`type`) REFERENCES `x_policy_condition_def` (`id`),
@@ -403,7 +397,6 @@ CONSTRAINT `x_policy_item_condition_FK_added_by_id` FOREIGN KEY (`added_by_id`) 
 CONSTRAINT `x_policy_item_condition_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-DROP TABLE IF EXISTS `x_policy_item_user_perm`;
 CREATE TABLE `x_policy_item_user_perm` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -413,7 +406,7 @@ CREATE TABLE `x_policy_item_user_perm` (
 `upd_by_id` bigint(20) DEFAULT NULL,
 `policy_item_id` bigint(20) NOT NULL,
 `user_id` bigint(20) NULL DEFAULT NULL,
-`sort_order` tinyint(3) DEFAULT '0',
+`sort_order` int DEFAULT 0,
 primary key (`id`), 
 CONSTRAINT `x_policy_item_user_perm_FK_pi_id` FOREIGN KEY (`policy_item_id`) REFERENCES `x_policy_item` (`id`) ,
 CONSTRAINT `x_policy_item_user_perm_FK_user_id` FOREIGN KEY (`user_id`) REFERENCES `x_user` (`id`),
@@ -421,8 +414,6 @@ CONSTRAINT `x_policy_item_user_perm_FK_added_by_id` FOREIGN KEY (`added_by_id`) 
 CONSTRAINT `x_policy_item_user_perm_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-
-DROP TABLE IF EXISTS `x_policy_item_group_perm`;
 CREATE TABLE `x_policy_item_group_perm` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `guid` varchar(1024) DEFAULT NULL,
@@ -432,7 +423,7 @@ CREATE TABLE `x_policy_item_group_perm` (
 `upd_by_id` bigint(20) DEFAULT NULL,
 `policy_item_id` bigint(20) NOT NULL,
 `group_id` bigint(20) NULL DEFAULT NULL,
-`sort_order` tinyint(3) DEFAULT '0',
+`sort_order` int DEFAULT 0,
 primary key (`id`), 
 CONSTRAINT `x_policy_item_group_perm_FK_pi_id` FOREIGN KEY (`policy_item_id`) REFERENCES `x_policy_item` (`id`) ,
 CONSTRAINT `x_policy_item_group_perm_FK_group_id` FOREIGN KEY (`group_id`) REFERENCES `x_group` (`id`),
@@ -440,7 +431,6 @@ CONSTRAINT `x_policy_item_group_perm_FK_added_by_id` FOREIGN KEY (`added_by_id`)
 CONSTRAINT `x_policy_item_group_perm_FK_upd_by_id` FOREIGN KEY (`upd_by_id`) REFERENCES `x_portal_user` (`id`)
 )ROW_FORMAT=DYNAMIC;
 
-DROP TABLE IF EXISTS `x_data_hist`;
 CREATE TABLE `x_data_hist` (
 `id` bigint(20) NOT NULL AUTO_INCREMENT ,
 `create_time` datetime DEFAULT NULL,

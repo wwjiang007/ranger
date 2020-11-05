@@ -12,7 +12,71 @@
 -- WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
+
+CREATE OR REPLACE PROCEDURE spdropsequence(ObjName IN varchar2)
+IS
+v_counter integer;
+BEGIN
+    select count(*) into v_counter from user_sequences where sequence_name = upper(ObjName);
+      if (v_counter > 0) then
+        execute immediate 'DROP SEQUENCE ' || ObjName;
+      end if;
+END;/
 /
+
+call spdropsequence('X_SERVICE_DEF_SEQ');
+call spdropsequence('X_SERVICE_SEQ');
+call spdropsequence('X_POLICY_SEQ');
+call spdropsequence('X_SERVICE_CONFIG_DEF_SEQ');
+call spdropsequence('X_RESOURCE_DEF_SEQ');
+call spdropsequence('X_ACCESS_TYPE_DEF_SEQ');
+call spdropsequence('X_ACCESS_TYPE_DEF_GRANTS_SEQ');
+call spdropsequence('X_POLICY_CONDITION_DEF_SEQ');
+call spdropsequence('X_ENUM_DEF_SEQ');
+call spdropsequence('X_ENUM_ELEMENT_DEF_SEQ');
+call spdropsequence('X_SERVICE_CONFIG_MAP_SEQ');
+call spdropsequence('X_POLICY_RESOURCE_SEQ');
+call spdropsequence('X_POLICY_RESOURCE_MAP_SEQ');
+call spdropsequence('X_POLICY_ITEM_SEQ');
+call spdropsequence('X_POLICY_ITEM_ACCESS_SEQ');
+call spdropsequence('X_POLICY_ITEM_CONDITION_SEQ');
+call spdropsequence('X_CONTEXT_ENRICHER_DEF_SEQ');
+call spdropsequence('X_POLICY_ITEM_USER_PERM_SEQ');
+call spdropsequence('X_POLICY_ITEM_GROUP_PERM_SEQ');
+call spdropsequence('X_DATA_HIST_SEQ');
+
+CREATE OR REPLACE PROCEDURE spdroptable(ObjName IN varchar2)
+IS
+v_counter integer;
+BEGIN
+    select count(*) into v_counter from user_tables where table_name = upper(ObjName);
+     if (v_counter > 0) then
+     execute immediate 'drop table ' || ObjName || ' cascade constraints';
+     end if;
+END;/
+/
+
+call spdroptable('x_data_hist');
+call spdroptable('x_policy_item_group_perm');
+call spdroptable('x_policy_item_user_perm');
+call spdroptable('x_policy_item_condition');
+call spdroptable('x_policy_item_access');
+call spdroptable('x_policy_item');
+call spdroptable('x_policy_resource_map');
+call spdroptable('x_policy_resource');
+call spdroptable('x_service_config_map');
+call spdroptable('x_enum_element_def');
+call spdroptable('x_enum_def');
+call spdroptable('x_context_enricher_def');
+call spdroptable('x_policy_condition_def');
+call spdroptable('x_access_type_def_grants');
+call spdroptable('x_access_type_def');
+call spdroptable('x_resource_def');
+call spdroptable('x_service_config_def');
+call spdroptable('x_policy');
+call spdroptable('x_service');
+call spdroptable('x_service_def')
+
 CREATE SEQUENCE X_SERVICE_DEF_SEQ START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 CREATE SEQUENCE X_SERVICE_SEQ START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
 CREATE SEQUENCE X_POLICY_SEQ START WITH 1 INCREMENT BY 1 NOCACHE NOCYCLE;
@@ -118,7 +182,7 @@ description VARCHAR(1024) DEFAULT NULL NULL,
 rb_key_label VARCHAR(1024) DEFAULT NULL NULL,
 rb_key_description VARCHAR(1024) DEFAULT NULL NULL,
 rb_key_validation_message VARCHAR(1024) DEFAULT NULL NULL,
-sort_order NUMBER(3) DEFAULT '0' NULL,
+sort_order NUMBER(10) DEFAULT '0' NULL,
 primary key (id),
 CONSTRAINT x_service_conf_def_FK_defid FOREIGN KEY (def_id) REFERENCES x_service_def (id),
 CONSTRAINT x_service_conf_def_FK_added_by FOREIGN KEY (added_by_id) REFERENCES x_portal_user (id),
@@ -152,7 +216,7 @@ description VARCHAR(1024) DEFAULT NULL NULL,
 rb_key_label VARCHAR(1024) DEFAULT NULL NULL,
 rb_key_description VARCHAR(1024) DEFAULT NULL NULL,
 rb_key_validation_message VARCHAR(1024) DEFAULT NULL NULL,
-sort_order NUMBER(3) DEFAULT '0' NULL,
+sort_order NUMBER(10) DEFAULT '0' NULL,
 primary key (id),
 CONSTRAINT x_resource_def_FK_parent FOREIGN KEY (parent) REFERENCES x_resource_def (id),
 CONSTRAINT x_resource_def_FK_defid FOREIGN KEY (def_id) REFERENCES x_service_def (id),
@@ -172,7 +236,7 @@ item_id NUMBER(20) NOT NULL,
 name VARCHAR(1024) DEFAULT NULL NULL,
 label VARCHAR(1024) DEFAULT NULL NULL,
 rb_key_label VARCHAR(1024) DEFAULT NULL NULL,
-sort_order NUMBER(3) DEFAULT '0' NULL,
+sort_order NUMBER(10) DEFAULT '0' NULL,
 primary key (id),
 CONSTRAINT x_access_type_def_FK_defid FOREIGN KEY (def_id) REFERENCES x_service_def (id),
 CONSTRAINT x_access_type_def_FK_added_by FOREIGN KEY (added_by_id) REFERENCES x_portal_user (id),
@@ -214,7 +278,7 @@ description VARCHAR(1024) DEFAULT NULL NULL,
 rb_key_label VARCHAR(1024) DEFAULT NULL NULL,
 rb_key_description VARCHAR(1024) DEFAULT NULL NULL,
 rb_key_validation_message VARCHAR(1024) DEFAULT NULL NULL,
-sort_order NUMBER(3) DEFAULT '0' NULL,
+sort_order NUMBER(10) DEFAULT '0' NULL,
 primary key (id),
 CONSTRAINT x_policy_cond_def_FK_defid FOREIGN KEY (def_id) REFERENCES x_service_def (id),
 CONSTRAINT x_policy_cond_def_FK_added_by FOREIGN KEY (added_by_id) REFERENCES x_portal_user (id),
@@ -233,7 +297,7 @@ item_id NUMBER(20) NOT NULL,
 name varchar(1024) DEFAULT NULL NULL,
 enricher varchar(1024) DEFAULT NULL NULL,
 enricher_options varchar(1024) DEFAULT NULL NULL,
-sort_order NUMBER(3) DEFAULT '0' NULL,
+sort_order NUMBER(10) DEFAULT '0' NULL,
 primary key (id),
 CONSTRAINT x_cont_enr_def_FK_defid FOREIGN KEY (def_id) REFERENCES x_service_def (id),
 CONSTRAINT x_cont_enr_def_FK_added_by_id FOREIGN KEY (added_by_id) REFERENCES x_portal_user (id),
@@ -269,7 +333,7 @@ item_id NUMBER(20) NOT NULL,
 name VARCHAR(1024) DEFAULT NULL NULL,
 label VARCHAR(1024) DEFAULT NULL NULL,
 rb_key_label VARCHAR(1024) DEFAULT NULL NULL,
-sort_order NUMBER(3) DEFAULT '0' NULL,
+sort_order NUMBER(10) DEFAULT '0' NULL,
 primary key (id),
 CONSTRAINT x_enum_element_def_FK_defid FOREIGN KEY (enum_def_id) REFERENCES x_enum_def (id),
 CONSTRAINT x_enum_element_def_FK_added_by FOREIGN KEY (added_by_id) REFERENCES x_portal_user (id),
@@ -319,7 +383,7 @@ added_by_id NUMBER(20) DEFAULT NULL NULL,
 upd_by_id NUMBER(20) DEFAULT NULL NULL,
 resource_id NUMBER(20) NOT NULL,
 value VARCHAR(1024) DEFAULT NULL NULL,
-sort_order NUMBER(3) DEFAULT '0' NULL,
+sort_order NUMBER(10) DEFAULT '0' NULL,
 primary key (id),
 CONSTRAINT x_policy_res_map_FK_res_id FOREIGN KEY (resource_id) REFERENCES x_policy_resource (id),
 CONSTRAINT x_policy_res_map_FK_added_by FOREIGN KEY (added_by_id) REFERENCES x_portal_user (id),
@@ -335,7 +399,7 @@ added_by_id NUMBER(20) DEFAULT NULL NULL,
 upd_by_id NUMBER(20) DEFAULT NULL NULL,
 policy_id NUMBER(20) NOT NULL,
 delegate_admin NUMBER(1) DEFAULT '0' NOT NULL,
-sort_order NUMBER(3) DEFAULT '0' NULL,
+sort_order NUMBER(10) DEFAULT '0' NULL,
 primary key (id),
 CONSTRAINT x_policy_item_FK_policy_id FOREIGN KEY (policy_id) REFERENCES x_policy (id),
 CONSTRAINT x_policy_item_FK_added_by_id FOREIGN KEY (added_by_id) REFERENCES x_portal_user (id),
@@ -352,7 +416,7 @@ upd_by_id NUMBER(20) DEFAULT NULL NULL,
 policy_item_id NUMBER(20) NOT NULL,
 type NUMBER(20) NOT NULL,
 is_allowed NUMBER(3) DEFAULT '0' NOT NULL,
-sort_order NUMBER(3) DEFAULT '0' NULL,
+sort_order NUMBER(10) DEFAULT '0' NULL,
 primary key (id),
 CONSTRAINT x_plc_item_access_FK_pi_id FOREIGN KEY (policy_item_id) REFERENCES x_policy_item (id),
 CONSTRAINT x_plc_item_access_FK_atd_id FOREIGN KEY (type) REFERENCES x_access_type_def (id),
@@ -370,7 +434,7 @@ upd_by_id NUMBER(20) DEFAULT NULL NULL,
 policy_item_id NUMBER(20) NOT NULL,
 type NUMBER(20) NOT NULL,
 value VARCHAR(1024) DEFAULT NULL NULL,
-sort_order NUMBER(3) DEFAULT '0' NULL,
+sort_order NUMBER(10) DEFAULT '0' NULL,
 primary key (id),
 CONSTRAINT x_plc_item_cond_FK_pi_id FOREIGN KEY (policy_item_id) REFERENCES x_policy_item (id),
 CONSTRAINT x_plc_item_cond_FK_pcd_id FOREIGN KEY (type) REFERENCES x_policy_condition_def (id),
@@ -387,7 +451,7 @@ added_by_id NUMBER(20) DEFAULT NULL NULL,
 upd_by_id NUMBER(20) DEFAULT NULL NULL,
 policy_item_id NUMBER(20) NOT NULL,
 user_id NUMBER(20) DEFAULT NULL NULL,
-sort_order NUMBER(3) DEFAULT '0' NULL,
+sort_order NUMBER(10) DEFAULT '0' NULL,
 primary key (id),
 CONSTRAINT x_plc_itm_usr_perm_FK_pi_id FOREIGN KEY (policy_item_id) REFERENCES x_policy_item (id),
 CONSTRAINT x_plc_itm_usr_perm_FK_user_id FOREIGN KEY (user_id) REFERENCES x_user (id),
@@ -404,7 +468,7 @@ added_by_id NUMBER(20) DEFAULT NULL NULL,
 upd_by_id NUMBER(20) DEFAULT NULL NULL,
 policy_item_id NUMBER(20) NOT NULL,
 group_id NUMBER(20) DEFAULT NULL NULL,
-sort_order NUMBER(3) DEFAULT '0' NULL,
+sort_order NUMBER(10) DEFAULT '0' NULL,
 primary key (id),
 CONSTRAINT x_plc_itm_grp_perm_FK_pi_id FOREIGN KEY (policy_item_id) REFERENCES x_policy_item (id),
 CONSTRAINT x_plc_itm_grp_perm_FK_group_id FOREIGN KEY (group_id) REFERENCES x_group (id),

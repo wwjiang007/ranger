@@ -19,6 +19,13 @@
 
 package org.apache.ranger.tagsync.process;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.StringTokenizer;
+
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang.StringUtils;
@@ -27,14 +34,6 @@ import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.log4j.Logger;
 import org.apache.ranger.tagsync.model.TagSink;
 import org.apache.ranger.tagsync.model.TagSource;
-
-import javax.security.auth.Subject;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.StringTokenizer;
 
 public class TagSynchronizer {
 
@@ -54,7 +53,6 @@ public class TagSynchronizer {
 	private volatile boolean isShutdownInProgress = false;
 
 	public static void main(String[] args) {
-
 		TagSynchronizer tagSynchronizer = new TagSynchronizer();
 
 		TagSyncConfig config = TagSyncConfig.getInstance();
@@ -135,6 +133,20 @@ public class TagSynchronizer {
 		try {
 			boolean threadsStarted = tagSink.start();
 
+			if (LOG.isDebugEnabled()) {
+				LOG.debug("==> starting TagSyncMetricsProducer with default metrics location : "+System.getProperty("logdir"));
+			}
+			//Start the tag sync metrics
+			boolean isTagSyncMetricsEnabled = TagSyncConfig.isTagSyncMetricsEnabled(properties);
+			if (isTagSyncMetricsEnabled) {
+				TagSyncMetricsProducer tagSyncMetricsProducer = new TagSyncMetricsProducer();
+				Thread tagSyncMetricsProducerThread = new Thread(tagSyncMetricsProducer);
+				tagSyncMetricsProducerThread.setName("TagSyncMetricsProducerThread");
+				tagSyncMetricsProducerThread.setDaemon(true);
+				tagSyncMetricsProducerThread.start();
+			} else {
+				LOG.info(" Ranger tagsync metrics is not enabled");
+			}
 			for (TagSource tagSource : tagSources) {
 				threadsStarted = threadsStarted && tagSource.start();
 			}
@@ -354,7 +366,7 @@ public class TagSynchronizer {
 		return tagSource;
 	}
 
-	private static boolean initializeKerberosIdentity(Properties props) {
+	public static boolean initializeKerberosIdentity(Properties props) {
 		if (LOG.isDebugEnabled()) {
 			LOG.debug("==> TagSynchronizer.initializeKerberosIdentity()");
 		}
@@ -380,31 +392,23 @@ public class TagSynchronizer {
 			if (LOG.isDebugEnabled()) {
 				LOG.debug("Trying to get kerberos identitiy");
 			}
-			Subject subject = null;
-			try {
-				subject = SecureClientLogin.loginUserFromKeytab(principal, keytab, nameRules);
-			} catch(IOException exception) {
-				LOG.error("Could not get Subject from principal:[" + principal + "], keytab:[" + keytab + "], nameRules:[" + nameRules + "]", exception);
-			}
 
 			UserGroupInformation kerberosIdentity;
 
-			if (subject != null) {
-				try {
-					UserGroupInformation.loginUserFromSubject(subject);
-					kerberosIdentity = UserGroupInformation.getLoginUser();
-					if (kerberosIdentity != null) {
-						props.put(TagSyncConfig.TAGSYNC_KERBEROS_IDENTITY, kerberosIdentity.getUserName());
-						if (LOG.isDebugEnabled()) {
-							LOG.debug("Got UGI, user:[" + kerberosIdentity.getUserName() + "]");
-						}
-						ret = true;
-					} else {
-						LOG.error("KerberosIdentity is null!");
+			try {
+				UserGroupInformation.loginUserFromKeytab(principal, keytab);
+				kerberosIdentity = UserGroupInformation.getLoginUser();
+				if (kerberosIdentity != null) {
+					props.put(TagSyncConfig.TAGSYNC_KERBEROS_IDENTITY, kerberosIdentity.getUserName());
+					if (LOG.isDebugEnabled()) {
+						LOG.debug("Got UGI, user:[" + kerberosIdentity.getUserName() + "]");
 					}
-				} catch (IOException exception) {
-					LOG.error("Failed to get UGI from Subject:[" + subject + "]", exception);
+					ret = true;
+				} else {
+					LOG.error("KerberosIdentity is null!");
 				}
+			} catch (IOException exception) {
+				LOG.error("Failed to get UGI from principal:[" + principal + "], and keytab:[" + keytab + "]", exception);
 			}
 		} else {
 			if (LOG.isDebugEnabled()) {

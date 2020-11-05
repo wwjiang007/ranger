@@ -59,6 +59,7 @@ import java.util.List;
 import org.apache.commons.lang.StringUtils;
 import org.apache.ranger.biz.UserMgr;
 import org.apache.ranger.common.PropertiesUtil;
+import org.apache.ranger.common.RangerConstants;
 import org.apache.ranger.common.UserSessionBase;
 import org.apache.ranger.security.context.RangerContextHolder;
 import org.apache.ranger.security.context.RangerSecurityContext;
@@ -191,11 +192,23 @@ public class RangerSSOAuthenticationFilter implements Filter {
 						// if the token is not valid then redirect to knox sso
 						else {
 							if (isWebUserAgent(userAgent)) {
-                                                                String ssourl = constructLoginURL(httpRequest, xForwardedURL);
-								if (LOG.isDebugEnabled()) {
-									LOG.debug("SSO URL = " + ssourl);
+								String ssourl = null;
+								String ajaxRequestHeader = httpRequest.getHeader("X-Requested-With");
+								if ("XMLHttpRequest".equals(ajaxRequestHeader)) {
+									ssourl = constructLoginURLForApi(httpRequest, xForwardedURL);
+									if (LOG.isDebugEnabled()) {
+										LOG.debug("ajaxRequestHeader redirectUrl = " + ssourl);
+									}
+									httpServletResponse.setHeader("X-Frame-Options", "DENY");
+									httpServletResponse.setStatus(RangerConstants.SC_AUTHENTICATION_TIMEOUT);
+									httpServletResponse.setHeader("X-Rngr-Redirect-Url", ssourl);
+								} else {
+									ssourl = constructLoginURL(httpRequest, xForwardedURL);
+									if (LOG.isDebugEnabled()) {
+										LOG.debug("SSO URL = " + ssourl);
+									}
+									httpServletResponse.sendRedirect(ssourl);
 								}
-								httpServletResponse.sendRedirect(ssourl);
 							} else {
 								filterChain.doFilter(servletRequest,httpServletResponse);
 							}
@@ -207,11 +220,23 @@ public class RangerSSOAuthenticationFilter implements Filter {
 				// if the jwt token is not available then redirect it to knox sso
 				else {
 					if (isWebUserAgent(userAgent)) {
-                                                String ssourl = constructLoginURL(httpRequest, xForwardedURL);
-						if (LOG.isDebugEnabled()) {
-							LOG.debug("SSO URL = " + ssourl);
+						String ssourl = null;
+						String ajaxRequestHeader = httpRequest.getHeader("X-Requested-With");
+						if ("XMLHttpRequest".equals(ajaxRequestHeader)) {
+							ssourl = constructLoginURLForApi(httpRequest, xForwardedURL);
+							if (LOG.isDebugEnabled()) {
+								LOG.debug("ajaxRequestHeader redirectUrl = " + ssourl);
+							}
+							httpServletResponse.setHeader("X-Frame-Options", "DENY");
+							httpServletResponse.setStatus(RangerConstants.SC_AUTHENTICATION_TIMEOUT);
+							httpServletResponse.setHeader("X-Rngr-Redirect-Url", ssourl);
+						} else {
+							ssourl = constructLoginURL(httpRequest, xForwardedURL);
+							if (LOG.isDebugEnabled()) {
+								LOG.debug("SSO URL = " + ssourl);
+							}
+							httpServletResponse.sendRedirect(ssourl);
 						}
-						httpServletResponse.sendRedirect(ssourl);
 					} else {
 						filterChain.doFilter(servletRequest,httpServletResponse);
 					}
@@ -235,39 +260,56 @@ public class RangerSSOAuthenticationFilter implements Filter {
 		}
 	}
 
-        private String constructForwardableURL(HttpServletRequest httpRequest){
-                String xForwardedProto = "";
-                String xForwardedHost = "";
-                String xForwardedContext = "";
-                Enumeration<?> names = httpRequest.getHeaderNames();
-                while (names.hasMoreElements()) {
-                        String name = (String) names.nextElement();
-                        Enumeration<?> values = httpRequest.getHeaders(name);
-                        String value = "";
-                        if (values != null) {
-                                while (values.hasMoreElements()) {
-                                        value = (String) values.nextElement();
-                                }
-                        }
-                        if (StringUtils.trimToNull(name) != null
-                                        && StringUtils.trimToNull(value) != null) {
-                                if (name.equalsIgnoreCase("x-forwarded-proto")) {
-                                        xForwardedProto = value;
-                                } else if (name.equalsIgnoreCase("x-forwarded-host")) {
-                                        xForwardedHost = value;
-                                } else if (name.equalsIgnoreCase("x-forwarded-context")) {
-                                        xForwardedContext = value;
-                                }
-                        }
-                }
-                String xForwardedURL = "";
-                if (StringUtils.trimToNull(xForwardedProto) != null && StringUtils.trimToNull(xForwardedHost) != null && StringUtils.trimToNull(xForwardedContext) != null) {
-                        xForwardedURL = xForwardedProto + "://" + xForwardedHost
-                                        + xForwardedContext + PROXY_RANGER_URL_PATH
-                                        + httpRequest.getRequestURI();
-                }
-                return xForwardedURL;
-        }
+	private String constructForwardableURL(HttpServletRequest httpRequest) {
+		String xForwardedProto = "";
+		String xForwardedHost = "";
+		String xForwardedContext = "";
+		Enumeration<?> names = httpRequest.getHeaderNames();
+		while (names.hasMoreElements()) {
+			String name = (String) names.nextElement();
+			Enumeration<?> values = httpRequest.getHeaders(name);
+			String value = "";
+			if (values != null) {
+				while (values.hasMoreElements()) {
+					value = (String) values.nextElement();
+				}
+			}
+			if (StringUtils.trimToNull(name) != null && StringUtils.trimToNull(value) != null) {
+				if (name.equalsIgnoreCase("x-forwarded-proto")) {
+					xForwardedProto = value;
+				} else if (name.equalsIgnoreCase("x-forwarded-host")) {
+					xForwardedHost = value;
+				} else if (name.equalsIgnoreCase("x-forwarded-context")) {
+					xForwardedContext = value;
+				}
+			}
+		}
+		if (xForwardedHost.contains(",")) {
+			if (LOG.isDebugEnabled()) {
+				LOG.debug("xForwardedHost value is " + xForwardedHost + " it contains multiple hosts, selecting the first host.");
+			}
+			xForwardedHost = xForwardedHost.split(",")[0].trim();
+		}
+		String xForwardedURL = "";
+		if (StringUtils.trimToNull(xForwardedProto) != null) {
+			//if header contains x-forwarded-host and x-forwarded-context
+			if (StringUtils.trimToNull(xForwardedHost) != null && StringUtils.trimToNull(xForwardedContext) != null) {
+				xForwardedURL = xForwardedProto + "://" + xForwardedHost + xForwardedContext + PROXY_RANGER_URL_PATH + httpRequest.getRequestURI();
+			} else if (StringUtils.trimToNull(xForwardedHost) != null) {
+				//if header contains x-forwarded-host and does not contains x-forwarded-context
+				xForwardedURL = xForwardedProto + "://" + xForwardedHost + httpRequest.getRequestURI();
+			} else {
+				//if header does not contains x-forwarded-host and x-forwarded-context
+				//preserve the x-forwarded-proto value coming from the request.
+				String requestURL = httpRequest.getRequestURL().toString();
+				if (StringUtils.trimToNull(requestURL) != null && requestURL.startsWith("http:")) {
+					requestURL = requestURL.replaceFirst("http", xForwardedProto);
+				}
+				xForwardedURL = requestURL;
+			}
+		}
+		return xForwardedURL;
+	}
 
 	private Authentication getGrantedAuthority(Authentication authentication) {
 		UsernamePasswordAuthenticationToken result=null;
@@ -590,4 +632,28 @@ public class RangerSSOAuthenticationFilter implements Filter {
 		}
 		return (RSAPublicKey) key;
 	}
+        /**
+         * Create the redirect URL to be used for authentication of the user in the absence
+         * of a JWT token within the incoming request.
+         *
+         * @param request
+         *            for getting the original request URL
+         * @return url to use as login url for redirect
+         */
+        protected String constructLoginURLForApi(HttpServletRequest request, String xForwardedURL) {
+                String delimiter = "?";
+                if (authenticationProviderUrl.contains("?")) {
+                        delimiter = "&";
+                }
+                String loginURL = authenticationProviderUrl + delimiter + originalUrlQueryParam + "=";
+                if (StringUtils.trimToNull(xForwardedURL) != null) {
+                        loginURL += xForwardedURL;
+                } else {
+                        loginURL += request.getRequestURL();
+                }
+                if (StringUtils.isNotEmpty(request.getRequestURI()) && request.getRequestURI().length() > 1) {
+                        loginURL = loginURL.replace(request.getRequestURI(), "/");
+                }
+                return loginURL;
+        }
 }

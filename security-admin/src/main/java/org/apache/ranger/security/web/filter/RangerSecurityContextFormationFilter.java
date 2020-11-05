@@ -120,16 +120,11 @@ public class RangerSecurityContextFormationFilter extends GenericFilterBean {
 				context.setRequestContext(requestContext);
 
 				RangerContextHolder.setSecurityContext(context);
-
+				int authType = getAuthType(httpRequest);
 				UserSessionBase userSession = sessionMgr.processSuccessLogin(
-						XXAuthSession.AUTH_TYPE_PASSWORD, userAgent, httpRequest);
+						authType, userAgent, httpRequest);
 
 				if (userSession != null) {
-
-					Object ssoEnabledObj = request.getAttribute("ssoEnabled");
-					Boolean ssoEnabled = ssoEnabledObj != null ? Boolean.valueOf(String.valueOf(ssoEnabledObj)) : PropertiesUtil.getBooleanProperty("ranger.sso.enabled", false);
-					userSession.setSSOEnabled(ssoEnabled);
-
 					if (userSession.getClientTimeOffsetInMinute() == 0) {
 						userSession.setClientTimeOffsetInMinute(clientTimeOffset);
 					}
@@ -139,14 +134,37 @@ public class RangerSecurityContextFormationFilter extends GenericFilterBean {
 			}
 			HttpServletResponse res = (HttpServletResponse)response;
 			res.setHeader("X-Frame-Options", "DENY" );
-			res.setHeader("X-Content-Type-Options", "nosniff");
 			res.setHeader("X-XSS-Protection", "1; mode=block");
 			res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+			res.setHeader("Content-Security-Policy", "default-src 'none'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; connect-src 'self'; img-src 'self'; style-src 'self' 'unsafe-inline';font-src 'self'");
 			chain.doFilter(request, res);
 
 		} finally {
 			// [4]remove context from thread-local
 			RangerContextHolder.resetSecurityContext();
+			RangerContextHolder.resetOpContext();
 		}
+	}
+
+	private int getAuthType(HttpServletRequest request) {
+		int authType;
+		Object ssoEnabledObj = request.getAttribute("ssoEnabled");
+		Boolean ssoEnabled = ssoEnabledObj != null ? Boolean.valueOf(String.valueOf(ssoEnabledObj)) : PropertiesUtil.getBooleanProperty("ranger.sso.enabled", false);
+
+		if (ssoEnabled) {
+			authType = XXAuthSession.AUTH_TYPE_SSO;
+		} else if (request.getAttribute("spnegoEnabled") != null && Boolean.valueOf(String.valueOf(request.getAttribute("spnegoEnabled")))){
+			if (request.getAttribute("trustedProxyEnabled") != null && Boolean.valueOf(String.valueOf(request.getAttribute("trustedProxyEnabled")))) {
+				if (logger.isDebugEnabled()) {
+					logger.debug("Setting auth type as trusted proxy");
+				}
+				authType = XXAuthSession.AUTH_TYPE_TRUSTED_PROXY;
+			} else {
+				authType = XXAuthSession.AUTH_TYPE_KERBEROS;
+			}
+		} else {
+			authType = XXAuthSession.AUTH_TYPE_PASSWORD;
+		}
+		return authType;
 	}
 }

@@ -35,11 +35,12 @@ public abstract class RangerAbstractPolicyItemEvaluator implements RangerPolicyI
 
 	private static final int RANGER_POLICY_ITEM_EVAL_ORDER_DEFAULT = 1000;
 
-	private static final int RANGER_POLICY_ITEM_EVAL_ORDER_MAX_DISCOUNT_USERSGROUPS       =  25;
+	private static final int RANGER_POLICY_ITEM_EVAL_ORDER_MAX_DISCOUNT_USERSGROUPS       =  100;
 	private static final int RANGER_POLICY_ITEM_EVAL_ORDER_MAX_DISCOUNT_ACCESS_TYPES      =  25;
 	private static final int RANGER_POLICY_ITEM_EVAL_ORDER_MAX_DISCOUNT_CUSTOM_CONDITIONS =  25;
 	private static final int RANGER_POLICY_ITEM_EVAL_ORDER_CUSTOM_CONDITION_PENALTY       =   5;
 
+	final RangerPolicy 				policy;
 	final RangerPolicyEngineOptions options;
 	final RangerServiceDef          serviceDef;
 	final RangerPolicyItem          policyItem;
@@ -58,6 +59,7 @@ public abstract class RangerAbstractPolicyItemEvaluator implements RangerPolicyI
 		this.options        = options;
 		this.policyId       = policy != null && policy.getId() != null ? policy.getId() : -1;
 		this.evalOrder      = computeEvalOrder();
+		this.policy         = policy;
 	}
 
 	@Override

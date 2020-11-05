@@ -22,12 +22,12 @@
 #5. To delete the image, run "[sudo] docker rmi ranger_dev"
 
 #Usage: [sudo] ./build_ranger_using_docker.sh [-build_image] mvn  <build params>
-#Example 1 (default no param): (mvn -DskipTests=true clean compile package install assembly:assembly)
-#Example 2 (Regular build): ./build_ranger_using_docker.sh mvn clean install -DskipTests=true 
-#Example 3 (Recreate Docker image): ./build_ranger_using_docker.sh mvn -build_image clean install -DskipTests=true 
+#Example 1 (default no param): (mvn -Pall -DskipTests=true clean compile package install)
+#Example 2 (Regular build): ./build_ranger_using_docker.sh mvn -Pall clean install -DskipTests=true
+#Example 3 (Recreate Docker image): ./build_ranger_using_docker.sh mvn -Pall -build_image clean install -DskipTests=true 
 #Notes: To remove build image manually, run "docker rmi ranger_dev" or "sudo docker rmi ranger_dev"
 
-default_command="mvn -DskipTests=true clean compile package install assembly:assembly"
+default_command="mvn -Pall -DskipTests=true clean compile package install"
 build_image=0
 if [ "$1" = "-build_image" ]; then
     build_image=1
@@ -66,23 +66,34 @@ WORKDIR /tools
 RUN yum install -y wget
 RUN yum install -y git
 RUN yum install -y gcc
+RUN yum install -y bzip2 fontconfig
+RUN yum install -y diffutils
+RUN yum install -y python3
+
+RUN ln -s /usr/bin/python3 /usr/bin/python
+
+RUN yum install -y java-1.8.0-openjdk java-1.8.0-openjdk-devel
+#ENV JAVA_HOME /etc/alternatives/jre
+ENV JAVA_HOME /usr/lib/jvm/java-1.8.0-openjdk/
+ENV PATH $JAVA_HOME/bin:$PATH
 
 #Download and install JDK8 from AWS s3's docker-assets 
-RUN wget https://s3.eu-central-1.amazonaws.com/docker-assets/dist/jdk-8u101-linux-x64.rpm
-RUN rpm -i jdk-8u101-linux-x64.rpm
+#RUN wget https://s3.eu-central-1.amazonaws.com/docker-assets/dist/jdk-8u101-linux-x64.rpm
+#RUN rpm -i jdk-8u101-linux-x64.rpm
+#ENV JAVA_HOME /usr/java/latest
+#ENV  PATH $JAVA_HOME/bin:$PATH
 
-ENV JAVA_HOME /usr/java/latest
-ENV  PATH $JAVA_HOME/bin:$PATH
 
+ADD https://www.apache.org/dist/maven/maven-3/3.6.3/binaries/apache-maven-3.6.3-bin.tar.gz.sha512 /tools
+ADD http://www-us.apache.org/dist/maven/maven-3/3.6.3/binaries/apache-maven-3.6.3-bin.tar.gz /tools
+RUN sha512sum  apache-maven-3.6.3-bin.tar.gz | cut -f 1 -d " " > tmp.sha1
 
-ADD https://www.apache.org/dist/maven/maven-3/3.3.9/binaries/apache-maven-3.3.9-bin.tar.gz.md5 /tools
-ADD http://mirror.stjschools.org/public/apache/maven/maven-3/3.3.9/binaries/apache-maven-3.3.9-bin.tar.gz /tools
-RUN md5sum apache-maven-3.3.9-bin.tar.gz | cut -f 1 -d " " > tmp.md5
+RUN cat apache-maven-3.6.3-bin.tar.gz.sha512 | cut -f 1 -d " " > tmp.sha1.download
 
-RUN diff -w tmp.md5 apache-maven-3.3.9-bin.tar.gz.md5
+RUN diff -w tmp.sha1 tmp.sha1.download
 
-RUN tar xfz apache-maven-3.3.9-bin.tar.gz
-RUN ln -sf /tools/apache-maven-3.3.9 /tools/maven
+RUN tar xfz apache-maven-3.6.3-bin.tar.gz
+RUN ln -sf /tools/apache-maven-3.6.3 /tools/maven
 
 ENV  PATH /tools/maven/bin:$PATH
 ENV MAVEN_OPTS "-Xmx2048m -XX:MaxPermSize=512m"

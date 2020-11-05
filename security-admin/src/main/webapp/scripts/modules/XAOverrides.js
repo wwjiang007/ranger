@@ -23,9 +23,16 @@
 	var vBreadCrumbs 	= require('views/common/BreadCrumbs');
 	var XAEnums			= require('utils/XAEnums');
 	var XAUtil			= require('utils/XAUtils');
+	require('Backbone.BootstrapModal')
 	
 	require('backgrid');
 	require('jquery-toggles');
+
+	Backbone.history.getHash = function(window) {
+		var pathStripper = /#.*$/;
+		var match = (window || this).location.href.match(/#(.*)$/);
+		return match ? this.decodeFragment(match[1].replace(pathStripper, '')) : '';
+	};
 
 	window.onbeforeunload = function(e) {
 		if (window._preventNavigation) {
@@ -86,7 +93,7 @@
 		 render: function () {
 		     this.$el.empty();
 		     if(this.model.get(this.column.get("name")) != undefined){
-		    	 rawValue = (this.model.get(this.column.get("name")));
+                         var rawValue = (this.model.get(this.column.get("name")));
 		    	 this.switchStatus = this.formatter.fromRaw(rawValue, this.model);
 		     }
 		     
@@ -384,7 +391,7 @@
 	  		   
 	  		 initialize: function(options) {
 		  		  Form.editors.Base.prototype.initialize.call(this, options);
-		  	      this.template = _.template('<input type="text" class="textFiledInputPadding " data-id="textFiledInput"><span><i class="icon-info-sign customTextFiledIcon" data-id="infoTextFiled"></i></span>');
+		  	      this.template = _.template('<input type="text" class="textFiledInputPadding" data-id="textFiledInput"><span><i class="fa-fw fa fa-info-circle customTextFiledIcon" data-id="infoTextFiled"></i></span>');
 		          var schema = this.schema;
 		  		//Allow customising text type (email, phone etc.) for HTML5 browsers
 		  		  var type = 'text';
@@ -398,7 +405,7 @@
 	  		 * Adds the editor to the DOM
 	  	     */
 	  		  render: function() {
-	  			  var that = this, attrs = { 'name': this.key };
+				  var that = this, attrs = { 'name': this.key.replace(/\./g, '_')};
 	  			  if(this.schema.editorAttrs){
 	  				  attrs = _.extend(attrs , this.schema.editorAttrs);
 	  		      }
@@ -520,7 +527,7 @@
 		  	this.renderSameLevelResource();
 		    return this;
 		  },
-		  renderResource : function() {
+                  renderResource : function(def) {
 			  var that = this;
                           var Vent = require('modules/Vent');
 			  if(!_.isNull(this.value) && !_.isEmpty(this.value)){
@@ -539,10 +546,31 @@
 //			  			that.checkDirtyFieldForSelect2($(e.currentTarget), that, this.value);
 			  		}
 			  	});
+                //Handle resource at same level option for lookupSupport true/false condition
+                if(def){
+                    if(def.lookupSupported){
+                        var opts = {};
+                        var singleValueInput = XAUtil.isSinglevValueInput(def);
+                        opts['singleValueInput'] = singleValueInput;
+                        if(_.has(def, 'validationRegEx') && !_.isEmpty(def.validationRegEx)){
+                            opts['regExpValidation'] = {'type': 'regexp', 'regexp':new RegExp(def.validationRegEx), 'message' : def.validationMessage};
+                        }
+                        opts['lookupURL'] = "service/plugins/services/lookupResource/"+this.form.rangerService.get('name');
+                        opts['type'] = def.name;
+                        this.resourceOpts['select2Opts'] = that.form.getPlugginAttr(true, opts);
+                    }else{
+                        this.resourceOpts.select2Opts['containerCssClass'] = def.name;
+                        delete this.resourceOpts.select2Opts['ajax'];
+                        delete this.resourceOpts.select2Opts['tags'];
+                        this.resourceOpts.select2Opts['data'] = [];
+                        if(singleValueInput){
+                            this.resourceOpts['select2Opts']['maximumSelectionSize'] = 1;
+                        }
+		    }
+                }
 			  	//create select2 if select2Opts is specified
 			    if(!_.isUndefined(this.resourceOpts.select2Opts)){
 			    	this.$resource.select2(this.resourceOpts.select2Opts).on('change',function(e){
-			    		console.log(e)
 			    		that.preserveResourceValues[that.$resourceType.val()] = e.currentTarget.value;
 			    		//check dirty field value for select2 resource field
 			    		that.checkDirtyFieldForSelect2($(e.currentTarget), that, this.value);
@@ -562,17 +590,17 @@
 			  			this.value.isExcludes = _.isUndefined(this.value.isExcludes) ? false : this.value.isExcludes;
 			  			isExcludes = this.value.isExcludes
 			  		}
-					this.$excludeSupport.show();
+					this.$excludeSupport.css('visibility', 'visible');
 			  		this.$excludeSupport.toggles({
 			  			on: !isExcludes,
-			  			text : {on : 'include', off : 'exclude' },
+			  			text : {on : 'Include', off : 'Exclude' },
 			  			width: 80,
 			  		}).on('toggle', function (e, active) {
 			  		    that.value.isExcludes = !active;
 			  		    XAUtil.checkDirtyFieldForToggle($(e.currentTarget))
 			  		});
 				} else {
-					this.$excludeSupport.hide();
+					this.$excludeSupport.css('visibility', 'hidden');
 			  	}
 			  	if(this.recursiveSupport){
 			  		if(!_.isNull(this.value)){
@@ -584,7 +612,7 @@
 		  			this.$recursiveSupport.addClass(this.excludeSupport ? 'recursive-toggle-2' : 'recursive-toggle-1')
 		  			this.$recursiveSupport.toggles({
 		  				on: isRecursive,
-		  				text : {on : 'recursive', off : 'non-recursive' },
+		  				text : {on : 'Recursive', off : 'Non-recursive' },
 		  				width: 120,
 		  			}).on('toggle', function (e, active) {
 		  				that.value.isRecursive = active;
@@ -607,7 +635,8 @@
 		  					var val = _.isEmpty(that.preserveResourceValues[e.currentTarget.value]) ? '' : that.preserveResourceValues[e.currentTarget.value].split(','); 
 		  					that.$resource.select2('val', val)
 		  				}else{
-		  					that.$resource.select2('val', '')
+							that.$resource.select2('val', "");
+							that.value=[];
 		  				}
 			  			//reset values
 			  			that.value.isExcludes = false;
@@ -615,7 +644,7 @@
 			  			that.$excludeSupport.trigger('toggleOn');
 			  			($(e.currentTarget).addClass('dirtyField'))
 			  			//resource are shown if parent is selected or showned
-			  			that.$el.parents('.control-group').attr('data-name', 'field-'+this.value);
+			  			that.$el.parents('.form-group').attr('data-name', 'field-'+this.value);
 						//remove error class
 						that.$el.removeClass('error');
 //						if noneFlag is true not trigger parentChildHideShow
@@ -626,6 +655,10 @@
                             && ( XAUtil.capitaliseFirstLetter(this.value) === XAEnums.ResourceType.RESOURCE_UDF.label) ){
 							XAUtil.alertPopup({ msg :localization.tt('msg.udfPolicyViolation') });
 						}
+                        if(!_.isUndefined(this.value)
+                            && ( XAUtil.capitaliseFirstLetter(this.value) === XAEnums.ResourceType.RESOURCE_GLOBAL.label) ){
+                            XAUtil.alertPopup({ msg :localization.tt('msg.udfPolicyViolation') });
+                        }
 //                      if value is "none" hide recursive/exclude toggles
 						if(this.value == "none"){
                         	that.recursiveSupport = false;
@@ -639,6 +672,8 @@
                             if(that.recursiveSupport) that.value.isRecursive = true;
                             that.excludeSupport = def.excludesSupported;
                             that.renderToggles();
+                            //Handle resource at same level option for lookupSupport true/false condition
+                            that.renderResource(def);
                         }
                         //trigger resource event for showing respective access permissions
                         Vent.trigger('resourceType:change', changeType = 'resourceType', e.currentTarget.value, e.currentTarget.value, e);
@@ -648,7 +683,7 @@
 		  getValue: function() {
 			  var that = this;
 			  //checkParent
-			  if(this.$el.parents('.control-group').hasClass('hideResource')){
+			  if(this.$el.parents('.form-group').hasClass('hideResource')){
 				  return null;
 			  }
 			  this.value['resource'] = this.$resource.val();
@@ -699,27 +734,29 @@
 			  }
 		  	},
 		  	getTemplate : function() {
-				  var that = this , resourcesType ;
-				  var optionsHtml="", selectTemplate = '',excludeSupportToggleDiv='', recursiveSupportToggleDiv='';
-				  this.preserveResourceValues = {},klass = '';
+                var that = this , resourcesType , optionsHtml="" , selectTemplate = '', excludeSupportToggleDiv='', recursiveSupportToggleDiv='',
+                recursiveTogglePosition = '', includeTogglePosition = '';
+                this.preserveResourceValues = {} ;
 				  if(this.resourcesAtSameLevel){
 					  _.each(this.sameLevelOpts, function(option){ return optionsHtml += "<option value='"+option+"'>"+option+"</option>"; },this);
 				    	selectTemplate = '<select data-js="resourceType" class="btn dropdown-toggle sameLevelDropdown" >\
 				    						'+optionsHtml+'\
 				    					</select>';
 				  }
-				  excludeSupportToggleDiv = '<div class="toggle-xa include-toggle" data-js="include" style ="height: 20px; width: 80px;"><div  class="toggle"></div></div>';
 				  _.each(this.form.rangerServiceDefModel.get('resources') , function(m){
 				  		if(that.name === m.name){
 				  			resourcesType = m.type ;
 				  		}
 				  })
 				  if(resourcesType == "path"){
-					  klass = (!this.excludeSupport) ? "recursive-toggle-hdfs-1" : "recursive-toggle-hdfs-2";
+                    recursiveTogglePosition = (!this.excludeSupport) ? "recursive-toggle-hdfs-1" : "recursive-toggle-hdfs-2";
+                    includeTogglePosition = "include-toggle-1";
 				  }else{
-					  klass = (!this.excludeSupport) ? "recursive-toggle-1" : "recursive-toggle-2";
+                    recursiveTogglePosition = (!this.excludeSupport) ? "recursive-toggle-1" : "recursive-toggle-2";
+                    includeTogglePosition = "include-toggle";
 				  }
-				  recursiveSupportToggleDiv = '<div class="toggle-xa recursive-toggle '+klass+'"" data-js="recursive" style="height: 20px; width: 120px;"><div  class="toggle"></div></div>';
+                  excludeSupportToggleDiv = '<div class="toggle-xa '+includeTogglePosition+'" data-js="include" style ="height: 20px; width: 80px;"><div  class="toggle"></div></div>';
+                  recursiveSupportToggleDiv = '<div class="toggle-xa recursive-toggle '+recursiveTogglePosition+'"" data-js="recursive" style="height: 20px; width: 120px;"><div  class="toggle"></div></div>';
 				  
 				  return _.template(selectTemplate+'<input data-js="resource" type="text">'+
 				    					excludeSupportToggleDiv+''+recursiveSupportToggleDiv);
@@ -772,7 +809,7 @@
 	              var $tbody = $('<tbody><tr><th><input type="checkbox" data-id="selectAllComponent" /> Component</th><td><strong>Permissions</strong></td></tr></tbody>');
 	              
 	              $selectComp.append($table)
-	              $('<div>').append($selectComp).appendTo(this.$tpl);
+	              $('<div class="mb-1">').append($selectComp).appendTo(this.$tpl);
 	              $table.append($tbody).appendTo(this.$tpl);
 	              
 	              this.$tpl.find('[data-id="selectComp"]').select2(this.options.select2option).on('change',function(e){
@@ -1184,7 +1221,7 @@
 		* jQuery 1.3.0+, 
 		* jQuery Center plugin 1.0.0+ https://github.com/dreamerslab/jquery.center
 		*/
-		;(function(d,e){var a={},c=0,f,b=[function(){}];d.msg=function(){var g,k,j,l,m,i,h;j=[].shift.call(arguments);l={}.toString.call(j);m=d.extend({afterBlock:function(){},autoUnblock:true,center:{topPercentage:0.4},css:{},clickUnblock:true,content:"Please wait...",fadeIn:200,fadeOut:300,bgPath:"",klass:"black-on-white",method:"appendTo",target:"body",timeOut:2400,z:1000},a);l==="[object Object]"&&d.extend(m,j);i={unblock:function(){g=d("#jquery-msg-overlay").fadeOut(m.fadeOut,function(){b[m.msgID](g);g.remove();});clearTimeout(f);}};h={unblock:function(o,n){var p=o===undefined?0:o;m.msgID=n===undefined?c:n;setTimeout(function(){i.unblock();},p);},replace:function(n){if({}.toString.call(n)!=="[object String]"){throw"$.msg('replace'); error: second argument has to be a string";}d("#jquery-msg-content").empty().html(n).center(m.center);},overwriteGlobal:function(o,n){a[o]=n;}};c--;m.msgID=m.msgID===undefined?c:m.msgID;b[m.msgID]=m.beforeUnblock===undefined?function(){}:m.beforeUnblock;if(l==="[object String]"){h[j].apply(h,arguments);}else{g=d('<div id="jquery-msg-overlay" class="'+m.klass+'" style="position:absolute; z-index:'+m.z+"; top:0px; right:0px; left:0px; height:"+d(e).height()+'px;"><img src="'+m.bgPath+'blank.gif" id="jquery-msg-bg" style="width: 100%; height: 100%; top: 0px; left: 0px;"/><div id="jquery-msg-content" class="jquery-msg-content" style="position:absolute;">'+m.content+"</div></div>");g[m.method](m.target);k=d("#jquery-msg-content").center(m.center).css(m.css).hide();g.hide().fadeIn(m.fadeIn,function(){k.fadeIn("fast").children().andSelf().bind("click",function(n){n.stopPropagation();});m.afterBlock.call(h,g);m.clickUnblock&&g.bind("click",function(n){n.stopPropagation();i.unblock();});if(m.autoUnblock){f=setTimeout(i.unblock,m.timeOut);}});}return this;};})(jQuery,document);
+                ;(function(d,e){var a={},c=0,f,b=[function(){}];d.msg=function(){var g,k,j,l,m,i,h;j=[].shift.call(arguments);l={}.toString.call(j);m=d.extend({afterBlock:function(){},autoUnblock:true,center:{topPercentage:0.4},css:{},clickUnblock:true,content:"Please wait...",fadeIn:200,fadeOut:300,bgPath:"",klass:"black-on-white",method:"appendTo",target:"body",timeOut:2400,z:1000},a);l==="[object Object]"&&d.extend(m,j);i={unblock:function(){g=d("#jquery-msg-overlay").fadeOut(m.fadeOut,function(){b[m.msgID](g);g.remove();});clearTimeout(f);}};h={unblock:function(o,n){var p=o===undefined?0:o;m.msgID=n===undefined?c:n;setTimeout(function(){i.unblock();},p);},replace:function(n){if({}.toString.call(n)!=="[object String]"){throw"$.msg('replace'); error: second argument has to be a string";}d("#jquery-msg-content").empty().html(n).center(m.center);},overwriteGlobal:function(o,n){a[o]=n;}};c--;m.msgID=m.msgID===undefined?c:m.msgID;b[m.msgID]=m.beforeUnblock===undefined?function(){}:m.beforeUnblock;if(l==="[object String]"){h[j].apply(h,arguments);}else{g=d('<div id="jquery-msg-overlay" class="'+m.klass+'" style="position:absolute; z-index:'+m.z+"; top:0px; right:0px; left:0px; height:"+d(e).height()+'px;"><img src="'+m.bgPath+'blank.gif" id="jquery-msg-bg" style="width: 100%; height: 100%; top: 0px; left: 0px;"/><div id="jquery-msg-content" class="jquery-msg-content" style="position:absolute;">'+m.content+"</div></div>");g[m.method](m.target);k=d("#jquery-msg-content").center(m.center).css(m.css).hide();g.hide().fadeIn(m.fadeIn,function(){k.fadeIn("fast").children().addBack().bind("click",function(n){n.stopPropagation();});m.afterBlock.call(h,g);m.clickUnblock&&g.bind("click",function(n){n.stopPropagation();i.unblock();});if(m.autoUnblock){f=setTimeout(i.unblock,m.timeOut);}});}return this;};})(jQuery,document);
 		
 		/*
 		 * BASICS
@@ -1668,5 +1705,4 @@
 
 		return Picky;
 	})(Backbone, _);
-
 });

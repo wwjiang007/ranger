@@ -47,6 +47,9 @@ define(function(require){
 		template: ModulePermsTableLayoutTmpl,
 
 		templateHelpers : function(){
+			return{
+                setOldUi : localStorage.getItem('setOldUI') == "true" ? true : false,
+			}
 		},
 
 		breadCrumbs : function(){
@@ -81,7 +84,8 @@ define(function(require){
 		initialize: function(options) {
 			console.log("initialized a ModulePermsTableLayout Layout");
 			
-			_.extend(this, _.pick(options));
+                _.extend(this, _.pick(options));
+                this.urlQueryParams = XAUtil.urlQueryParams();
 			this.bindEvents();
 		},
 
@@ -97,9 +101,11 @@ define(function(require){
 		/** on render callback */
 		onRender: function() {
 			//this.initializePlugins();
-			this.addVisualSearch();
 			this.renderTable();
-			this.initializeModulePerms();
+                        this.addVisualSearch();
+                        if(_.isUndefined(this.urlQueryParams)) {
+                                this.initializeModulePerms();
+                        }
 		},
 		/** all post render plugin initialization */
 		initializePlugins: function(){
@@ -124,7 +130,7 @@ define(function(require){
 					cell : "uri",
 					reName : 'module',
 					href: function(model){
-						return '#!/permissions/'+model.id+'/edit';
+                                            return '#!/permissions/'+model.id+'/edit';
 					},
 					label	: localization.tt("lbl.modules"),
 					editable: false,
@@ -162,18 +168,23 @@ define(function(require){
 					sortable : false
 				},
 			};
+                        if(SessionMgr.isSystemAdmin()){
 			cols['permissions'] = {
 				cell :  "html",
 				label : localization.tt("lbl.action"),
 				formatter: _.extend({}, Backgrid.CellFormatter.prototype, {
 					fromRaw: function (rawValue,model) {
-						return '<a href="#!/permissions/'+model.id+'/edit" class="btn btn-mini" title="Edit"><i class="icon-edit icon-large" /></a>';
+						return '<a href="#!/permissions/'+model.id+'/edit" class="btn btn-sm" title="Edit"><i class="fa-fw fa fa-edit fa-fw fa fa-large"></i></a>';
 					}
 				}),
 				editable: false,
 				sortable : false
 
 			};
+                        }
+                        if(SessionMgr.isAuditor()){
+                            cols.module.cell = "string";
+                        }
 			return this.collection.constructor.getTableCols(cols, this.collection);
 		},
 		onShowMore : function(e){
@@ -215,20 +226,31 @@ define(function(require){
 			$td.find('[data-id="showMore"]['+attrName+'="'+id+'"]').parents('div[data-id="groupsDiv"]').removeClass('set-height-groups');
 		},
 		addVisualSearch : function(){
-			var that = this;
-			var searchOpt = ['Module Name','Group Name','User Name'];
-			var serverAttrName  = [{text : "Module Name", label :"module"},{text : "Group Name", label :"groupName"},{text : "User Name", label :"userName"}];
-			var pluginAttr = {
-				      placeholder :localization.tt('h.searchForPermissions'),
-				      container : this.ui.visualSearch,
-				      query     : '',
-				      callbacks :  {
-					  valueMatches :function(facet, searchTerm, callback) {
-								switch (facet) {
-								}
-							}
-				      }
-				};
+                        var that = this, query = '';
+            var searchOpt = ['Module Name','Group Name','User Name'];
+            var serverAttrName  = [{text : "Module Name", label :"module", urlLabel : "moduleName"},
+                                    {text : "Group Name", label :"groupName", urlLabel : "groupName"},
+                                    {text : "User Name", label :"userName", urlLabel : "userName"}
+                                ];
+            if(!_.isUndefined(this.urlQueryParams)) {
+                var urlQueryParams = XAUtil.changeUrlToSearchQuery(this.urlQueryParams);
+                _.map(urlQueryParams, function(val , key) {
+                    if (_.some(serverAttrName, function(m){return m.urlLabel == key})) {
+                        query += '"'+XAUtil.filterKeyForVSQuery(serverAttrName, key)+'":"'+val+'"';
+                    }
+                });
+            }
+            var pluginAttr = {
+                                placeholder :localization.tt('h.searchForPermissions'),
+                                container : this.ui.visualSearch,
+                                query     : query,
+                                callbacks :  {
+                                        valueMatches :function(facet, searchTerm, callback) {
+                                                switch (facet) {
+                                                }
+                                        }
+                                }
+                        };
 			window.vs = XAUtil.addVisualSearch(searchOpt,serverAttrName, this.collection,pluginAttr);
 		},
 		getActiveStatusNVList : function() {

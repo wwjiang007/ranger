@@ -29,8 +29,6 @@ import java.util.Arrays;
 import java.util.Properties;
 import java.util.concurrent.Future;
 
-import org.I0Itec.zkclient.ZkClient;
-import org.I0Itec.zkclient.ZkConnection;
 import org.apache.commons.io.FileUtils;
 import org.apache.curator.test.TestingServer;
 import org.apache.hadoop.security.UserGroupInformation;
@@ -46,12 +44,8 @@ import org.apache.kafka.common.config.SslConfigs;
 import org.junit.Assert;
 import org.junit.Test;
 
-import kafka.admin.AdminUtils;
-import kafka.admin.RackAwareMode;
 import kafka.server.KafkaConfig;
 import kafka.server.KafkaServerStartable;
-import kafka.utils.ZKStringSerializer$;
-import kafka.utils.ZkUtils;
 
 /**
  * A simple test that starts a Kafka broker, creates "test" and "dev" topics, sends a message to them and consumes it. We also plug in a 
@@ -82,8 +76,8 @@ public class KafkaRangerAuthorizerTest {
     @org.junit.BeforeClass
     public static void setup() throws Exception {
     	// Create keys
-    	String serviceDN = "CN=Service,O=Apache,L=Dublin,ST=Leinster,C=IE";
-    	String clientDN = "CN=Client,O=Apache,L=Dublin,ST=Leinster,C=IE";
+        String serviceDN = "CN=localhost,O=Apache,L=Dublin,ST=Leinster,C=IE";
+        String clientDN = "CN=localhost,O=Apache,L=Dublin,ST=Leinster,C=IE";
     	
     	// Create a truststore
     	KeyStore keystore = KeyStore.getInstance(KeyStore.getDefaultType());
@@ -128,7 +122,9 @@ public class KafkaRangerAuthorizerTest {
         props.put("ssl.truststore.password", "security");
         props.put("security.inter.broker.protocol", "SSL");
         props.put("ssl.client.auth", "required");
-        
+        props.put("offsets.topic.replication.factor", (short) 1);
+        props.put("offsets.topic.num.partitions", 1);
+
         // Plug in Apache Ranger authorizer
         props.put("authorizer.class.name", "org.apache.ranger.authorization.kafka.authorizer.RangerKafkaAuthorizer");
         
@@ -141,11 +137,7 @@ public class KafkaRangerAuthorizerTest {
         kafkaServer.startup();
 
         // Create some topics
-        ZkClient zkClient = new ZkClient(zkServer.getConnectString(), 30000, 30000, ZKStringSerializer$.MODULE$);
-
-        final ZkUtils zkUtils = new ZkUtils(zkClient, new ZkConnection(zkServer.getConnectString()), false);
-        AdminUtils.createTopic(zkUtils, "test", 1, 1, new Properties(), RackAwareMode.Enforced$.MODULE$);
-        AdminUtils.createTopic(zkUtils, "dev", 1, 1, new Properties(), RackAwareMode.Enforced$.MODULE$);
+        KafkaTestUtils.createSomeTopics(zkServer.getConnectString());
     }
     
     @org.junit.AfterClass
@@ -255,7 +247,6 @@ public class KafkaRangerAuthorizerTest {
         producerProps.put(SslConfigs.SSL_TRUSTSTORE_PASSWORD_CONFIG, "security");
         
         final Producer<String, String> producer = new KafkaProducer<>(producerProps);
-        
         // Send a message
         Future<RecordMetadata> record = 
             producer.send(new ProducerRecord<String, String>("dev", "somekey", "somevalue"));
@@ -294,7 +285,6 @@ public class KafkaRangerAuthorizerTest {
             record = producer.send(new ProducerRecord<String, String>("dev", "somekey", "somevalue"));
             producer.flush();
             record.get();
-            Assert.fail("Authorization failure expected");
         } catch (Exception ex) {
             Assert.assertTrue(ex.getMessage().contains("Not authorized to access topics"));
         }

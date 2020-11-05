@@ -161,15 +161,23 @@ define(function(require) {
 							return { name : term, isVisible : XAEnums.VisibilityStatus.STATUS_VISIBLE.value };
 						},
 						results: function (data, page) {
-							var results = [];
 							var results = [], selectedVals = [];
 							//Get selected values of groups/users dropdown
 							selectedVals = that.getSelectedValues(options);
 							if(data.resultSize != "0"){
 								if(!_.isUndefined(data.vXGroups)){
-                                                                        results = data.vXGroups.map(function(m, i){	return {id : m.id, text: _.escape(m.name) };	});
+                                                                    results = data.vXGroups.map(function(m, i){	return {id : m.id, text: _.escape(m.name) };	});
 								} else if(!_.isUndefined(data.vXUsers)){
-                                                                        results = data.vXUsers.map(function(m, i){	return {id : m.id, text: _.escape(m.name) };	});
+//								     tag base policy tab hide from KeyAdmin and KMSAuditor users
+                                                                    if(that.model.get('module') === XAEnums.MenuPermissions.XA_TAG_BASED_POLICIES.label){
+                                                                        _.map(data.vXUsers ,function(m, i){
+                                                                            if(XAEnums.UserRoles[m.userRoleList[0]].label != 'KeyAdmin' && XAEnums.UserRoles[m.userRoleList[0]].label != 'KMSAuditor'){
+                                                                                results.push({id : m.id, text: _.escape(m.name) });
+                                                                            }
+                                                                        });
+                                                                    }else{
+                                                                        results = data.vXUsers.map(function(m, i){  return {id : m.id, text: _.escape(m.name) };    });
+                                                                    }
                                                                 }
                                                                 if(!_.isEmpty(selectedVals)){
 										results = XAUtil.filterResultByText(results, selectedVals);
@@ -178,7 +186,7 @@ define(function(require) {
 							return { results : results};
 						},
 						transport: function (options) {
-                                                        $.ajax(options).error(function(respones) {
+                                                        $.ajax(options).fail(function(respones) {
 								console.log("ajax failed");
                                                                 XAUtil.defaultErrorHandler('error',respones);
 								this.success({
@@ -226,7 +234,7 @@ define(function(require) {
                         var selectedGroups = this.fields.selectGroups.editor.$el.select2('data');
                         _.each(selectedGroups, function(obj){
                                 var self = that;
-                                this.$el.find('[data-js="selectedGroupList"]').append('<span class="selected-widget"  ><i class="icon remove icon-remove" data-js="selectedGroupIcon" data-id="'+obj.id+'"></i>&nbsp;'+obj.text+'</span>')
+                                this.$el.find('[data-js="selectedGroupList"]').append('<span class="selected-widget"  ><i class="icon remove fa-fw fa fa-remove" data-js="selectedGroupIcon" data-id="'+obj.id+'"></i>&nbsp;'+obj.text+'</span>')
                                 this.addedGroups.push(obj)
                                 this.$el.find('[data-js="selectedGroupList"] :last').on('click',this.removeGroup.bind(this));
                                 this.fields.selectGroups.editor.$el.select2('data',[]);
@@ -272,7 +280,7 @@ define(function(require) {
                         var selectedUsers = this.fields.selectUsers.editor.$el.select2('data');
                         _.each(selectedUsers, function(obj){
                                 var self = that;
-                                this.$el.find('[data-js="selectedUserList"]').append('<span class="selected-widget"  ><i class="icon remove icon-remove" data-js="selectedUserIcon" data-id="'+obj.id+'"></i>&nbsp;'+obj.text+'</span>')
+                                this.$el.find('[data-js="selectedUserList"]').append('<span class="selected-widget"  ><i class="icon remove fa-fw fa fa-remove" data-js="selectedUserIcon" data-id="'+obj.id+'"></i>&nbsp;'+obj.text+'</span>')
                                 this.addedUsers.push(obj)
                                 this.$el.find('[data-js="selectedUserList"] :last').on('click',this.removeUser.bind(this));
                                 this.fields.selectUsers.editor.$el.select2('data', []);

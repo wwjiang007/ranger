@@ -86,7 +86,25 @@ public abstract class BaseDao<T> {
 		T ret = null;
 
 		em.persist(obj);
-		em.flush();
+		if (!RangerBizUtil.isBulkMode()) {
+			em.flush();
+		}
+		ret = obj;
+		return ret;
+	}
+
+	public List<T> batchCreate(List<T> obj) {
+		List<T> ret = null;
+
+		for (int n = 0; n < obj.size(); ++n) {
+			em.persist(obj.get(n));
+			if (!RangerBizUtil.isBulkMode() && (n % RangerBizUtil.batchPersistSize == 0)) {
+				em.flush();
+			}
+		}
+		if (!RangerBizUtil.isBulkMode()) {
+			em.flush();
+		}
 
 		ret = obj;
 		return ret;
@@ -94,7 +112,9 @@ public abstract class BaseDao<T> {
 
 	public T update(T obj) {
 		em.merge(obj);
-		em.flush();
+		if (!RangerBizUtil.isBulkMode()) {
+			em.flush();
+		}
 		return obj;
 	}
 
@@ -106,10 +126,49 @@ public abstract class BaseDao<T> {
 		if (obj == null) {
 			return true;
 		}
-
+		if (!em.contains(obj)) {
+			obj = em.merge(obj);
+		}
 		em.remove(obj);
-		em.flush();
+		if (!RangerBizUtil.isBulkMode()) {
+			em.flush();
+		}
+		return true;
+	}
 
+	public void flush() {
+		em.flush();
+	}
+
+	public void clear() {
+		em.clear();
+	}
+	public T create(T obj, boolean flush) {
+		T ret = null;
+		em.persist(obj);
+		if(flush) {
+			em.flush();
+		}
+		ret = obj;
+		return ret;
+	}
+
+	public T update(T obj, boolean flush) {
+		em.merge(obj);
+		if(flush) {
+			em.flush();
+		}
+		return obj;
+	}
+
+	public boolean remove(T obj, boolean flush) {
+		if (obj == null) {
+			return true;
+		}
+		em.remove(obj);
+		if(flush) {
+			em.flush();
+		}
 		return true;
 	}
 
@@ -248,25 +307,6 @@ public abstract class BaseDao<T> {
 		}else{
 			logger.warn("Required annotation `Table` not found");
 		}
-	}
-
-	public boolean deletePolicyIDReference(String paramName,long oldID) {
-		Table table = tClass.getAnnotation(Table.class);
-		if(table != null) {
-			String tableName = table.name();
-			String query = "delete from " + tableName + " where " +paramName+"=" + oldID;
-			if (logger.isDebugEnabled()) {
-				logger.debug("Delete Query:" + query);
-			}
-			int count=getEntityManager().createNativeQuery(query).executeUpdate();
-			getEntityManager().flush();
-			if(count>0){
-				return true;
-			}
-		}else{
-			logger.warn("Required annotation `Table` not found");
-		}
-		return false;
 	}
 
 	public String getDBVersion(){

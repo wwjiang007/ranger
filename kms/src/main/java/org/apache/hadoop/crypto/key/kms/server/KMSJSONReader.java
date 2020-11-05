@@ -18,7 +18,7 @@
 package org.apache.hadoop.crypto.key.kms.server;
 
 import org.apache.hadoop.classification.InterfaceAudience;
-import org.codehaus.jackson.map.ObjectMapper;
+import org.apache.ranger.plugin.util.JsonUtilsV2;
 
 import javax.ws.rs.Consumes;
 import javax.ws.rs.WebApplicationException;
@@ -31,24 +31,24 @@ import java.io.InputStream;
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Type;
 import java.util.Map;
+import java.util.List;
 
 @Provider
 @Consumes(MediaType.APPLICATION_JSON)
 @InterfaceAudience.Private
-public class KMSJSONReader implements MessageBodyReader<Map> {
+public class KMSJSONReader implements MessageBodyReader<Object> {
 
   @Override
   public boolean isReadable(Class<?> type, Type genericType,
       Annotation[] annotations, MediaType mediaType) {
-    return type.isAssignableFrom(Map.class);
+    return type.isAssignableFrom(Map.class) || type.isAssignableFrom(List.class);
   }
 
   @Override
-  public Map readFrom(Class<Map> type, Type genericType,
+  public Object readFrom(Class<Object> type, Type genericType,
       Annotation[] annotations, MediaType mediaType,
       MultivaluedMap<String, String> httpHeaders, InputStream entityStream)
       throws IOException, WebApplicationException {
-    ObjectMapper mapper = new ObjectMapper();
-    return mapper.readValue(entityStream, type);
+    return JsonUtilsV2.getMapper().readValue(entityStream, type);
   }
 }

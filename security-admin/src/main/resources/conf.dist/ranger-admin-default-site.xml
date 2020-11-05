@@ -80,7 +80,7 @@
 <!-- #Role list -->
 	<property>
 		<name>ranger.users.roles.list</name>
-		<value>ROLE_SYS_ADMIN, ROLE_USER, ROLE_OTHER, ROLE_ANON, ROLE_KEY_ADMIN</value>
+                <value>ROLE_SYS_ADMIN, ROLE_USER, ROLE_OTHER, ROLE_ANON, ROLE_KEY_ADMIN, ROLE_ADMIN_AUDITOR, ROLE_KEY_ADMIN_AUDITOR</value>
 	</property>
 <!-- #Mail listing -->
 	<property>
@@ -201,7 +201,14 @@
 
 
 <!-- Embedded Web-Server properties  -->
-
+	<property>
+		<name>ranger.valve.errorreportvalve.showserverinfo</name>
+		<value>false</value>
+	</property>
+	<property>
+		<name>ranger.valve.errorreportvalve.showreport</name>
+		<value>false</value>
+	</property>
 <!--
 #
 # Service Information
@@ -366,6 +373,24 @@
 	</property>
 
 	<property>
+		<name>ranger.jpa.jdbc.batch-clear.enable</name>
+		<value>true</value>
+		<description>property to enable bulk mode optimization</description>
+	</property>
+
+	<property>
+		<name>ranger.jpa.jdbc.batch-clear.size</name>
+		<value>10</value>
+		<description>batch size (in number of policies) to flush and clear jdbc statements during batch policy import/delete</description>
+	</property>
+
+	<property>
+		<name>ranger.jpa.jdbc.batch-persist.size</name>
+		<value>500</value>
+		<description>batch size (in number of objects) to flush and clear jdbc statements during jpa persistence</description>
+	</property>
+
+	<property>
 		<name>ranger.jpa.jdbc.credential.alias</name>
 		<value>ranger.db.password</value>
 		<description></description>
@@ -436,8 +461,26 @@
 		<description></description>
 	</property>
 	<property>
-		<name>ranger.sha256Password.update.disable</name>
+		<name>ranger.audit.solr.time.interval</name>
+		<value>60000</value>
+		<description>Time in milliseconds</description>
+	</property>
+	<property>
+		<name>ranger.audit.solr.bootstrap.enabled</name>
 		<value>true</value>
+	</property>
+	<property>
+		<name>ranger.audit.elasticsearch.bootstrap.enabled</name>
+		<value>true</value>
+	</property>
+	<property>
+		<name>ranger.audit.solr.max.retry</name>
+		<value>30</value>
+		<description>Maximum no. of retry to setup solr</description>
+	</property>
+	<property>
+		<name>ranger.sha256Password.update.disable</name>
+		<value>false</value>
 		<description></description>
 	</property>
 	<!-- # DB Info for audit_DB -->
@@ -508,6 +551,10 @@
 		<value>false</value>
 	</property>
 	<property>
+		<name>ranger.db.ssl.auth.type</name>
+		<value>2-way</value>
+	</property>
+	<property>
 		<name>ranger.keystore.file</name>
 		<value></value>
 	</property>
@@ -550,7 +597,7 @@
        </property>
        <property>
                <name>ranger.password.encryption.algorithm</name>
-               <value>PBEWithMD5AndDES</value>
+               <value>PBEWithHmacSHA512AndAES_128</value>
        </property>
 	   <property>
 			<name>ranger.default.browser-useragents</name>

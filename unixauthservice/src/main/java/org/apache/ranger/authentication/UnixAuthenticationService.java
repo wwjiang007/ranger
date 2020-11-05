@@ -29,6 +29,7 @@ import java.net.Socket;
 import java.security.KeyStore;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Properties;
@@ -45,20 +46,22 @@ import javax.net.ssl.TrustManagerFactory;
 import org.apache.log4j.Logger;
 import org.apache.ranger.credentialapi.CredentialReader;
 import org.apache.ranger.plugin.util.XMLUtils;
+import org.apache.ranger.unixusersync.config.UserGroupSyncConfig;
 import org.apache.ranger.usergroupsync.UserGroupSync;
+import org.apache.ranger.usergroupsync.UserSyncMetricsProducer;
 
 public class UnixAuthenticationService {
 
 	private static final Logger LOG = Logger.getLogger(UnixAuthenticationService.class);
-	
+
 	private static final String serviceName = "UnixAuthenticationService";
-	
+
 	private static final String SSL_ALGORITHM = "TLS";
 	private static final String REMOTE_LOGIN_AUTH_SERVICE_PORT_PARAM = "ranger.usersync.port";
-	
+
 	private static final String SSL_KEYSTORE_PATH_PARAM = "ranger.usersync.keystore.file";
 	private static final String SSL_TRUSTSTORE_PATH_PARAM = "ranger.usersync.truststore.file";
-	
+
 	private static final String SSL_KEYSTORE_PATH_PASSWORD_ALIAS = "usersync.ssl.key.password";
 	private static final String SSL_TRUSTSTORE_PATH_PASSWORD_ALIAS = "usersync.ssl.truststore.password";
 
@@ -70,6 +73,7 @@ public class UnixAuthenticationService {
 	private static final String CREDSTORE_FILENAME_PARAM = "ranger.usersync.credstore.filename";
 	
 	private String keyStorePath;
+	private List<String> enabledProtocolsList;
 	private String keyStorePathPassword;
 	private String trustStorePath;
 	private String trustStorePathPassword;
@@ -121,23 +125,40 @@ public class UnixAuthenticationService {
 			LOG.info("Service: " + serviceName + " - STOPPED.");
 		}
 	}
-	
+
 	private void startUnixUserGroupSyncProcess() {
 		//
 		//  Start the synchronization service ...
 		//
+		LOG.info("Start : startUnixUserGroupSyncProcess " );
 		UserGroupSync syncProc = new UserGroupSync();
 		Thread newSyncProcThread = new Thread(syncProc);
 		newSyncProcThread.setName("UnixUserSyncThread");
+		// If this thread is set as daemon, then the entire process will terminate if enableUnixAuth is false
+        // Therefore this is marked as non-daemon thread. Don't change the following line
 		newSyncProcThread.setDaemon(false);
 		newSyncProcThread.start();
+        LOG.info("UnixUserSyncThread started");
+        LOG.info("creating UserSyncMetricsProducer thread with default metrics location : "+System.getProperty("logdir"));
+		//Start the user sync metrics
+		boolean isUserSyncMetricsEnabled = UserGroupSyncConfig.getInstance().isUserSyncMetricsEnabled();
+		if (isUserSyncMetricsEnabled) {
+			UserSyncMetricsProducer userSyncMetricsProducer = new UserSyncMetricsProducer();
+			Thread userSyncMetricsProducerThread = new Thread(userSyncMetricsProducer);
+			userSyncMetricsProducerThread.setName("UserSyncMetricsProducerThread");
+			userSyncMetricsProducerThread.setDaemon(false);
+			userSyncMetricsProducerThread.start();
+			LOG.info("UserSyncMetricsProducer started");
+		} else {
+			LOG.info(" Ranger userSync metrics is not enabled");
+		}
 	}
-	
+
 
 	//TODO: add more validation code
 	private void init() throws Throwable {
 		Properties prop = new Properties();
-		
+
 		for (String fn : UGSYNC_CONFIG_XML_FILES ) {
             XMLUtils.loadConfig(fn, prop);
 		}
@@ -191,7 +212,9 @@ public class UnixAuthenticationService {
 		String SSLEnabledProp = prop.getProperty(SSL_ENABLED_PARAM);
 		
 		SSLEnabled = (SSLEnabledProp != null &&  (SSLEnabledProp.equalsIgnoreCase("true")));
-		
+		String defaultEnabledProtocols = "SSLv2Hello, TLSv1, TLSv1.1, TLSv1.2";
+		String enabledProtocols = prop.getProperty("ranger.usersync.https.ssl.enabled.protocols", defaultEnabledProtocols);
+		enabledProtocolsList=new ArrayList<String>(Arrays.asList(enabledProtocols.toUpperCase().trim().split("\\s*,\\s*")));
 //		LOG.info("Key:" + keyStorePath);
 //		LOG.info("KeyPassword:" + keyStorePathPassword);
 //		LOG.info("TrustStore:" + trustStorePath);
@@ -273,7 +296,7 @@ public class UnixAuthenticationService {
 			String[] protocols = secureSocket.getEnabledProtocols();
 			Set<String> allowedProtocols = new HashSet<String>();
 			for(String ep : protocols) {
-				if (! ep.toUpperCase().startsWith("SSLV3")) {
+				if (enabledProtocolsList.contains(ep.toUpperCase())){
 					LOG.info("Enabling Protocol: [" + ep + "]");
 					allowedProtocols.add(ep);
 				}

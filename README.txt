@@ -29,8 +29,12 @@ Build Process
 
 2. On the root folder, please execute the following Maven command:
 
-   $ mvn clean compile package install assembly:assembly
+   $ mvn clean compile package install
    $ mvn eclipse:eclipse
+
+   (Ranger Admin UI tests depend on PhantomJS. If the build fails with npm or Karma errors you can either
+      i. install PhantomJS dependencies for your platform (bzip2 and fontconfig)
+     ii. skip JavaScript test execution: mvn -DskipJSTests ...)
 
 3. After the above build command execution, you should see the following TAR files in the target folder:
 
@@ -52,6 +56,8 @@ Build Process
    ranger-<version>-tagsync.tar.gz
    ranger-<version>-usersync.tar.gz
    ranger-<version>-yarn-plugin.tar.gz
+   ranger-<version>-kylin-plugin.tar.gz
+   ranger-<version>-elasticsearch-plugin.tar.gz
 
 Importing Apache Ranger Project into Eclipse
 ============================================
@@ -77,6 +83,8 @@ Installation Host Information
     (f)  Kafka/Solr Plugin needs to be installed on their respective component hosts.
     (g)  YARN plugin needs to be installed on YARN Resource Manager hosts
     (h)  Sqoop plugin needs to be installed on Sqoop2 hosts
+    (i)  Kylin plugin needs to be installed on Kylin hosts
+    (j)  Elasticsearch plugin needs to be installed on Elasticsearch hosts
 
 Installation Process
 ~~~~~~~~~~~~~~~~~~~~

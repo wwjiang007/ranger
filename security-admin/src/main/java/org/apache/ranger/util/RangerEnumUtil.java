@@ -1236,7 +1236,14 @@ public class RangerEnumUtil {
 
 	vEnum.getElementList().add(vElement);
 
+	vElement = new VEnumElement();
+	vElement.setElementName("RESOURCE_GLOBAL");
+	vElement.setElementValue(11);
+	vElement.setElementLabel("Global");
+	vElement.setRbKey("xa.enum.ResourceType.RESOURCE_GLOBAL");
+	vElement.setEnumName(vEnum.getEnumName());
 
+	vEnum.getElementList().add(vElement);
 	///////////////////////////////////
 	// CommonEnums::XAGroupType
 	///////////////////////////////////
@@ -1955,6 +1962,32 @@ public class RangerEnumUtil {
 
 	vEnum.getElementList().add(vElement);
 
+	vElement = new VEnumElement();
+	vElement.setElementName("AUTH_TYPE_KERBEROS");
+	vElement.setElementValue(2);
+	vElement.setElementLabel("Kerberos");
+	vElement.setRbKey("xa.enum.AuthType.AUTH_TYPE_KERBEROS");
+	vElement.setEnumName(vEnum.getEnumName());
+
+	vEnum.getElementList().add(vElement);
+
+	vElement = new VEnumElement();
+	vElement.setElementName("AUTH_TYPE_SSO");
+	vElement.setElementValue(3);
+	vElement.setElementLabel("SingleSignOn");
+	vElement.setRbKey("xa.enum.AuthType.AUTH_TYPE_SSO");
+	vElement.setEnumName(vEnum.getEnumName());
+
+	vEnum.getElementList().add(vElement);
+
+	vElement = new VEnumElement();
+	vElement.setElementName("AUTH_TYPE_TRUSTED_PROXY");
+	vElement.setElementValue(4);
+	vElement.setElementLabel("Trusted Proxy");
+	vElement.setRbKey("xa.enum.AuthType.AUTH_TYPE_TRUSTED_PROXY");
+	vElement.setEnumName(vEnum.getEnumName());
+
+	vEnum.getElementList().add(vElement);
 
 	///////////////////////////////////
 	// XResponse::ResponseStatus

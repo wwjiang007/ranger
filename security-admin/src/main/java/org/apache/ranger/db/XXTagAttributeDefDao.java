@@ -26,7 +26,9 @@ import javax.persistence.NoResultException;
 
 import org.apache.ranger.common.db.BaseDao;
 import org.apache.ranger.entity.XXTagAttributeDef;
+import org.springframework.stereotype.Service;
 
+@Service
 public class XXTagAttributeDefDao extends BaseDao<XXTagAttributeDef> {
 
 	public XXTagAttributeDefDao(RangerDaoManagerBase daoManager) {
@@ -51,18 +53,6 @@ public class XXTagAttributeDefDao extends BaseDao<XXTagAttributeDef> {
 		}
 		try {
 			return getEntityManager().createNamedQuery("XXTagAttributeDef.findByServiceId", tClass)
-					.setParameter("serviceId", serviceId).getResultList();
-		} catch (NoResultException e) {
-			return new ArrayList<XXTagAttributeDef>();
-		}
-	}
-
-	public List<XXTagAttributeDef> findForServicePlugin(Long serviceId) {
-		if (serviceId == null) {
-			return new ArrayList<XXTagAttributeDef>();
-		}
-		try {
-			return getEntityManager().createNamedQuery("XXTagAttributeDef.findForServicePlugin", tClass)
 					.setParameter("serviceId", serviceId).getResultList();
 		} catch (NoResultException e) {
 			return new ArrayList<XXTagAttributeDef>();

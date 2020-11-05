@@ -48,14 +48,17 @@ define(function(require) {
 						return configs;
 					}
 				}
-				configs = _.sortBy(configs, function(m){ return m.itemId });
 				return configs;
 			};
 			var getValidators = function(formObj, v){
 				formObj.validators = [];
 				if (_.has(v, 'mandatory') && v.mandatory && v.type != 'bool') {
 					formObj.validators.push('required');
-					formObj.title = formObj.title + " *"
+					if (_.isEmpty(formObj.title)) {
+						formObj.title = formObj.title + " *"
+					} else {
+						formObj.title = formObj.title + " *"
+					}
 				}
 				if(_.has(v, 'validationRegEx') && !_.isEmpty(v.validationRegEx) && !v.lookupSupported){
 					formObj.validators.push({'type': 'regexp', 'regexp':new RegExp(v.validationRegEx), 'message' : v.validationMessage});
@@ -70,8 +73,14 @@ define(function(require) {
 			};
 			
 			//Get configs for perticular policy type
-			configs = getResourceConfigs(configs)
-			
+			configs = getResourceConfigs(configs);
+			configs = _.sortBy(configs, function(m){ return m.itemId });
+			configs = _.filter(configs, function(m){
+				if(m.uiHint && !_.isEmpty(m.uiHint) && XAUtils.hideIfNull(m, form)){
+					return;
+				}
+				return m;
+			})
 			var samelevelFieldCreated = [];
 			_.each(configs, function(v, k,config) {
 				if (v != null) {
@@ -89,34 +98,40 @@ define(function(require) {
 								}
 								break;
 							}
-							if($.inArray(v.level, samelevelFieldCreated) >= 0){
+							if($.inArray(v.parent, samelevelFieldCreated) >= 0){
 								return;
 							}
-							
 							if( isPolicyForm ){
 								var resourceOpts = {};
 								formObj.type = 'Resource';
+								formObj.editorClass = "rosource-boder"
 								formObj['excludeSupport']= v.excludesSupported;
 								formObj['recursiveSupport'] = v.recursiveSupported;
 								formObj.name = v.name;
 //								formObj.level = v.level;
 								//checkParentHideShow field
 								formObj.fieldAttrs = { 'data-name' : 'field-'+v.name, 'parent' : v.parent };
+								formObj.fieldAttrs.fieldClass = "resorces-with-label-css"
 								formObj['resourceOpts'] = {'data-placeholder': v.label };
-								
-								if(!_.isUndefined(v.lookupSupported) && v.lookupSupported ){
-									var opts = { 
-											'type' : v.name,
-											'lookupURL' 		: "service/plugins/services/lookupResource/"+form.rangerService.get('name')
-									};
+                                                                if(!_.isUndefined(v.lookupSupported)){
+                                                                        var opts = {};
 									if(_.has(v, 'validationRegEx') && !_.isEmpty(v.validationRegEx)){
-										opts['regExpValidation'] = {'type': 'regexp', 'regexp':new RegExp(v.validationRegEx), 'message' : v.validationMessage};
+                                        opts['regExpValidation'] = {'type': 'regexp', 'regexp':new RegExp(v.validationRegEx), 'message' : v.validationMessage};
+                                    }
+                                    //To support single value input
+                                    if( XAUtils.isSinglevValueInput(v) ){
+                                        opts['singleValueInput'] = true;
+                                    }
+                                    opts['type'] = v.name;
+                                    if(v.lookupSupported){
+                                        opts['lookupURL'] = "service/plugins/services/lookupResource/"+form.rangerService.get('name');
+                                        resourceOpts['select2Opts'] = form.getPlugginAttr(true, opts);
+                                    }else{
+                                        resourceOpts['select2Opts'] = XAUtils.select2OptionForUserCreateChoice();
+                                        if(!_.isUndefined(opts.singleValueInput) && opts.singleValueInput){
+                                            resourceOpts['select2Opts']['maximumSelectionSize'] = 1;
+                                        }
 									}
-									//To support single value input
-									if( XAUtils.isSinglevValueInput(v) ){
-										opts['singleValueInput'] = true;
-									}	
-									resourceOpts['select2Opts'] = form.getPlugginAttr(true, opts);
 									formObj['resourceOpts'] = resourceOpts; 
 								}
 								//same level resources check
@@ -136,14 +151,23 @@ define(function(require) {
 								//show only required resources in acccess policy in order to show their access types
 								if(!_.isUndefined(v.parent) && !_.isEmpty(v.parent)
 										&& parentResource.isValidLeaf){
-									optionsAttrs.unshift({'level':v.level, name:'none',label:'none'});
+                                                                        if(form.model && form.model.isNew()) {
+                                                                                optionsAttrs.push({'level':v.level, name:'none',label:'none'});
+                                                                        } else {
+                                                                                optionsAttrs.unshift({'level':v.level, name:'none',label:'none'});
+                                                                        }
 								}
 								if(optionsAttrs.length > 1){
 									var optionsTitle = _.map(optionsAttrs,function(field){ return field.name;});
 									formObj['sameLevelOpts'] = optionsTitle;
-									samelevelFieldCreated.push(v.level);
-									fieldName = 'sameLevel'+v.level;
+                                                                        samelevelFieldCreated.push(v.parent);
+                                                                        if(!_.isUndefined(v.parent)){
+                                                                                fieldName = 'sameLevel'+v.level+''+v.parent;
+                                                                        }else{
+                                                                                fieldName = 'sameLevel'+v.level;
+                                                                        }
 									formObj['title'] = '';
+									formObj.fieldAttrs.fieldClass = "resorces-css";
 									formObj['resourcesAtSameLevel'] = true;
 									
 									// formView is used to listen form events
@@ -178,15 +202,20 @@ define(function(require) {
 							break;
 						case 'path' : 
 							formObj.type = 'Resource';
+							formObj.editorClass = "rosource-boder-path"
 							formObj['excludeSupport']= v.excludesSupported;
 							formObj['recursiveSupport'] = v.recursiveSupported;
 							formObj['name'] = v.name;
 							formObj['editorAttrs'] = {'data-placeholder': v.label };
-							if(!_.isUndefined(v.lookupSupported) && v.lookupSupported ){
+                                                        formObj.fieldAttrs = { 'data-name' : 'field-'+v.name, 'parent' : v.parent };
+                                                        formObj.fieldAttrs.fieldClass = "resorces-with-label-css"
+                                                        if(!_.isUndefined(v.lookupSupported)){
 								var options = {
 										'containerCssClass' : v.name,
-										'lookupURL' : "service/plugins/services/lookupResource/"+form.rangerService.get('name')
-										};
+                                                                };
+                                                                if(v.lookupSupported){
+                                                                    options['lookupURL'] = "service/plugins/services/lookupResource/"+form.rangerService.get('name');
+                                                                }
 								//to support regexp level validation
 								if(_.has(v, 'validationRegEx') && !_.isEmpty(v.validationRegEx)){
 									options['regExpValidation'] = {'type': 'regexp', 'regexp':new RegExp(v.validationRegEx), 'message' : v.validationMessage};
@@ -196,6 +225,43 @@ define(function(require) {
 								form.initilializePathPlugin = true;
 							}
 							formObj['initilializePathPlugin'] = true;
+                                                        var optionsAttrs = [] ,parentResource;
+                                                                if(!_.isUndefined(v.level)){
+                                                                        optionsAttrs = _.filter(config,function(field){
+                                                                                if(field.level == v.level && field.parent == v.parent){
+                                                                                        return field;
+                                                                                }
+                                                                        });
+                                                                }
+                                                                var resourceDef = _.findWhere(optionsAttrs,{'name':v.name});
+                                                                //for parent leftnode status
+                                                                if(v.parent){
+                                                                        parentResource = _.findWhere(config ,{'name':v.parent});
+                                                                }
+                                                                //show only required resources in acccess policy in order to show their access types
+                                                                if(!_.isUndefined(v.parent) && !_.isEmpty(v.parent)
+                                                                                && parentResource.isValidLeaf){
+                                                                    if(form.model && form.model.isNew()) {
+                                                                        optionsAttrs.push({'level':v.level, name:'none',label:'none'});
+                                                                    } else {
+									optionsAttrs.unshift({'level':v.level, name:'none',label:'none'});
+                                                                    }
+                                                                }
+                                                                if(optionsAttrs.length > 1){
+                                                                        var optionsTitle = _.map(optionsAttrs,function(field){ return field.name;});
+                                                                        formObj['sameLevelOpts'] = optionsTitle;
+                                                                        samelevelFieldCreated.push(v.parent);
+                                                                        if(!_.isUndefined(v.parent)){
+                                                                                fieldName = 'sameLevel'+v.level+''+v.parent;
+                                                                        }else{
+                                                                                fieldName = 'sameLevel'+v.level;
+                                                                        }
+                                                                        formObj['title'] = '';
+                                                                        formObj['resourcesAtSameLevel'] = true;
+
+                                                                        // formView is used to listen form events
+                                                                        formObj['formView'] = form;
+                                                                }
 							break;
 						case 'password':formObj.type = 'Password';break;
 						default:formObj.type = 'Text';

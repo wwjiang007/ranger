@@ -75,6 +75,14 @@ public abstract class XXPolicyBase extends XXDBBase {
 	protected Integer policyType;
 
 	/**
+	 * policyPriority of the XXPolicy
+	 * <ul>
+	 * </ul>
+	 *
+	 */
+	@Column(name = "policy_priority")
+	protected Integer policyPriority;
+	/**
 	 * description of the XXPolicy
 	 * <ul>
 	 * </ul>
@@ -109,6 +117,21 @@ public abstract class XXPolicyBase extends XXDBBase {
 	 */
 	@Column(name = "is_audit_enabled")
 	protected boolean isAuditEnabled;
+
+    /**
+     * options of the XXPolicy
+     * <ul>
+     * </ul>
+     *
+     */
+    @Column(name = "policy_options")
+    protected String options;
+
+    	@Column(name = "policy_text")
+    	protected String policyText;
+
+    @Column(name = "zone_id")
+    protected Long zoneId;
 
 	/**
 	 * @return the gUID
@@ -233,7 +256,7 @@ public abstract class XXPolicyBase extends XXDBBase {
 	/**
 	 * Returns the value for the member attribute <b>isEnabled</b>
 	 *
-	 * @return Date - value of member attribute <b>isEnabled</b> .
+	 * @return Value of member attribute <b>isEnabled</b> .
 	 */
 	public boolean getIsEnabled() {
 		return this.isEnabled;
@@ -253,7 +276,7 @@ public abstract class XXPolicyBase extends XXDBBase {
 	/**
 	 * Returns the value for the member attribute <b>isAuditEnabled</b>
 	 *
-	 * @return Date - value of member attribute <b>isAuditEnabled</b> .
+	 * @return Value of member attribute <b>isAuditEnabled</b> .
 	 */
 	public boolean getIsAuditEnabled() {
 		return this.isAuditEnabled;
@@ -267,7 +290,50 @@ public abstract class XXPolicyBase extends XXDBBase {
 		this.policyType = policyType;
 	}
 
-	/*
+	public Integer getPolicyPriority() {
+		return policyPriority;
+	}
+
+	public void setPolicyPriority(Integer policyPriority) {
+		this.policyPriority = policyPriority;
+	}
+
+	/**
+	 * This method sets the value to the member attribute <b> options</b> .
+	 *
+	 * @param options
+	 *            Value to set member attribute <b> options</b>
+	 */
+	public void setOptions(String options) {
+        this.options = options;
+    }
+
+	/**
+	 * Returns the value for the member attribute <b>options</b>
+	 *
+	 * @return Value of member attribute <b>options</b> .
+	 */
+	public String getOptions() {
+        return this.options;
+    }
+
+
+    	public void setPolicyText(String policyText) {
+        	this.policyText = policyText;
+    	}
+
+    	public String getPolicyText() {
+        	return this.policyText;
+    	}
+
+    	public Long getZoneId() {return zoneId; }
+
+        public void setZoneId(Long zoneId) {
+        this.zoneId = zoneId;
+    }
+
+
+    /*
 	 * (non-Javadoc)
 	 *
 	 * @see java.lang.Object#equals(java.lang.Object)
@@ -342,6 +408,35 @@ public abstract class XXPolicyBase extends XXDBBase {
 		} else if (!policyType.equals(other.policyType)) {
 			return false;
 		}
+		if (policyPriority == null) {
+			if (other.policyPriority != null) {
+				return false;
+			}
+		} else if (!policyPriority.equals(other.policyPriority)) {
+			return false;
+		}
+		if (options == null) {
+			if (other.options != null) {
+				return false;
+			}
+		} else if (!options.equals(other.options)) {
+			return false;
+		}
+        if (policyText == null) {
+            if (other.policyText != null) {
+                return false;
+            }
+        } else if (!policyText.equals(other.policyText)) {
+            return false;
+        }
+
+        if (zoneId == null) {
+            if (other.zoneId != null) {
+                return false;
+            }
+        } else if (!zoneId.equals(other.zoneId)) {
+            return false;
+        }
 		return true;
 	}
 
@@ -355,8 +450,9 @@ public abstract class XXPolicyBase extends XXDBBase {
 		String str = "XXPolicyBase={";
 		str += super.toString();
 		str += " [guid=" + guid + ", version=" + version + ", service=" + service + ", name=" + name
-				+ ", policyType=" + policyType + ", description=" + description + ", resourceSignature="
-				+ resourceSignature + ", isEnabled=" + isEnabled + ", isAuditEnabled=" + isAuditEnabled + "]";
+				+ ", policyType=" + policyType + ", policyPriority=" + policyPriority + ", description=" + description + ", resourceSignature="
+				+ resourceSignature + ", isEnabled=" + isEnabled + ", isAuditEnabled=" + isAuditEnabled
+				+ ", options=" + options + ", zoneId=" + zoneId + "]";
 		str += "}";
 		return str;
 	}

@@ -21,71 +21,63 @@ package org.apache.ranger.plugin.policyengine;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 
 import org.apache.ranger.plugin.model.RangerPolicy;
 import org.apache.ranger.plugin.model.RangerServiceDef;
-import org.apache.ranger.plugin.model.RangerPolicy.RangerPolicyResource;
+import org.apache.ranger.plugin.util.GrantRevokeRequest;
 import org.apache.ranger.plugin.util.RangerAccessRequestUtil;
+import org.apache.ranger.plugin.util.RangerRoles;
 
 public interface RangerPolicyEngine {
-	String GROUP_PUBLIC   = "public";
-	String ANY_ACCESS     = "_any";
-	String ADMIN_ACCESS   = "_admin";
+	String GROUP_PUBLIC      = "public";
+	String ANY_ACCESS        = "_any";
+	String ADMIN_ACCESS      = "_admin";
+	String SUPER_USER_ACCESS = "_super_user";
 
-	String AUDIT_ALL = "audit-all";
-	String AUDIT_NONE = "audit-none";
-	String AUDIT_DEFAULT = "audit-default";
+	String AUDIT_ALL      = "audit-all";
+	String AUDIT_NONE     = "audit-none";
+	String AUDIT_DEFAULT  = "audit-default";
 
-	String USER_CURRENT = "{" + RangerAccessRequestUtil.KEY_USER + "}";
+	String PLUGIN_AUDIT_EXCLUDE_USERS  = "ranger.plugin.audit.exclude.users";
+	String PLUGIN_AUDIT_EXCLUDE_GROUPS = "ranger.plugin.audit.exclude.groups";
+	String PLUGIN_AUDIT_EXCLUDE_ROLES  = "ranger.plugin.audit.exclude.roles";
+	String PLUGIN_SUPER_USERS          = "ranger.plugin.super.users";
+	String PLUGIN_SUPER_GROUPS         = "ranger.plugin.super.groups";
+
+	String USER_CURRENT   = "{" + RangerAccessRequestUtil.KEY_USER + "}";
 	String RESOURCE_OWNER = "{OWNER}";
-
-	String getServiceName();
-
-	RangerServiceDef getServiceDef();
-
-	long getPolicyVersion();
-
-	RangerAccessResult createAccessResult(RangerAccessRequest request);
-
-	RangerDataMaskResult createDataMaskResult(RangerAccessRequest request);
-
-	RangerRowFilterResult createRowFilterResult(RangerAccessRequest request);
-
-	void preProcess(RangerAccessRequest request);
-
-	void preProcess(Collection<RangerAccessRequest> requests);
-
-	RangerAccessResult isAccessAllowed(RangerAccessRequest request, RangerAccessResultProcessor resultProcessor);
-
-	Collection<RangerAccessResult> isAccessAllowed(Collection<RangerAccessRequest> requests, RangerAccessResultProcessor resultProcessor);
-
-	RangerDataMaskResult evalDataMaskPolicies(RangerAccessRequest request, RangerAccessResultProcessor resultProcessor);
-
-	RangerRowFilterResult evalRowFilterPolicies(RangerAccessRequest request, RangerAccessResultProcessor resultProcessor);
-
-	boolean isAccessAllowed(RangerAccessResource resource, String user, Set<String> userGroups, String accessType);
-
-	boolean isAccessAllowed(Map<String, RangerPolicyResource> resources, String user, Set<String> userGroups, String accessType);
-
-	List<RangerPolicy> getExactMatchPolicies(RangerAccessResource resource, Map<String, Object> evalContext);
-
-	List<RangerPolicy> getExactMatchPolicies(Map<String, RangerPolicyResource> resources, Map<String, Object> evalContext);
-
-	List<RangerPolicy> getAllowedPolicies(String user, Set<String> userGroups, String accessType);
-
-	List<RangerPolicy> getMatchingPolicies(RangerAccessResource resource);
-
-	RangerResourceAccessInfo getResourceAccessInfo(RangerAccessRequest request);
-
-	void reorderPolicyEvaluators();
-
-	boolean preCleanup();
 
 	void setUseForwardedIPAddress(boolean useForwardedIPAddress);
 
 	void setTrustedProxyAddresses(String[] trustedProxyAddresses);
 
-	void cleanup();
+	RangerServiceDef getServiceDef();
+
+	long getPolicyVersion();
+
+	long getRoleVersion();
+
+	void setRoles(RangerRoles roles);
+
+	RangerAccessResult evaluatePolicies(RangerAccessRequest request, int policyType, RangerAccessResultProcessor resultProcessor);
+
+	Collection<RangerAccessResult> evaluatePolicies(Collection<RangerAccessRequest> requests, int policyType, RangerAccessResultProcessor resultProcessor);
+
+	RangerResourceACLs getResourceACLs(RangerAccessRequest request);
+
+	Set<String> getRolesFromUserAndGroups(String user, Set<String> groups);
+
+	String getUniquelyMatchedZoneName(GrantRevokeRequest grantRevokeRequest);
+
+	// Helpers
+
+	List<RangerPolicy> getResourcePolicies(String zoneName);
+
+	List<RangerPolicy> getResourcePolicies();
+
+	List<RangerPolicy> getTagPolicies();
+
+	// This API is used only used by test code
+	RangerResourceAccessInfo getResourceAccessInfo(RangerAccessRequest request);
 }

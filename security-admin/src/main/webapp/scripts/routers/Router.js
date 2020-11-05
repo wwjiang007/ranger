@@ -22,9 +22,10 @@
 	'backbone.marionette',
 	'utils/XALangSupport',
 	'models/VAppState',
-	'utils/XAUtils'
+	'utils/XAUtils',
+	'bootbox'
 ],
-function(Backbone, Marionette, localization, MAppState, XAUtil){
+function(Backbone, Marionette, localization, MAppState, XAUtil, bootbox){
     'use strict';
 
 	return Backbone.Marionette.AppRouter.extend({
@@ -35,7 +36,7 @@ function(Backbone, Marionette, localization, MAppState, XAUtil){
 			"!/policymanager/:tag"				: "serviceManagerAction",
 
 			/****** Analytics Report related **********************/
-			"!/reports/userAccess"		: "userAccessReportAction",
+                        "!/reports/:userAccess"		: "userAccessReportAction",
 			
 			/****** Audit Report related **********************/
 			"!/reports/audit/:tab"					: "auditReportAction",
@@ -51,6 +52,9 @@ function(Backbone, Marionette, localization, MAppState, XAUtil){
 			"!/group/create"	: "groupCreateAction",
 			"!/group/:id"		: "groupEditAction",
 
+                        "!/roles/create"		: "roleCreateAction",
+                        "!/roles/:id"			: "roleEditAction",
+
 			/************GENERIC UI *****************************************/
 			"!/service/:serviceType/create" 	: "serviceCreateAction",
 			"!/service/:serviceType/edit/:id"	: "serviceEditAction",
@@ -60,7 +64,7 @@ function(Backbone, Marionette, localization, MAppState, XAUtil){
 			"!/service/:serviceId/policies/:id/edit"			: "RangerPolicyEditAction",
 
 			/************PERMISSIONS VIEWS *****************************************/
-            "!/permissions"					: "modulePermissionsAction",
+            "!/permissions/:models"					: "modulePermissionsAction",
             "!/permissions/:id/edit"        : "modulePermissionEditAction",
 			
 			/************ KMS ***************************/
@@ -68,6 +72,11 @@ function(Backbone, Marionette, localization, MAppState, XAUtil){
 			"!/kms/keys/:serviceName/create"		: "kmsKeyCreateAction",
 //			"!/kms/keys/:serviceName/edit/:id"		: "kmsKeyEditAction",
 			
+            /*************** SECURITY ZONE ***********************/
+            "!/zones/zone/:listId"				: "zoneManagmentAction",
+            "!/zones/create"		: "RangerZoneCreateAction",
+            "!/zones/edit/:id"		: "RangerZoneEditAction",
+
 			/*************** ERROR PAGE ***********************/
 			"*actions"					: "pageNotFoundAction"
 			
@@ -89,7 +98,7 @@ function(Backbone, Marionette, localization, MAppState, XAUtil){
 				if (window._preventNavigation && formStatus) {
 					bootbox.dialog(window._preventNavigationMsg, [{
 						"label": "Stay on this page!",
-						"class": "btn-success btn-small",
+						"class": "btn-success btn-sm",
 						"callback": function() {
 							router.navigate(MAppState.get('previousFragment'), {
 								trigger: false
@@ -97,7 +106,7 @@ function(Backbone, Marionette, localization, MAppState, XAUtil){
 						}
 					}, {
 						"label": "Leave this page",
-						"class": "btn-danger btn-small",
+						"class": "btn-danger btn-sm",
 						"callback": function() {
 							XAUtil.allowNavigation();
 							proceedWithCallback();

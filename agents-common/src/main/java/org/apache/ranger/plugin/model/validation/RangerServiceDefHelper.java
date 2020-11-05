@@ -77,7 +77,7 @@ public class RangerServiceDefHelper {
 			modifiedResourceDefs.add(modifiedResourceDef);
 		}
 
-		return new RangerServiceDef(serviceDef.getName(), serviceDef.getImplClass(), serviceDef.getLabel(),
+		return new RangerServiceDef(serviceDef.getName(), serviceDef.getDisplayName(), serviceDef.getImplClass(), serviceDef.getLabel(),
 				serviceDef.getDescription(), serviceDef.getOptions(), serviceDef.getConfigs(), modifiedResourceDefs, serviceDef.getAccessTypes(),
 				serviceDef.getPolicyConditions(), serviceDef.getContextEnrichers(), serviceDef.getEnums());
 	}
@@ -163,6 +163,10 @@ public class RangerServiceDefHelper {
 		_delegate = delegate;
 	}
 
+	public RangerServiceDef getServiceDef() {
+		return _delegate._serviceDef;
+	}
+
 	public void patchServiceDefWithDefaultValues() {
 		_delegate.patchServiceDefWithDefaultValues();
 	}
@@ -183,7 +187,22 @@ public class RangerServiceDefHelper {
 		return _delegate.getResourceHierarchies(policyType);
 	}
 
+	public Set<List<RangerResourceDef>> filterHierarchies_containsOnlyMandatoryResources(Integer policyType) {
+		Set<List<RangerResourceDef>> hierarchies = getResourceHierarchies(policyType);
+		Set<List<RangerResourceDef>> result = new HashSet<List<RangerResourceDef>>(hierarchies.size());
+		for (List<RangerResourceDef> aHierarchy : hierarchies) {
+			Set<String> mandatoryResources = getMandatoryResourceNames(aHierarchy);
+			if (aHierarchy.size() == mandatoryResources.size()) {
+				result.add(aHierarchy);
+			}
+		}
+		return result;
+	}
+
 	public Set<List<RangerResourceDef>> getResourceHierarchies(Integer policyType, Collection<String> keys) {
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("==> getResourceHierarchies(policyType=" + policyType + ", keys=" + StringUtils.join(keys, ",") + ")");
+		}
 
 		Set<List<RangerResourceDef>> ret = new HashSet<List<RangerResourceDef>>();
 
@@ -193,10 +212,16 @@ public class RangerServiceDefHelper {
 			}
 		}
 
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("<== getResourceHierarchies(policyType=" + policyType + ", keys=" + StringUtils.join(keys, ",") + ") : " + StringUtils.join(ret, ","));
+		}
 		return ret;
 	}
 
 	public boolean hierarchyHasAllResources(List<RangerResourceDef> hierarchy, Collection<String> resourceNames) {
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("==> hierarchyHasAllResources(hierarchy=" + StringUtils.join(hierarchy, ",") + ", resourceNames=" + StringUtils.join(resourceNames, ",") + ")");
+		}
 		boolean foundAllResourceKeys = true;
 
 		for (String resourceKey : resourceNames) {
@@ -214,7 +239,9 @@ public class RangerServiceDefHelper {
 				break;
 			}
 		}
-
+		if (LOG.isDebugEnabled()) {
+			LOG.debug("<== hierarchyHasAllResources(hierarchy=" + StringUtils.join(hierarchy, ",") + ", resourceNames=" + StringUtils.join(resourceNames, ",") + "): " + foundAllResourceKeys);
+		}
 		return foundAllResourceKeys;
 	}
 
@@ -262,6 +289,7 @@ public class RangerServiceDefHelper {
 	 * Not designed for public access.  Package level only for testability.
 	 */
 	static class Delegate {
+		final RangerServiceDef _serviceDef;
 		final Map<Integer, Set<List<RangerResourceDef>>> _hierarchies = new HashMap<>();
 		final Date _serviceDefFreshnessDate;
 		final String _serviceName;
@@ -272,6 +300,7 @@ public class RangerServiceDefHelper {
 
 		public Delegate(RangerServiceDef serviceDef, boolean checkForCycles) {
 			// NOTE: we assume serviceDef, its name and update time are can never by null.
+			_serviceDef = serviceDef;
 			_serviceName = serviceDef.getName();
 			_serviceDefFreshnessDate = serviceDef.getUpdateTime();
 			_checkForCycles = checkForCycles;

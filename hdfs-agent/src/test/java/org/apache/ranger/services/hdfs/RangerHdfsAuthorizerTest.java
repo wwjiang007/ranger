@@ -30,12 +30,12 @@ import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.fs.permission.FsAction;
 import org.apache.hadoop.fs.permission.FsPermission;
 import org.apache.hadoop.hdfs.server.namenode.INode;
+import org.apache.hadoop.hdfs.server.namenode.INodeAttributeProvider;
 import org.apache.hadoop.hdfs.server.namenode.INodeAttributeProvider.AccessControlEnforcer;
 import org.apache.hadoop.hdfs.server.namenode.INodeAttributes;
 import org.apache.hadoop.security.AccessControlException;
 import org.apache.hadoop.security.UserGroupInformation;
 import org.apache.ranger.authorization.hadoop.RangerHdfsAuthorizer;
-import org.apache.ranger.authorization.hadoop.config.RangerConfiguration;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -92,11 +92,31 @@ public class RangerHdfsAuthorizerTest {
          */
         public void checkDirAccess(FsAction access, String userName, String... groups) throws AccessControlException {
             final UserGroupInformation user = UserGroupInformation.createUserForTesting(userName, groups);
-            rangerControlEnforcer.checkPermission(FILE_OWNER, FILE_GROUP, user,
-                    Arrays.copyOf(attributes, attributes.length - 1), Arrays.copyOf(nodes, nodes.length - 1),
-                    new byte[0][0], SNAPSHOT_ID, path, ancestorIndex - 1, false /* doCheckOwner */,
-                    null /* ancestorAccess */, null /* parentAccess */ , access, null /* subAccess */ ,
-                    false /* ignoreEmptyDir */);
+
+            INodeAttributeProvider.AuthorizationContext.Builder builder =
+                    new  INodeAttributeProvider.AuthorizationContext.Builder()
+                    .fsOwner(FILE_OWNER)
+                    .supergroup(FILE_GROUP)
+                    .callerUgi(user)
+                    .inodeAttrs(Arrays.copyOf(attributes, attributes.length - 1))
+                    .inodes(Arrays.copyOf(nodes, nodes.length - 1))
+                    .pathByNameArr(new byte[0][0])
+                    .snapshotId(SNAPSHOT_ID)
+                    .path(path)
+                    .ancestorIndex(ancestorIndex - 1)
+                    .doCheckOwner(false)
+                    .ancestorAccess(null)
+                    .parentAccess(null)
+                    .access(access)
+                    .subAccess(null)
+                    .ignoreEmptyDir(false)
+                    .operationName(null)
+                    .callerContext(null);
+
+            INodeAttributeProvider.AuthorizationContext authorizationContext
+                    = new INodeAttributeProvider.AuthorizationContext(builder);
+
+            rangerControlEnforcer.checkPermissionWithContext(authorizationContext);
         }
 
         /**
@@ -105,9 +125,31 @@ public class RangerHdfsAuthorizerTest {
          */
         public void checkAccess(FsAction access, String userName, String... groups) throws AccessControlException {
             final UserGroupInformation user = UserGroupInformation.createUserForTesting(userName, groups);
-            rangerControlEnforcer.checkPermission(FILE_OWNER, FILE_GROUP, user, attributes, nodes, new byte[0][0],
-                    SNAPSHOT_ID, path, ancestorIndex, false /* doCheckOwner */, null /* ancestorAccess */,
-                    null /* parentAccess */ , access, null /* subAccess */ , false /* ignoreEmptyDir */);
+
+            INodeAttributeProvider.AuthorizationContext.Builder builder =
+                    new  INodeAttributeProvider.AuthorizationContext.Builder()
+                            .fsOwner(FILE_OWNER)
+                            .supergroup(FILE_GROUP)
+                            .callerUgi(user)
+                            .inodeAttrs(attributes)
+                            .inodes(nodes)
+                            .pathByNameArr(new byte[0][0])
+                            .snapshotId(SNAPSHOT_ID)
+                            .path(path)
+                            .ancestorIndex(ancestorIndex - 1)
+                            .doCheckOwner(false)
+                            .ancestorAccess(null)
+                            .parentAccess(null)
+                            .access(access)
+                            .subAccess(null)
+                            .ignoreEmptyDir(false)
+                            .operationName(null)
+                            .callerContext(null);
+
+            INodeAttributeProvider.AuthorizationContext authorizationContext
+                    = new INodeAttributeProvider.AuthorizationContext(builder);
+
+            rangerControlEnforcer.checkPermissionWithContext(authorizationContext);
         }
 
         /**
@@ -119,7 +161,7 @@ public class RangerHdfsAuthorizerTest {
             try {
                 checkAccess(access, userName, groups);
                 Assert.fail("Access should be blocked for " + path + " access=" + access + " for user=" + userName
-                        + " groups=" + groups);
+                        + " groups=" + Arrays.asList(groups));
             } catch (AccessControlException ace) {
                 Assert.assertNotNull(ace);
             }
@@ -144,7 +186,6 @@ public class RangerHdfsAuthorizerTest {
 
     @BeforeClass
     public static void setup() {
-
         try {
             File file = File.createTempFile("hdfs-version-site", ".xml");
             file.deleteOnExit();
@@ -152,21 +193,19 @@ public class RangerHdfsAuthorizerTest {
             try(final FileOutputStream outStream = new FileOutputStream(file);
                 final OutputStreamWriter writer = new OutputStreamWriter(outStream, StandardCharsets.UTF_8)) {
                 writer.write("<configuration>\n" +
-                    "        <property>\n" +
-                    "                <name>hdfs.version</name>\n" +
-                    "                <value>hdfs_version_3.0</value>\n" +
-                    "        </property>\n" +
-                    "</configuration>\n");
+                        "        <property>\n" +
+                        "                <name>hdfs.version</name>\n" +
+                        "                <value>hdfs_version_3.0</value>\n" +
+                        "        </property>\n" +
+                        "</configuration>\n");
             }
 
-            RangerConfiguration config = RangerConfiguration.getInstance();
-            config.addResource(new org.apache.hadoop.fs.Path(file.toURI()));
+            authorizer = new RangerHdfsAuthorizer(new org.apache.hadoop.fs.Path(file.toURI()));
+            authorizer.start();
         } catch (Exception exception) {
             Assert.fail("Cannot create hdfs-version-site file:[" + exception.getMessage() + "]");
         }
 
-        authorizer = new RangerHdfsAuthorizer();
-        authorizer.start();
         AccessControlEnforcer accessControlEnforcer = Mockito.mock(AccessControlEnforcer.class);
         rangerControlEnforcer = authorizer.getExternalAccessControlEnforcer(accessControlEnforcer);
     }
